@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Node (in case tooling lands here later)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python (in case tooling lands here later)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# AWS CDK (per ADR 0001)
+cdk.out/
+.cdk.staging/
+
+# Build / dist
+dist/
+build/
+out/
+
+# Logs
+*.log
