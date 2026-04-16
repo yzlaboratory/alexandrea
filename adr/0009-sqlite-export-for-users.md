@@ -24,13 +24,14 @@ Concretely:
 ### What the export contains
 
 - **The user's own rows:** `User` (their row), `AuthIdentity`, `Session` (optional; see below), `UserStreamingSubscription`, `Watchlist` (personal, plus shared lists they belong to), `WatchlistEntry`, `WatchlistEntryVeto`, `WatchEvent`, `Rating`, `AbandonReason`, `HomepageSnapshot`, `RecommendationSnapshot`, `Notification`, `NotificationPreferences`.
-- **Shared-space context the user belongs to:** `SharedSpace`, `SharedSpaceMembership` (all members of the spaces the exporting user is in), `SpaceInvite` (ones they created or consumed), `ActivityEvent` (events in their spaces).
+- **Shared-space context the user belongs to:** `SharedSpace`, `SharedSpaceMembership` (all members of the spaces the exporting user is in), `ActivityEvent` (events in their spaces).
 - **Referenced catalog slice:** for every `titleId` that appears in any of the above, include the `Title`, `TitleLocalization` in the user's locales, `TitleGenre`, `TitleContentWarning`, `TitleCertification`, relevant `Season` / `Episode` rows, and `StreamingAvailability` entries in the user's region. The catalog slice is a snapshot, not live.
 - **An `_export_meta` table** with: `exportedAt` (UTC), `schemaVersion` (matches the Flyway migration number), `sourceAppVersion`, `ownerUserId`, and a short human-readable README blob.
 
 ### What is explicitly excluded
 
 - Other users' ratings, watch history, personal watchlists, or auth identities. A shared-space membership means you can see your partner's ratings **through the app**; it does not mean your exported SQLite includes their private rows.
+- `SpaceInvite` rows. They carry the invited address the user typed, which is another person's email. Excluded entirely from exports to avoid redistributing third-party PII, even when the exporter is the one who sent the invite.
 - Session cookies, TOTP secrets, password hashes (N/A — no email/password in v0 per `specs/01-accounts-and-sharing.md`), or raw OAuth tokens. `Session` rows are included with identifiers only and no secrets; by default `Session` is omitted entirely and can be included with an "include sessions metadata" toggle.
 - The full catalog. Exports only carry the titles the user's rows reference.
 - Server-internal tables (Flyway history, any background-job queues, rate-limit state).

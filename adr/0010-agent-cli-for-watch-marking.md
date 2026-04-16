@@ -109,7 +109,7 @@ The CLI exposes a narrow verb set, matching the watch-tracking primitives in `sp
 
 - **Scope creep risk.** Once a CLI exists, every feature request ("can I create a watchlist from the CLI?") will be in scope. Mitigation: the ADR pins the verb set to watch-tracking + ratings + abandonment; additions require a follow-up ADR.
 - **Second artifact to build, test, release, and document.** Non-trivial ongoing cost even though the implementation is thin. Mitigation: defer to post-v0; do not start until the web app is out of flux.
-- **Token leakage is a new security surface.** An agent running on a compromised machine leaks a user-scoped token. Mitigation: prefixed tokens, last-used tracking, one-click revocation, scoped permission set (no account deletion), rate limits, and an in-app notification when a new token is used for the first time (this loops back into the suspicious-activity story that was removed from v0 — re-introduce it narrowly for tokens only).
+- **Token leakage is a new security surface.** An agent running on a compromised machine leaks a user-scoped token. Mitigation: prefixed tokens, `last_used_at` surfaced in the Settings token list, one-click revocation, scoped permission set (no account deletion), and per-token rate limits. Deliberately **no** "new token used" notification — that would resurrect the suspicious-activity story the product dropped in v0; the user checking the token list covers this instead.
 - **Idempotency requires real care.** Agents retry. Missing a dedup case means silent double-logs and skewed stats. Mitigation: the dedup logic in `specs/05-watch-tracking.md` (`user + episode + day`) is already the right primitive; the CLI tests it explicitly with retry scenarios.
 - **Partner-marking via CLI has trust implications.** A token scoped to Kira can mark watched for M inside the "Kira & M" space, just like the in-app checkbox. Acceptable because it mirrors the web trust model, but worth documenting prominently.
 
@@ -118,7 +118,6 @@ The CLI exposes a narrow verb set, matching the watch-tracking primitives in `sp
 - Not before v0 ships. The web app and watch-tracking flows must be stable first.
 - Design the API-token storage in the `User` / `AuthIdentity` area of `specs/09-data-model.md` (a new `ApiToken` entity: `id`, `userId`, `hashedSecret`, `prefix`, `scopes[]`, `createdAt`, `lastUsedAt`, `revokedAt`).
 - Add a `source` field to `ActivityEvent` (`web` | `cli` | future `mcp`) so the shared-space feed distinguishes automation from manual action.
-- Re-introduce a narrow **"new token used"** notification (in-app; emails optional) to cover the one security-relevant event we still need, without resurrecting the broader suspicious-activity framework.
 - Draft a spec file (`specs/10-agent-cli.md`) with the user-facing scenarios: "Kira connects Claude to log her binge," "an evening script logs the couple's watches from a shared calendar."
 - Build a minimal MCP server on top of the CLI as a separate, later artifact.
 

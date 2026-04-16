@@ -52,6 +52,7 @@ When M adds *Poor Things* to the shared "Movie Night" list, Kira opens the app l
 - **Sign in with Apple** — first-class, especially on iOS.
 - **Sign in with Google** — first-class on Android and web.
 - Other OAuth providers may follow based on demand; the same account can have multiple auth methods attached over time.
+- The account's email is taken from the **first attached provider** and is not overwritten when a second provider is later linked. Apple "Hide My Email" relay addresses (`@privaterelay.appleid.com`) are stored and used as-is — the app never asks the user to "upgrade" to a real address.
 
 ### Session and device management
 
@@ -61,13 +62,15 @@ Sessions expire after 90 days of inactivity.
 
 ## Invitations
 
+- The app emails the invite link directly to the address the inviter types.
+- The invited address is a **hint, not a gate** — anyone holding the link can accept it, regardless of which SSO email they sign in with. The stored address is kept for the inviter's own records.
 - Invite links are single-use by default; the inviter can toggle "reusable link" (max 10 uses).
 - The inviter can revoke a pending invite from the shared-space settings.
-- An invited email that doesn't yet have an account lands on the sign-up flow with the invite pre-attached; the account is auto-joined to the shared space on first sign-in.
+- An invited person without an account lands on the sign-up flow with the invite pre-attached; they are auto-joined to the shared space on first sign-in via Apple or Google.
 - Re-inviting someone who declined re-opens the invite without surfacing their decline (avoids awkwardness).
 
 ## Account edge cases
 
 - **Leaving a shared space.** If M leaves "Kira & M," the shared lists stay with Kira (she was an equal owner), but M's ratings and watch history remain on M's own account. No data is destroyed.
-- **Deleting an account.** Initiated from Settings → Account → Delete with a confirm step. Personal data is purged immediately; shared-space contributions remain and attribution becomes "former member." No grace period.
+- **Deleting an account.** Initiated from Settings → Account → Delete. The user must type `DELETE` into a confirmation field to proceed. Personal data is purged immediately; shared-space contributions remain and attribution becomes "former member." No grace period.
 - **Offline account.** Reading the app (browsing, seeing your watchlists) works offline. Marking things watched queues and syncs when back online; list reordering does not apply offline because it would conflict with the other user's edits.

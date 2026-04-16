@@ -89,7 +89,7 @@ A search bar is pinned to the top of Discover and every list view.
 ## Rankings and region
 
 - Rankings are region-specific where the upstream data supports it. A US user's "Most Watched This Month" reflects US audience data.
-- A user's region is set at signup (derived from the signup IP, editable any time) and can be changed — changing it refreshes Discover.
+- A user's region is inferred on first sign-in from the browser's `Accept-Language` header and can be changed any time in Settings — changing it refreshes Discover.
 
 ## Deliberately out of scope
 

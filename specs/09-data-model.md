@@ -4,7 +4,7 @@
 
 The other spec files describe scenarios and behaviors. This file pins down the **entities and relationships** they all reference, so the same word means the same thing everywhere. Without this, "watchlist," "title," and "rating" drift in subtle ways across specs, and the first inconsistency becomes a bug six months in.
 
-This is not a database schema — those decisions live in a future ADR (per ADR 0001's follow-ups). Field types here are conceptual ("identifier," "timestamp"), not SQL.
+This is not a database schema — those decisions live in a future ADR. Field types here are conceptual ("identifier," "timestamp"), not SQL.
 
 ## Conventions
 
@@ -28,8 +28,9 @@ Represents a single person with an account.
 
 A user can sign in with multiple methods over time.
 
-- `userId`, `provider` (`apple` | `google`), `providerSubjectId`
+- `userId`, `provider` (`apple` | `google`), `providerSubjectId`, `email` (as returned by the provider)
 - One `User` has 1..N `AuthIdentity` records.
+- `User.email` is populated from the **first** attached identity's provider email and is not changed when a second identity is later linked. Apple "Hide My Email" relay addresses are stored as-is.
 
 ### `Session`
 
@@ -207,18 +208,17 @@ Append-only feed for the shared-space activity panel.
 
 ### `Notification`
 
-Sent + in-app delivery record.
+In-app delivery record. v0 has no push or email notification channels (per `specs/00-overview.md`); fields for other channels will be re-introduced via migration when v1 adds native apps.
 
 - `id`, `userId`, `kind`, `title`, `body`
 - `deepLinkUrl`
-- `channel` (`push` | `email` | `in_app`)
 - `sentAt`, `readAt`
 
 ### `NotificationPreferences`
 
 - `userId`
-- Per-kind toggles (push & email, separately)
-- `quietHoursStartLocal`, `quietHoursEndLocal`
+- Per-kind in-app visibility toggles.
+- `quietHoursStartLocal`, `quietHoursEndLocal` (suppresses in-app banners during the window).
 
 ## Derived / cached
 
