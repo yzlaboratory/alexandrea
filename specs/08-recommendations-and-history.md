@@ -79,18 +79,6 @@ The feed is informational, not interactive. It's a way to glance at what the oth
 - Notification preferences (in-app indicators only in v0; see `00-overview.md`)
 - Rating dimensions you care about (the four defaults — Story, Performance, Vibe, Entertainment — can be hidden per-user; the Overall Score remains visible)
 - Shared-space members, invite link, leave space
-- Data export (download your watch history and ratings as JSON/CSV)
-
-## Data export and import
-
-- **Export** is available from Settings → Data at any time, in both **JSON** (complete, structured) and **CSV** (spreadsheet-friendly subset). The export covers watch history, ratings, lists, and settings. Export bundles are emailed as a download link that expires after 72 hours.
-- **Import** supports Letterboxd, Trakt, and IMDb bundles (CSV or API link), mapping into the user's library and optionally into a designated watchlist. See `04-watchlists.md` and `05-watch-tracking.md` for flow details.
-
-## Analytics and telemetry
-
-- **Opt-in at signup**, with a clear toggle in Settings. Default is **off** in GDPR regions, **on with easy opt-out** elsewhere.
-- Events collected are usage-level (screen views, feature interactions), never title-level watch content tied to an external identifier.
-- A read-only "What we collect" page lists every event type in plain language, linked from the privacy policy.
 
 ## Help, feedback, and support
 
@@ -98,23 +86,6 @@ The feed is informational, not interactive. It's a way to glance at what the oth
 - **In-app feedback** form (Settings → Send feedback): short message, optional screenshot, auto-attached device and app version. Submissions route to the product team.
 - **Bug report** CTA is a one-tap affordance on every error state.
 - Support email response target: 2 business days.
-
-## Settings map
-
-Consolidated list of user-facing settings, by section:
-
-- **Account:** email, password, delete account, active sessions. (No 2FA in v0; see ADR 0007.)
-- **Profile:** display name, avatar color/image, date-of-birth (set at signup, editable with verification).
-- **Shared spaces:** list of spaces, invite members, leave space.
-- **Streaming services:** which services you have (powers availability filtering).
-- **Region and language:** region, UI language (de or en), metadata language fallback.
-- **Appearance:** theme (light/dark/auto), reduce motion override.
-- **Activity:** in-app indicator preferences; toggle Couch mode auto-clear duration; opt out of polling on metered connections.
-- **Privacy:** analytics opt-in/out, private-by-default ratings, spoiler-safe mode.
-- **Content filters:** hide content warnings (flashing imagery, strong violence, etc.).
-- **Rating dimensions:** toggle visibility of each of the four dimensions (Story, Performance, Vibe, Entertainment).
-- **Data:** export, import, view storage used.
-- **About:** app version, terms, privacy policy, licenses, credits.
 
 ## Accessibility of recommendations and history
 
@@ -126,4 +97,4 @@ Consolidated list of user-facing settings, by section:
 
 - ML-heavy personalization requiring training. The recommender is a ranked-blend of simple signals, tuned for legibility ("we suggested this because…") over black-box accuracy.
 - Social features beyond the shared space.
-- Integrations that post to Letterboxd, Trakt, etc. Export exists; live sync does not.
+- Integrations that post to or sync with Letterboxd, Trakt, etc.

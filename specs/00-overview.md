@@ -73,7 +73,7 @@ v0 is web-only and uses **in-app indicators only** — no browser push, no email
 - **Activity feed** in each shared space (per `08-recommendations-and-history.md`).
 - Surfaces refresh on app/list open via polling (per ADR 0005).
 
-Transactional email exists for account flows only — verification and password reset (per ADR 0007). Browser push, email digests, quiet hours, and per-event toggles are deferred until v1 introduces native apps.
+Browser push, email digests, quiet hours, and per-event toggles are deferred until v1 introduces native apps.
 
 ## Error, loading, and empty states
 
@@ -88,11 +88,7 @@ Offline is its own case: cached content renders; writes queue and sync on reconn
 ## Privacy and legal
 
 - A public **Terms of Service** and **Privacy Policy** are linked from signup, Settings, and the footer. Users accept both at account creation.
-- **Minimum age** is 13 (US COPPA) or 16 (EU GDPR-K), enforced at signup with a date-of-birth field.
-- Users can **export all their data** (watch history, ratings, lists) as JSON and CSV on demand.
-- Users can **delete their account** with a 30-day soft-delete grace period, after which all personal data is purged. Shared-list contributions remain, re-attributed to "former member."
-- **Analytics** are opt-in, documented, and never include title-level viewing content in a form tied to external identifiers.
-- **Cookie consent** banner on first web visit, region-appropriate (GDPR/ePrivacy for EU, CCPA notice for California).
+- Users can **delete their account** from Settings. Personal data is purged immediately. Shared-list contributions remain, re-attributed to "former member."
 
 ## Support
 

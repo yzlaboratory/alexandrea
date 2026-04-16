@@ -32,7 +32,7 @@ Concretely:
 - **Framework:** Spring Boot 3.x (Web, Validation, Security, Data JDBC).
 - **Persistence:** Spring Data JDBC over `sqlite-jdbc` with the community-maintained SQLite dialect. Hibernate is **not** used — Spring Data JDBC is a closer fit for SQLite's simpler model and avoids the Hibernate-on-SQLite quirks.
 - **Migrations:** Flyway, with versioned SQL migrations under `src/main/resources/db/migration`.
-- **Auth:** Spring Security with email + bcrypt-hashed password. No OAuth / SSO / 2FA in v0 (couple-only). Sessions via secure HTTP-only cookies.
+- **Auth:** Spring Security with Sign in with Apple and Sign in with Google as the only sign-in methods (per `specs/01-accounts-and-sharing.md`). No local passwords, no 2FA in v0. Sessions via secure HTTP-only cookies.
 - **HTTP API:** REST under `/api/**`, JSON request/response, ETag-aware on collection endpoints (per ADR 0005's polling model).
 - **Static frontend serving:** the React build from ADR 0004 is bundled into `src/main/resources/static` and served by Spring Boot at the root. One artifact, one deploy.
 - **i18n:** Spring `MessageSource` with `messages_de.properties` and `messages_en.properties` for backend strings (validation errors, transactional emails). The frontend handles its own i18n via react-i18next.
@@ -67,7 +67,7 @@ Concretely:
 ### Email (transactional only)
 
 - **Resend** or **Mailgun** at the free / cheapest tier (under 100 emails/month is comfortably free on either).
-- Used for: account creation confirmation, password reset, optional invite emails.
+- Used for: shared-space invite emails. Account flows run through Apple/Google SSO so there are no password resets or verification mails to send.
 - No marketing email, no digests in v0.
 
 ### Observability

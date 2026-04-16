@@ -106,16 +106,6 @@ Adding a title that's already on a different list is allowed — it's a feature,
 - **Loading list:** skeleton rows matching the canonical card height.
 - **Shared-list sync error:** a banner "Couldn't sync with M's changes — retry?" with a manual refresh button. The list still renders from the last-known state.
 
-## Import
-
-Users can bootstrap their library by importing from:
-
-- **Letterboxd** (CSV export of watched films, watchlist, ratings).
-- **Trakt** (API-linked or JSON export).
-- **IMDb** (CSV export of lists and ratings).
-
-The import flow previews what will be added, lets the user pick which list the incoming titles land on, and maps ratings to the closest dimension (usually Story + Entertainment). Unrecognized titles are reported with a retry-by-search affordance rather than silently dropped.
-
 ## Reminders (opt-in)
 
 A user can pin a note to a list entry with an optional reminder ("remind me Friday"). Reminders fire as a local notification and are personal — M's reminders don't notify Kira.

@@ -49,50 +49,25 @@ When M adds *Poor Things* to the shared "Movie Night" list, Kira opens the app l
 
 ### Sign-up and sign-in methods
 
-- **Email + password** — the default. Minimum 10 characters, checked against a common-password blocklist. Passwords are salted and hashed with a modern KDF (Argon2id or bcrypt with a high cost factor).
 - **Sign in with Apple** — first-class, especially on iOS.
 - **Sign in with Google** — first-class on Android and web.
 - Other OAuth providers may follow based on demand; the same account can have multiple auth methods attached over time.
 
-### Email verification
-
-A confirmation email is sent on signup with a time-limited link (24 hours). Until verified, the account can browse and build a personal library but cannot join or create shared spaces. Re-send is rate-limited.
-
-### Password reset
-
-"Forgot password" triggers a single-use reset link, valid for 60 minutes, invalidated on first use. The reset email never contains the password. Successful resets sign out all existing sessions except the current one.
-
-### Two-factor authentication
-
-Optional TOTP (authenticator app) 2FA, available from Settings. On enabling, the user downloads eight backup codes. 2FA is encouraged but not required. SMS 2FA is deliberately not offered (security and cost reasons).
-
 ### Session and device management
 
-Settings → Security shows a list of active sessions with device name, approximate location (by IP), last-seen timestamp, and a *Sign out* button per session. A *Sign out everywhere* action is one click and triggers a fresh email notification.
+Settings → Security shows a list of active sessions with device name, approximate location (by IP), last-seen timestamp, and a *Sign out* button per session. A *Sign out everywhere* action is one click.
 
-Sessions expire after 90 days of inactivity. A password reset, email change, or 2FA change invalidates all other sessions.
-
-### Suspicious-activity notifications
-
-The user receives an email any time:
-
-- A new device signs in to their account.
-- Their email, password, or 2FA settings change.
-- They're added to a new shared space.
-
-These emails include an "if this wasn't you" link that jumps to the sessions list.
+Sessions expire after 90 days of inactivity.
 
 ## Invitations
 
-- Invite links are time-limited (7 days) and single-use unless the inviter toggles "reusable link" (max 10 uses).
+- Invite links are single-use by default; the inviter can toggle "reusable link" (max 10 uses).
 - The inviter can revoke a pending invite from the shared-space settings.
-- An invited email that doesn't yet have an account lands on the sign-up flow with the invite pre-attached; the account is auto-joined to the shared space on verification.
+- An invited email that doesn't yet have an account lands on the sign-up flow with the invite pre-attached; the account is auto-joined to the shared space on first sign-in.
 - Re-inviting someone who declined re-opens the invite without surfacing their decline (avoids awkwardness).
 
 ## Account edge cases
 
 - **Leaving a shared space.** If M leaves "Kira & M," the shared lists stay with Kira (she was an equal owner), but M's ratings and watch history remain on M's own account. No data is destroyed.
-- **Deleting an account.** Personal data is removed. Contributions to shared lists stay, but attribution becomes "former member."
+- **Deleting an account.** Initiated from Settings → Account → Delete with a confirm step. Personal data is purged immediately; shared-space contributions remain and attribution becomes "former member." No grace period.
 - **Offline account.** Reading the app (browsing, seeing your watchlists) works offline. Marking things watched queues and syncs when back online; list reordering does not apply offline because it would conflict with the other user's edits.
-- **Account deletion.** Initiated from Settings → Account → Delete. A confirmation email is sent; after the user clicks through, the account enters a 30-day soft-deleted state during which sign-in restores it. After 30 days, personal data is purged, and shared-space contributions are re-attributed to "former member."
-- **Email change.** Requires password re-entry and confirmation at the new address before it takes effect. The old address receives a notification with a revert link valid for 7 days.

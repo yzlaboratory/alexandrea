@@ -10,7 +10,6 @@ This is not a database schema — those decisions live in a future ADR (per ADR 
 
 - Every entity has an opaque `id` (server-generated) unless noted.
 - Timestamps are stored in UTC; rendered in the user's locale.
-- "Soft delete" means a `deletedAt` timestamp; data isn't physically removed for at least 30 days (see `01-accounts-and-sharing.md`).
 - Foreign-key relationships are described in prose; the implementation may denormalize for read performance.
 
 ## Identity
@@ -20,18 +19,16 @@ This is not a database schema — those decisions live in a future ADR (per ADR 
 Represents a single person with an account.
 
 - `id`, `email` (unique), `displayName`, `avatarColor` (or `avatarImageUrl`)
-- `dateOfBirth` (for COPPA/GDPR-K age gate)
 - `region` (e.g., `US`, `FR`) — drives availability and discovery rankings
 - `locale` (e.g., `en-US`) — drives UI language and metadata language fallback
 - `theme` (`light` | `dark` | `auto`)
-- `createdAt`, `deletedAt` (nullable, soft-delete grace)
+- `createdAt`
 
 ### `AuthIdentity`
 
 A user can sign in with multiple methods over time.
 
-- `userId`, `provider` (`email` | `apple` | `google`), `providerSubjectId`
-- For `email` provider: `passwordHash`, `emailVerifiedAt`
+- `userId`, `provider` (`apple` | `google`), `providerSubjectId`
 - One `User` has 1..N `AuthIdentity` records.
 
 ### `Session`
@@ -39,19 +36,7 @@ A user can sign in with multiple methods over time.
 Active sign-in on a device.
 
 - `id`, `userId`, `deviceLabel` (best-effort), `ipApprox`, `lastSeenAt`, `expiresAt`
-- 90-day inactivity expiry; invalidated en masse on password reset, email change, or 2FA change.
-
-### `TwoFactorSecret`
-
-Optional TOTP setup per user.
-
-- `userId`, `totpSecretEncrypted`, `backupCodes` (hashed), `enabledAt`
-
-### `SecurityEvent`
-
-Append-only log for suspicious-activity emails.
-
-- `userId`, `kind` (`new_device_signin` | `password_changed` | `email_changed` | `2fa_changed` | `added_to_space`), `occurredAt`, `context`
+- 90-day inactivity expiry.
 
 ## Sharing
 
@@ -69,9 +54,8 @@ A group of users who share lists and see each other's progress.
 
 ### `SpaceInvite`
 
-- `id`, `spaceId`, `invitedEmail`, `createdByUserId`, `expiresAt`, `usedByUserId` (nullable), `revokedAt` (nullable)
+- `id`, `spaceId`, `invitedEmail`, `createdByUserId`, `usedByUserId` (nullable), `revokedAt` (nullable)
 - `reusable` (bool, default false), `maxUses` (default 1), `usesSoFar`
-- 7-day default expiry per `01-accounts-and-sharing.md`.
 
 ## Catalog (provider-sourced)
 
@@ -221,20 +205,6 @@ Append-only feed for the shared-space activity panel.
 - `payload` (entity references)
 - `occurredAt`
 
-### `ImportJob`
-
-For Letterboxd / Trakt / IMDb imports per `04-watchlists.md`.
-
-- `id`, `userId`, `source`, `targetWatchlistId` (nullable)
-- `status` (`queued` | `running` | `succeeded` | `partial` | `failed`)
-- `summary` (counts: imported, skipped, unmatched), `errors[]`
-- `submittedAt`, `completedAt`
-
-### `ExportJob`
-
-- `id`, `userId`, `format` (`json` | `csv`)
-- `status`, `downloadUrl`, `urlExpiresAt`
-
 ### `Notification`
 
 Sent + in-app delivery record.
@@ -288,7 +258,7 @@ These are computed on read, never stored, and never persisted in user-visible fo
 
 ## Cardinality summary
 
-- A `User` has 1..N `AuthIdentity`, 0..N `Session`, 0..1 `TwoFactorSecret`.
+- A `User` has 1..N `AuthIdentity`, 0..N `Session`.
 - A `User` belongs to 0..N `SharedSpace` via `SharedSpaceMembership`.
 - A `User` owns 1..N `Watchlist` (kind = personal); each `SharedSpace` owns 1..N `Watchlist` (kind = shared).
 - A `Watchlist` has 0..N `WatchlistEntry`.

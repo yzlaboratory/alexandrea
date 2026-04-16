@@ -86,10 +86,6 @@ Watch marks sync across all of a user's devices within seconds when online. The 
 - Marks made offline are queued and flushed on reconnect. The user sees a small badge ("2 pending") in the corner of the screen until sync completes.
 - Conflicts on flush are resolved silently unless user-visible (rare); when visible, a single toast explains what changed.
 
-## Import of prior watch history
-
-When a user first joins, they can import their backlog from Letterboxd, Trakt, or IMDb (see `04-watchlists.md`). Imported watches are flagged as backfill (no precise date) and do not count toward "recent" stats.
-
 ## Spoiler safety
 
 By default:
