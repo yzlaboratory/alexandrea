@@ -15,11 +15,23 @@ Running list of decisions deferred or not yet started. Items graduate off this l
   - **Backblaze B2** — vendor diversity, ~$0.005/GB/mo (effectively free at our size).
 - **Postgres cut-over criteria.** Suggested triggers we'd commit to in advance: more than ~10 concurrent users routinely, the need for full-text search beyond SQLite's FTS5, or wanting two app servers. Worth naming the thresholds before we hit them.
 
+## From ADR 0003 — Auth
+
+- **CSRF library / pattern.** Decided in the HTTP-router ADR rather than here.
+- **Password length floor.** Suggested ≥14 chars; document when `docs/runbooks/seed-users.md` exists.
+- **Argon2id parameter tuning.** Measure login latency on the CX22 once running; target 250–500 ms per verify.
+- **Password-reset-via-ssh tolerance.** Fine at two users; revisit when a third arrives.
+- **Active-sessions admin page** (view + revoke). Nice-to-have, not v0.
+
 ## ADRs not yet started
 
-- **Auth mechanism.** The specs punt this to "deployment concern" (shared secret, hardcoded cookie, IP allowlist, SSO later). Needs its own ADR before any code lands. Directly shapes the frontend too (login UI or no).
 - **TMDB usage.** API key storage (env var vs. secret manager), rate-limit handling, and poster caching policy (hot-link TMDB's CDN vs. proxy/cache posters locally). Simpler is hot-link; locality argues for proxying; we should pick explicitly.
 - **Frontend shape.** Same decision as ADR 0001's server-rendered-vs-SPA follow-up; listed here so it doesn't get lost.
+- **HTTP router** (also an ADR 0001 follow-up). Stdlib vs. `chi`. CSRF pattern rides on this.
+
+## Resolved
+
+- **Auth mechanism** — Resolved in ADR 0003 (2026-04-17): password-per-user with argon2id and server-side sessions.
 
 ## Infra tasks (not ADR-shaped, but open)
 
