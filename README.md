@@ -22,7 +22,8 @@ Not a streaming service. Not a social network. Not a global catalog. One shared 
 │   ├── 03-ratings.md
 │   └── 04-data-model.md
 └── adr/                 ← architecture decision records
-    └── 0001-v0-hosting-and-runtime.md
+    ├── 0001-v0-hosting-and-runtime.md
+    └── 0002-v0-datastore-sqlite.md
 ```
 
 ## How to read this repo
