@@ -25,7 +25,8 @@ Not a streaming service. Not a social network. Not a global catalog. One shared 
 └── adr/                 ← architecture decision records
     ├── 0001-v0-hosting-and-runtime.md
     ├── 0002-v0-datastore-sqlite.md
-    └── 0003-v0-auth-password-per-user.md
+    ├── 0003-v0-auth-password-per-user.md
+    └── 0004-v0-tmdb-integration.md
 ```
 
 ## How to read this repo

@@ -23,15 +23,22 @@ Running list of decisions deferred or not yet started. Items graduate off this l
 - **Password-reset-via-ssh tolerance.** Fine at two users; revisit when a third arrives.
 - **Active-sessions admin page** (view + revoke). Nice-to-have, not v0.
 
+## From ADR 0004 — TMDB Integration
+
+- **Local poster caching.** Triggered by TMDB CDN flakiness, hardening privacy, or a PWA push. Needs its own ADR when the trigger fires.
+- **TMDB call observability.** A small counter (total / 4xx / 5xx / retried) once we adopt any metrics stack.
+- **Env file delivery.** Move `/etc/entlib/env` into the CI/CD flow (GitHub Actions secret → env file at deploy time) when that lands.
+- **Attribution placement.** Confirm TMDB attribution copy/logo position once the first UI mock exists.
+
 ## ADRs not yet started
 
-- **TMDB usage.** API key storage (env var vs. secret manager), rate-limit handling, and poster caching policy (hot-link TMDB's CDN vs. proxy/cache posters locally). Simpler is hot-link; locality argues for proxying; we should pick explicitly.
 - **Frontend shape.** Same decision as ADR 0001's server-rendered-vs-SPA follow-up; listed here so it doesn't get lost.
 - **HTTP router** (also an ADR 0001 follow-up). Stdlib vs. `chi`. CSRF pattern rides on this.
 
 ## Resolved
 
 - **Auth mechanism** — Resolved in ADR 0003 (2026-04-17): password-per-user with argon2id and server-side sessions.
+- **TMDB usage** — Resolved in ADR 0004 (2026-04-17): server-proxied calls with API key in a systemd env file; posters hot-linked from TMDB's CDN with `poster_path` stored, not full URLs.
 
 ## Infra tasks (not ADR-shaped, but open)
 
