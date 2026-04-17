@@ -13,6 +13,7 @@ Not a streaming service. Not a social network. Not a global catalog. One shared 
 ```
 .
 ├── README.md            ← you are here
+├── OPEN-QUESTIONS.md    ← decisions deferred, grouped by source
 ├── LICENSE              ← MIT
 ├── .gitignore
 ├── specs/               ← prose product scenarios
