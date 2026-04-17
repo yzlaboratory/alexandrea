@@ -4,8 +4,6 @@ Running list of decisions deferred or not yet started. Items graduate off this l
 
 ## From ADR 0001 — Hosting & Runtime
 
-- **HTTP router.** Go stdlib (`net/http` 1.22+ has pattern-based routing), `chi`, or `echo`. Stdlib is the default instinct at this scope.
-- **Server-rendered vs. SPA.** Either htmx + `html/template` (no separate frontend build, one binary serves HTML) or a React/TS SPA bundled into the binary. Scope is small enough that server-rendered is defensible; SPA only earns its weight if the interaction model demands it.
 - **Domain name.** Nothing registered yet. `.de` vs `.app` vs something else.
 
 ## From ADR 0002 — Datastore
@@ -30,15 +28,20 @@ Running list of decisions deferred or not yet started. Items graduate off this l
 - **Env file delivery.** Move `/etc/entlib/env` into the CI/CD flow (GitHub Actions secret → env file at deploy time) when that lands.
 - **Attribution placement.** Confirm TMDB attribution copy/logo position once the first UI mock exists.
 
-## ADRs not yet started
+## From ADR 0005 — Frontend
 
-- **Frontend shape.** Same decision as ADR 0001's server-rendered-vs-SPA follow-up; listed here so it doesn't get lost.
-- **HTTP router** (also an ADR 0001 follow-up). Stdlib vs. `chi`. CSRF pattern rides on this.
+- **Node at deploy time.** CI runs `pnpm build` is the default assumption; revisit when the CI/CD ADR lands.
+- **TypeScript type generation from Go API.** Hand-written types for now; add generation if drift becomes painful.
+- **Go hot-reloader for dev** (`air`, `reflex`, raw `go run`). Not ADR-worthy.
+- **Icon set** (Lucide is the current candidate).
+- **PWA / Service Worker** strategy, if offline support ever becomes a goal.
 
 ## Resolved
 
 - **Auth mechanism** — Resolved in ADR 0003 (2026-04-17): password-per-user with argon2id and server-side sessions.
 - **TMDB usage** — Resolved in ADR 0004 (2026-04-17): server-proxied calls with API key in a systemd env file; posters hot-linked from TMDB's CDN with `poster_path` stored, not full URLs.
+- **Frontend shape** — Resolved in ADR 0005 (2026-04-17): React + TypeScript + Vite SPA embedded into the Go binary via `embed.FS`.
+- **HTTP router** — Resolved in ADR 0005 (2026-04-17): Go stdlib `net/http` (1.22+ pattern routing), no router library. CSRF via double-submit cookie middleware.
 
 ## Infra tasks (not ADR-shaped, but open)
 
