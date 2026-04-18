@@ -25,9 +25,17 @@ __pycache__/
 .venv/
 venv/
 
-# AWS CDK (per ADR 0001)
-cdk.out/
-.cdk.staging/
+# Go
+backend/entlib
+backend/entlib-*
+*.test
+*.out
+coverage.txt
+
+# Local SQLite artifacts (dev/test)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # Build / dist
 dist/
