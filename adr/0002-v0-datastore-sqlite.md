@@ -25,7 +25,7 @@ Concretely:
   - `PRAGMA synchronous = NORMAL;` — the WAL-recommended setting; durable across crashes, faster than `FULL`.
   - `PRAGMA busy_timeout = 5000;` — waits 5 s before returning `SQLITE_BUSY`, which is plenty at our write rate.
 - **Schema management:** [`pressly/goose`](https://github.com/pressly/goose) with `embed.FS`. Migrations live in `db/migrations/*.sql` in the repo and are compiled into the binary. The app runs `goose.Up()` on startup; no separate migration step in the deploy.
-- **Backup:** nightly cron on the VPS runs `sqlite3 /var/lib/entlib/db.sqlite ".backup /tmp/entlib-$(date +%F).sqlite"` (safe under WAL), encrypts the result with `age`, and uploads it off-VPS. Retention: 30 daily snapshots. **Backup destination TBD** — see Follow-ups.
+- **Backup:** nightly cron on the VPS runs `sqlite3 /var/lib/entlib/db.sqlite ".backup /tmp/entlib-$(date +%F).sqlite"` (safe under WAL), encrypts the result with `age`, and uploads it to a **Hetzner Storage Box** (decided 2026-04-18). Retention: 30 daily snapshots.
 
 ## Rationale
 
@@ -58,7 +58,7 @@ Concretely:
 - **Backup discipline is on us.** No "it's backed up automatically because it's managed" safety net.
 
 ### Follow-ups
-- **Pick the backup destination.** Two reasonable defaults: **Hetzner Storage Box** (same provider, ~€3.80/mo for 1 TB, trivially close network-wise) or **Backblaze B2** (vendor diversity, ~$0.005/GB/mo, effectively free at our size). Decide in a follow-up ADR or just in the runbook.
+- **Backup destination: Hetzner Storage Box** (decided 2026-04-18). Same-provider latency and simpler billing outweighed Backblaze B2's vendor-diversity argument at this scale. The accepted risk is a correlated-failure scenario (Hetzner-wide incident) — revisit if that becomes a real concern. Concrete configuration (endpoint, retention sweep) lives in `docs/runbooks/restore-from-backup.md` when that file exists.
 - Provision `/var/lib/entlib/` and the service user during VPS setup.
 - Write the restore runbook once ops actually exists (`docs/runbooks/restore-from-backup.md`).
 - Define the cut-over criteria for Postgres. Suggested triggers: more than ~10 concurrent users routinely, the need for full-text search beyond SQLite's FTS5, or wanting to run two app servers.

@@ -42,7 +42,7 @@ Concretely:
 - **Cookie:** `ENTLIB_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`. Expiry 90 days sliding — every authenticated request that's more than a day past `last_seen_at` extends the row.
 - **Logout:** deletes the `session` row and clears the cookie.
 - **Rate limit:** per-username exponential backoff on failed logins (1 s, 2 s, 4 s, …, capped at 60 s), reset on success. Plus a global per-IP cap of ~30 failed attempts in 10 minutes, to make the open-internet footprint less appealing to crawlers.
-- **CSRF:** every state-changing request (including `/login`) requires a per-session CSRF token sent as a header and echoed from a cookie. Exact library deferred to the HTTP-router ADR.
+- **CSRF:** every state-changing request (including `/login`) requires a per-session CSRF token sent as a header and echoed from a cookie. Concrete pattern (double-submit cookie, ~30 lines of middleware) is specified in ADR 0005.
 - **User seeding:** the Go binary grows a `seed` subcommand, invoked once on the VPS:
   ```
   entlib seed --display-name Kira --username kira --password '...'
@@ -84,8 +84,7 @@ Concretely:
 - **Brute-force posture is modest.** The rate limits above make the app a poor target but not an impossible one. A determined attacker with many IPs could still crawl attempts; the mitigation is a strong password per user.
 
 ### Follow-ups
-- Decide exact CSRF library / pattern in the HTTP-router ADR.
-- Decide the password length floor (suggestion: ≥14 chars, no other rules) and document in `docs/runbooks/seed-users.md` when that file exists.
+- **Password length floor: ≥14 chars, no other complexity rules** (decided 2026-04-18). Aligns with NIST 800-63B; length beats character-class rules. Document in `docs/runbooks/seed-users.md` when that file exists; optionally add zxcvbn-style strength feedback later.
 - Tune argon2id parameters after measuring login latency on the CX22 — 250–500 ms is the target band.
 - When a third user arrives, revisit whether password-reset-via-ssh is still tolerable or we need a recovery flow.
 - Add a simple admin page listing active sessions (view + revoke) — nice to have, not v0.

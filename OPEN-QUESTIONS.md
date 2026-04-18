@@ -8,15 +8,10 @@ Running list of decisions deferred or not yet started. Items graduate off this l
 
 ## From ADR 0002 — Datastore
 
-- **Backup destination.**
-  - **Hetzner Storage Box** — same provider, low latency, ~€3.80/mo for 1 TB.
-  - **Backblaze B2** — vendor diversity, ~$0.005/GB/mo (effectively free at our size).
 - **Postgres cut-over criteria.** Suggested triggers we'd commit to in advance: more than ~10 concurrent users routinely, the need for full-text search beyond SQLite's FTS5, or wanting two app servers. Worth naming the thresholds before we hit them.
 
 ## From ADR 0003 — Auth
 
-- **CSRF library / pattern.** Decided in the HTTP-router ADR rather than here.
-- **Password length floor.** Suggested ≥14 chars; document when `docs/runbooks/seed-users.md` exists.
 - **Argon2id parameter tuning.** Measure login latency on the CX22 once running; target 250–500 ms per verify.
 - **Password-reset-via-ssh tolerance.** Fine at two users; revisit when a third arrives.
 - **Active-sessions admin page** (view + revoke). Nice-to-have, not v0.
@@ -30,10 +25,7 @@ Running list of decisions deferred or not yet started. Items graduate off this l
 
 ## From ADR 0005 — Frontend
 
-- **Node at deploy time.** CI runs `pnpm build` is the default assumption; revisit when the CI/CD ADR lands.
 - **TypeScript type generation from Go API.** Hand-written types for now; add generation if drift becomes painful.
-- **Go hot-reloader for dev** (`air`, `reflex`, raw `go run`). Not ADR-worthy.
-- **Icon set** (Lucide is the current candidate).
 - **PWA / Service Worker** strategy, if offline support ever becomes a goal.
 
 ## Resolved
@@ -42,6 +34,11 @@ Running list of decisions deferred or not yet started. Items graduate off this l
 - **TMDB usage** — Resolved in ADR 0004 (2026-04-17): server-proxied calls with API key in a systemd env file; posters hot-linked from TMDB's CDN with `poster_path` stored, not full URLs.
 - **Frontend shape** — Resolved in ADR 0005 (2026-04-17): React + TypeScript + Vite SPA embedded into the Go binary via `embed.FS`.
 - **HTTP router** — Resolved in ADR 0005 (2026-04-17): Go stdlib `net/http` (1.22+ pattern routing), no router library. CSRF via double-submit cookie middleware.
+- **Backup destination** — Resolved 2026-04-18 (session pick, recorded in ADR 0002 Follow-ups): Hetzner Storage Box.
+- **Password length floor** — Resolved 2026-04-18 (session pick, recorded in ADR 0003 Follow-ups): ≥14 chars, no complexity rules.
+- **Icon set** — Resolved 2026-04-18 (session pick, recorded in ADR 0005 Follow-ups): Lucide.
+- **Go hot-reloader for dev** — Resolved 2026-04-18 (session pick, recorded in ADR 0005): `air`, dev-only.
+- **Node at deploy time** — Resolved 2026-04-18 (session pick, recorded in ADR 0005 Follow-ups): CI runs `pnpm build`; Node/pnpm never installed on the VPS.
 
 ## Infra tasks (not ADR-shaped, but open)
 

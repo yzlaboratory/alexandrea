@@ -39,7 +39,7 @@ Concretely:
 
 - **Dev loop:**
   - `vite dev` on `:5173` with a proxy to the Go backend on `:8080` for `/api`, `/login`, `/logout`.
-  - Go reloads via `air` or equivalent when source changes.
+  - Go reloads via **`air`** (decided 2026-04-18) when source changes. Dev-only dependency; not shipped in the binary.
 
 - **HTTP backend shape:**
   - Go stdlib `net/http` (1.22+ pattern-based routing). No router library in v0.
@@ -85,10 +85,10 @@ Concretely:
 - **Two languages to keep in sync.** TypeScript types for the JSON API aren't auto-generated from the Go structs in v0; drift risk is real if we forget. A `go run ./cmd/schema-gen` or similar is an easy follow-up if it bites.
 
 ### Follow-ups
-- Decide how Node arrives at deploy time (CI runs `pnpm build`, or local build + commit the dist — **CI** is the obvious default once the deploy workflow lands).
+- **Frontend build location: CI only** (decided 2026-04-18). GitHub Actions runs `pnpm build`, embeds `dist/` into the Go binary, and `scp`s the binary. `pnpm`/Node are never installed on the VPS. Concrete workflow lands in the CI/CD deploy ADR.
+- **Icon set: Lucide** (decided 2026-04-18). Tree-shakeable, consistent stroke, large catalog, MIT-licensed.
+- **Hot-reloader for Go during dev: `air`** (decided 2026-04-18). Dev-only; recorded above in *Dev loop*.
 - Decide TypeScript type generation from the Go API (hand-written vs. generated). Deferred until the drift actually hurts.
-- Decide hot-reloader for Go during dev (`air` vs. `reflex` vs. raw `go run`). Not ADR-worthy.
-- Pick an icon set when needed (Lucide is a fine default).
 - Decide PWA / Service Worker strategy if offline support ever becomes a goal.
 
 ## Sources
