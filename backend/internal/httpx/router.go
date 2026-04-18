@@ -20,6 +20,11 @@ func NewRouter(d Deps) http.Handler {
 			mux.Handle("POST /api/titles", RequireAuth(d, AddTitle(d)))
 		}
 		mux.Handle("GET /api/titles/{id}", RequireAuth(d, GetTitle(d)))
+
+		mux.Handle("GET /api/library", RequireAuth(d, ListLibrary(d)))
+		mux.Handle("POST /api/library", RequireAuth(d, AddLibraryEntry(d)))
+		mux.Handle("PATCH /api/library/{id}", RequireAuth(d, UpdateLibraryEntryStatus(d)))
+		mux.Handle("DELETE /api/library/{id}", RequireAuth(d, DeleteLibraryEntry(d)))
 	}
 
 	// Any /api/* request that isn't claimed by an explicit handler returns
