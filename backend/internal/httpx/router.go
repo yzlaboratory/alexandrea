@@ -17,7 +17,9 @@ func NewRouter(d Deps) http.Handler {
 		if d.TMDB != nil {
 			mux.Handle("GET /api/search", RequireAuth(d, Search(d)))
 			mux.Handle("GET /api/tmdb/title/{kind}/{id}", RequireAuth(d, TMDBTitle(d)))
+			mux.Handle("POST /api/titles", RequireAuth(d, AddTitle(d)))
 		}
+		mux.Handle("GET /api/titles/{id}", RequireAuth(d, GetTitle(d)))
 	}
 
 	// Any /api/* request that isn't claimed by an explicit handler returns
