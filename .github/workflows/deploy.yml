@@ -1,0 +1,122 @@
+name: Deploy
+
+# Manual-only for now. Promote to `push: branches: [main]` after the 3rd
+# clean manual run (per ADR 0001). When that happens, keep the manual
+# trigger around for out-of-band redeploys.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy (defaults to the branch the workflow was dispatched from)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: build + scp + restart
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm build
+
+      - name: Stage frontend dist into backend
+        run: |
+          rm -rf backend/internal/web/dist
+          mkdir -p backend/internal/web/dist
+          cp -R frontend/dist/. backend/internal/web/dist/
+          touch backend/internal/web/dist/.gitkeep
+
+      - name: Build linux/amd64 binary
+        working-directory: backend
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -trimpath -ldflags="-s -w" -o ../entlib ./cmd/entlib
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      # Upload to a staging path first so a killed scp never leaves a
+      # half-written binary at the active path. Atomic mv + restart lands
+      # the new version in one step.
+      - name: scp binary to host
+        env:
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+        run: |
+          scp -i ~/.ssh/id_ed25519 entlib \
+            "$SSH_USER@$SSH_HOST:/tmp/entlib.new"
+
+      - name: Install and restart
+        env:
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
+          set -euo pipefail
+          sudo install -m 0755 -o root -g root /tmp/entlib.new /usr/local/bin/entlib
+          rm -f /tmp/entlib.new
+          sudo systemctl restart entlib
+          sudo systemctl is-active --quiet entlib
+          REMOTE
+
+      - name: Smoke-test /api/health
+        env:
+          HEALTH_URL: ${{ secrets.DEPLOY_HEALTH_URL }}
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -fsS --max-time 5 "$HEALTH_URL" | grep -q '"status":"ok"'; then
+              echo "health ok"
+              exit 0
+            fi
+            echo "attempt $i failed, retrying..."
+            sleep 2
+          done
+          echo "health check failed" >&2
+          exit 1
