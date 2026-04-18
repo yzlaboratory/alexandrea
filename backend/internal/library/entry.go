@@ -29,15 +29,17 @@ func (s Status) IsValid() bool {
 	return false
 }
 
-// Entry is one row of the library_entry table joined with its title row.
-// JSON is shaped for the frontend; the embedded Title carries all metadata
-// the UI needs to render an entry without an extra round trip.
+// Entry is one row of the library_entry table joined with its title row
+// and any ratings against the title. JSON is shaped for the frontend; the
+// embedded Title + Ratings carry everything the UI needs to render an entry
+// without an extra round trip.
 type Entry struct {
 	ID              string    `json:"id"`
 	Status          Status    `json:"status"`
 	AddedAt         time.Time `json:"added_at"`
 	StatusUpdatedAt time.Time `json:"status_updated_at"`
 	Title           Title     `json:"title"`
+	Ratings         []Rating  `json:"ratings"`
 }
 
 // ErrEntryNotFound is returned when a library entry lookup misses.
@@ -84,6 +86,7 @@ func ListEntries(db *sql.DB, statuses []Status) ([]Entry, error) {
 	defer rows.Close()
 
 	var out []Entry
+	var titleIDs []string
 	for rows.Next() {
 		var (
 			e               Entry
@@ -106,9 +109,32 @@ func ListEntries(db *sql.DB, statuses []Status) ([]Entry, error) {
 		if e.Title.AddedAt, err = parseTimestamp(titleAddedAt); err != nil {
 			return nil, err
 		}
+		e.Ratings = []Rating{}
 		out = append(out, e)
+		titleIDs = append(titleIDs, e.Title.ID)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Second-pass fetch the ratings for every visible title and stitch them
+	// into the right entries. Two queries are simpler to reason about than
+	// a 1:N join-scan, and the row counts here are tiny (two users × a
+	// bounded library).
+	ratings, err := ListRatingsByTitleIDs(db, titleIDs)
+	if err != nil {
+		return nil, err
+	}
+	byTitle := make(map[string]int, len(out))
+	for i, e := range out {
+		byTitle[e.Title.ID] = i
+	}
+	for _, r := range ratings {
+		if idx, ok := byTitle[r.TitleID]; ok {
+			out[idx].Ratings = append(out[idx].Ratings, r)
+		}
+	}
+	return out, nil
 }
 
 // FindEntryByID returns one entry (joined to its title), or ErrEntryNotFound.
@@ -143,6 +169,14 @@ func FindEntryByID(db *sql.DB, id string) (Entry, error) {
 	}
 	if e.Title.AddedAt, err = parseTimestamp(titleAddedAt); err != nil {
 		return Entry{}, err
+	}
+	e.Ratings = []Rating{}
+	ratings, err := ListRatingsByTitleIDs(db, []string{e.Title.ID})
+	if err != nil {
+		return Entry{}, err
+	}
+	if len(ratings) > 0 {
+		e.Ratings = ratings
 	}
 	return e, nil
 }
