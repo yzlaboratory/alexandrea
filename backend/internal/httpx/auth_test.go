@@ -223,12 +223,15 @@ func TestRouter_IncludesAuthRoutesWhenSessionsProvided(t *testing.T) {
 	deps, _ := testDeps(t)
 	router := NewRouter(deps)
 
-	// /login accepts POST only
+	// GET /login is not a real server route — it falls through to the SPA
+	// (client-side /login page). Until the frontend is built the SPA handler
+	// responds 503, but the important invariant is "not 404 and not 405":
+	// the path is claimed by the SPA handler.
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("GET /login status = %d, want 405", rec.Code)
+	if rec.Code == http.StatusNotFound || rec.Code == http.StatusMethodNotAllowed {
+		t.Errorf("GET /login status = %d, expected SPA fallthrough", rec.Code)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/me", nil)

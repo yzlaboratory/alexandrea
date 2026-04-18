@@ -1,6 +1,10 @@
 package httpx
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/yzlaboratory/entertainment-library/backend/internal/web"
+)
 
 func NewRouter(d Deps) http.Handler {
 	mux := http.NewServeMux()
@@ -10,5 +14,19 @@ func NewRouter(d Deps) http.Handler {
 		mux.Handle("POST /logout", Logout(d))
 		mux.Handle("GET /api/me", Me(d))
 	}
+
+	// Any /api/* request that isn't claimed by an explicit handler returns
+	// JSON 404 rather than falling through to the SPA's index.html.
+	mux.Handle("/api/", apiNotFound())
+
+	mux.Handle("GET /assets/", web.AssetsHandler())
+	mux.Handle("/", web.SPAHandler())
+
 	return CSRFMiddleware(mux, d.CookieSecure)
+}
+
+func apiNotFound() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	})
 }
