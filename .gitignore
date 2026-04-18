@@ -41,6 +41,11 @@ coverage.txt
 dist/
 build/
 out/
+# Keep the embed sentinel so `go build` works on a fresh checkout before
+# the frontend has been built.
+!backend/internal/web/dist/
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
 
 # Logs
 *.log
