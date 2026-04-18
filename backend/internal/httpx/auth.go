@@ -98,20 +98,17 @@ func Logout(d Deps) http.Handler {
 	})
 }
 
+// Me returns {user_id, display_name} for the authenticated caller. Must be
+// wrapped in RequireAuth — it reads the session from the request context
+// rather than re-validating the cookie.
 func Me(d Deps) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(sessionCookieName)
-		if err != nil || c.Value == "" {
+		sess, ok := SessionFromContext(r.Context())
+		if !ok {
+			// Defense in depth. Reaching this branch means the router did
+			// not wrap Me in RequireAuth — programmer error.
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no session"})
 			return
-		}
-		sess, err := d.Sessions.Load(c.Value)
-		if err != nil {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no session"})
-			return
-		}
-		if _, err := d.Sessions.Touch(sess); err != nil {
-			// Log and continue — a failed touch shouldn't lock the user out.
 		}
 
 		var displayName string

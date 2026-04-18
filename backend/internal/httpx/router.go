@@ -12,7 +12,7 @@ func NewRouter(d Deps) http.Handler {
 	if d.Sessions != nil {
 		mux.Handle("POST /login", Login(d))
 		mux.Handle("POST /logout", Logout(d))
-		mux.Handle("GET /api/me", Me(d))
+		mux.Handle("GET /api/me", RequireAuth(d, Me(d)))
 	}
 
 	// Any /api/* request that isn't claimed by an explicit handler returns

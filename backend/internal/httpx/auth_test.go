@@ -184,7 +184,7 @@ func TestMe_AuthenticatedReturnsProfile(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	req.AddCookie(sessCookie)
 	rec := httptest.NewRecorder()
-	Me(deps).ServeHTTP(rec, req)
+	RequireAuth(deps, Me(deps)).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%q", rec.Code, rec.Body.String())
@@ -202,7 +202,7 @@ func TestMe_WithoutCookieReturns401(t *testing.T) {
 	deps, _ := testDeps(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	rec := httptest.NewRecorder()
-	Me(deps).ServeHTTP(rec, req)
+	RequireAuth(deps, Me(deps)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", rec.Code)
 	}
@@ -213,7 +213,7 @@ func TestMe_UnknownSessionReturns401(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "bogus"})
 	rec := httptest.NewRecorder()
-	Me(deps).ServeHTTP(rec, req)
+	RequireAuth(deps, Me(deps)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", rec.Code)
 	}
