@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/yzlaboratory/entertainment-library/backend/internal/auth"
 	"github.com/yzlaboratory/entertainment-library/backend/internal/httpx"
 	"github.com/yzlaboratory/entertainment-library/backend/internal/storage"
 )
@@ -31,10 +33,26 @@ func runServe() {
 	}
 	logger.Info("db ready", "dsn", dsn)
 
+	secure := true
+	if v := os.Getenv("ENTLIB_COOKIE_SECURE"); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			logger.Error("ENTLIB_COOKIE_SECURE parse", "err", err)
+			os.Exit(1)
+		}
+		secure = parsed
+	}
+
+	deps := httpx.Deps{
+		DB:           db,
+		Sessions:     auth.NewSessionStore(db),
+		CookieSecure: secure,
+	}
+
 	addr := envOr("ENTLIB_HTTP_ADDR", ":8080")
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           httpx.NewRouter(),
+		Handler:           httpx.NewRouter(deps),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
