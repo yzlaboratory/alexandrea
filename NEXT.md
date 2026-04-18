@@ -4,128 +4,217 @@ Handoff note for the next session. Self-contained — readable cold.
 
 ## Where the repo is (2026-04-18, end-of-day)
 
-**The original 9-slice plan is fully merged to `main`.** What's next is *product* work: the library itself, which means wiring up TMDB and building the title / library / rating surfaces.
+**MVP is feature-complete.** Every user-facing behaviour described in
+`specs/00-overview.md` through `specs/04-data-model.md` is implemented,
+tested, and green on `main`. The remaining work is *operational* — nobody
+can reach it at a real URL yet.
 
-- **5 product specs** in `specs/` — MVP shape frozen.
-- **5 ADRs** in `adr/` — follow-ups that were within agent authority are resolved and logged in `OPEN-QUESTIONS.md`.
-- **Backend (Go).** Single binary `entlib` with `serve` and `seed`. Argon2id + SQLite sessions + CSRF double-submit all working end-to-end.
-- **Frontend (React/Vite/TS).** Scaffold present, embedded into the binary via `//go:embed`. Login works in the browser against the real backend; home page shows `Hello, {display_name}` + logout. Everything library-shaped is still stubbed.
-- **Deploy artifacts.** `deploy/systemd/entlib.service`, `deploy/caddy/Caddyfile`, `deploy/backup/nightly-backup.sh`.
-- **CI.** `.github/workflows/ci.yml` green on `main` (test + build). `.github/workflows/deploy.yml` is `workflow_dispatch`-only; will be promoted to push-to-main after the 3rd clean manual deploy (per ADR 0001).
+- **5 product specs** in `specs/`, **5 ADRs** in `adr/`, frozen.
+- **Backend (Go).** Single binary `entlib` with `serve` and `seed`. Auth
+  (argon2id + SQLite sessions + CSRF double-submit), TMDB server-side
+  proxy with retry + singleflight, titles CRUD, library CRUD, ratings.
+- **Frontend (React/Vite/TS).** Embedded into the binary via `//go:embed`.
+  Library view with three tabs, TMDB search + add, title page with
+  status controls and two-rater side-by-side rating widgets, average
+  score badge on library rows.
+- **Deploy artifacts.** `deploy/systemd/entlib.service`,
+  `deploy/caddy/Caddyfile`, `deploy/backup/nightly-backup.sh`.
+- **CI.** `.github/workflows/ci.yml` green on every slice.
+  `.github/workflows/deploy.yml` is still `workflow_dispatch`-only;
+  promote to push-to-main after the 3rd clean manual deploy (ADR 0001).
 - **Runbooks.** `docs/runbooks/{phase-0-provisioning,restore-from-backup,seed-users}.md`.
 
 ### Commit log since the last handoff
 
 ```
-7c98e41 Add seed-users runbook
-97af08f Add restore-from-backup runbook
-a9218fa Add phase-0 VPS provisioning runbook
-86850d1 Add GitHub Actions deploy workflow (workflow_dispatch)
-cd07c59 Add GitHub Actions CI workflow
-57930fe Add nightly SQLite backup script per ADR 0002
-8a61316 Add Caddyfile for TLS-terminating reverse proxy
-80b729a Add systemd unit for entlib per ADR 0001
-c984944 Skip asset-404 router test when frontend isn't built
-0b73c33 Add Makefile for combined frontend+backend build
-ebbf73f Serve embedded SPA via //go:embed with SPA-fallback routing
-36243a4 Scaffold React/TS/Vite frontend under frontend/ per ADR 0005
+b1a8de5 Add rating widgets on TitlePage + average on Watched tab
+65b2b8d Add POST/DELETE /api/library/:id/rating
+945ad41 Add library.Rating + embed ratings in Entry
+8160de3 Replace HomePage stub with real library view + search + title page
+422c859 Add /api/library CRUD handlers
+7b38973 Add library package and POST/GET /api/titles handlers
+9c086c7 Wire TMDB client into serve and require TMDB_API_KEY at startup
+b037459 Add /api/search and /api/tmdb/title/:kind/:id handlers
+47925af Add tmdb client package per ADR 0004
+520d2a0 Extract RequireAuth middleware and refactor Me
 ```
 
 ### Slice progress
 
-| # | Slice                                                | Status |
-|---|------------------------------------------------------|--------|
-| 1 | Go backend skeleton + /api/health                    | done — merged |
-| 2 | SQLite + goose migrations (V1 user)                  | done — merged |
-| 3 | Auth migrations (V2 user_credential + session)       | done — merged |
-| 4 | Content migrations (V3 title, library_entry, rating) | done — merged |
-| 5 | Auth handlers + `entlib seed` subcommand             | done — merged |
-| 6 | Frontend skeleton + embed.FS wiring                  | done — merged |
-| 7 | Deploy artifacts                                     | done — merged |
-| 8 | GitHub Actions CI + deploy                           | done — merged |
-| 9 | Runbook stubs                                        | done — merged |
+| #     | Slice                                                | Status |
+|-------|------------------------------------------------------|--------|
+| 1–5   | Backend skeleton / migrations / auth                 | done — merged |
+| 6     | Frontend skeleton + embed.FS wiring                  | done — merged |
+| 7     | Deploy artifacts                                     | done — merged |
+| 8     | GitHub Actions CI + deploy                           | done — merged |
+| 9     | Runbook stubs                                        | done — merged |
+| 10    | TMDB server-side proxy                               | done — merged |
+| 11    | Title + library CRUD                                 | done — merged |
+| 12    | Ratings                                              | done — merged |
 
-## How the backend works now
+## HTTP surface as it stands today
 
-Unchanged from the previous handoff — repeated here so the file stays self-contained.
+Unauthenticated:
+- `GET /api/health`
+- `POST /login` — form `username` + `password`, sets `ENTLIB_SESSION`
+- `POST /logout`
 
-- **Binary:** `backend/cmd/entlib/` with `main.go`, `serve.go`, `seed.go`.
-- **Env vars:** `ENTLIB_DB_DSN` (default `./entlib.sqlite`), `ENTLIB_HTTP_ADDR` (default `:8080`), `ENTLIB_COOKIE_SECURE` (default `true`). Also `TMDB_API_KEY` in `/etc/entlib/env` once TMDB wiring lands.
-- **DB:** `modernc.org/sqlite` (pure-Go), pragmas from ADR 0002, schema at V3 via goose. Tables: `user`, `user_credential`, `session`, `title`, `library_entry`, `rating`.
-- **Seeding:** `entlib seed --display-name … --username … --password '…'`. Password floor ≥14 chars. **Username becomes `user.id`** — the one invariant not spelled out in ADR 0003.
-- **Auth handlers:** `POST /login`, `POST /logout`, `GET /api/me`, `GET /api/health`. Constant-time dummy-hash for unknown usernames (`backend/internal/httpx/auth.go`).
-- **CSRF:** Double-submit per ADR 0005. Middleware fires *before* the mux — so POSTs to GET-only paths return 403, not 405. Dedicated test covers this.
-- **Frontend↔backend:** Vite dev server on `:5173` proxies `/api`, `/login`, `/logout` to `:8080`. In production the Go binary serves the embedded SPA directly.
+Authenticated (session cookie + CSRF):
+- `GET /api/me`
+- `GET /api/search?q=<query>` (TMDB only; 503 if `ENTLIB_TMDB_OPTIONAL`)
+- `GET /api/tmdb/title/{kind}/{id}` (`kind` ∈ `movie`/`series`)
+- `POST /api/titles` — `{tmdb_id, kind}`; idempotent on `tmdb_id`
+- `GET /api/titles/{id}`
+- `GET /api/library?status=want,watching` — default filter is `want,watching`
+- `POST /api/library` — `{title_id, status?}`; 409 on duplicate
+- `PATCH /api/library/{id}` — `{status}`
+- `DELETE /api/library/{id}` — 204
+- `POST /api/library/{id}/rating` — `{score: 0-5, note?}`; implicitly transitions entry to `watched`
+- `DELETE /api/library/{id}/rating` — scoped to caller's own rating
 
-## How the frontend works now
+## Non-obvious bits you may trip on
 
-- `frontend/src/api/client.ts` — `apiRequest` / `apiJson` with automatic CSRF header on mutating calls; `ApiError(status)` for error surfacing.
-- `frontend/src/auth/useAuth.ts` — `useMe` (TanStack Query against `/api/me`, 401 → null), `useLogin`, `useLogout`.
-- `frontend/src/App.tsx` — React Router with `/login`, `/` (auth-gated `HomePage`), and `*` → `/` redirect.
-- `frontend/src/pages/HomePage.tsx` — the current placeholder saying "Your library is empty." This is what the next slice replaces with a real library view.
-- Tailwind v4 via `@tailwindcss/postcss`. Lucide for icons. Zustand is installed but not yet used (only needed once there's cross-component client state).
+- **User ID == username.** Not documented in ADR 0003; `entlib seed`
+  writes the `--username` value into `user.id` directly.
+- **CSRF fires before the mux.** A POST to a GET-only path returns 403,
+  not 405 — `TestRouter_POSTWithoutCSRFReturns403` enforces this; don't
+  let anyone "fix" the 403-vs-405 mismatch without reading the test.
+- **`web.FrontendBuilt()` gate.** Any backend test that depends on the
+  embedded SPA must branch on this. Fresh checkouts have `dist/.gitkeep`
+  only — the `httpx` asset-404 test used to fail until it was gated
+  (c984944).
+- **`username:kind` collision on TMDB IDs.** The `title.tmdb_id` column is
+  UNIQUE — lookup is by `tmdb_id` alone. If a movie and a series ever
+  shared an ID in TMDB (they don't; IDs are media-type-scoped), we'd
+  reject the second. Edge case, not worth extra schema cost.
+- **Ratings trigger implicit status transition.** Rating any non-`watched`
+  entry flips it to `watched` atomically in the same request. Don't add
+  a separate "rate and mark watched" button on the UI — the single action
+  is correct.
+- **Library query invalidation is whole-cache, not per-row.** Rating
+  mutations can change an entry's `status`, which moves it between tabs —
+  a surgical patch is tempting but wrong. Keep the blunt invalidate.
 
 ## What to do first, in order
 
-Product work. No more infra until something needs it.
+### 1. Provision the VPS
 
-### Slice 10 — TMDB server-side proxy
+Walk through `docs/runbooks/phase-0-provisioning.md`. Stop points for
+the user (not the agent):
 
-**Goal:** the Go backend can call TMDB on behalf of an authenticated user and return the minimum needed to render a search result grid and a title page.
+- [ ] Register a domain (open item in `OPEN-QUESTIONS.md` — `.de` vs
+      `.app` still undecided).
+- [ ] Create the Hetzner CX22 in `nbg1` and point A/AAAA records at it.
+- [ ] Create a Hetzner Storage Box, note username + host, set up an SSH key.
+- [ ] Get a TMDB API key.
+- [ ] Generate an `age` keypair and put the **secret key somewhere that
+      is not this VPS** (the runbook is explicit: this is the one
+      failure mode backups cannot save us from).
 
-Per ADR 0004:
+Once that's done, the runbook's terminal commands finish the setup.
 
-- Read `TMDB_API_KEY` at startup; fail fast if missing *unless* `ENTLIB_TMDB_OPTIONAL=true` (for local dev without a key).
-- `GET /api/search?q=<query>` → proxy to `/search/multi`, filter to `movie` + `tv`, return `{tmdb_id, kind, title, year, poster_path, overview}`.
-- `GET /api/tmdb/title/:kind/:id` → proxy to `/movie/:id` or `/tv/:id`, return the same shape plus overview.
-- No poster caching — `poster_path` only; frontend builds `https://image.tmdb.org/t/p/w500/{poster_path}`.
-- Rate-limit handling: TMDB allows ~40/sec. Single-user app, but add a simple `singleflight`-style dedupe for identical queries within ~250 ms so a debounced search box doesn't stampede.
-- Reuse existing auth gate — non-authenticated callers get 401.
+### 2. First three manual deploys
 
-**Testing:** hit a recorded fixture (httptest.Server standing in for TMDB) in unit tests, plus one `//go:build integration` test that hits real TMDB when `TMDB_API_KEY` is present in the environment.
+Per ADR 0001, `deploy.yml` stays `workflow_dispatch`-only until the 3rd
+clean manual deploy. After the third, flip the trigger to
+`push: branches: [main]` and remove the dispatch-only warning in the
+workflow comment.
 
-### Slice 11 — Title + library CRUD
+### 3. Run a restore drill
 
-- `title` table already exists (V3). Add handlers:
-  - `POST /api/titles` — idempotent "add from TMDB": if a row with the same `tmdb_id` + `kind` exists, return it; else fetch from TMDB and insert.
-  - `GET /api/titles/:id` — read a local title row.
-- Library:
-  - `GET /api/library` — list entries with joined title data; optional `?status=want,watching` filter (default).
-  - `POST /api/library` — body `{title_id, status}` where status defaults to `want`.
-  - `PATCH /api/library/:id` — change status.
-  - `DELETE /api/library/:id` — hard delete. No soft delete per spec.
-- Frontend: replace the stub `HomePage` with a library view (default filter: `want`+`watching`), a search box calling `/api/search`, and a title page with the "add to library" + status controls.
+Decrypt the latest snapshot, integrity-check, diff row counts against
+live. The runbook has the recipe. Run it at hand-off and again
+quarterly. First drill will probably shake a bug out of the stub
+runbook — update it in place.
 
-### Slice 12 — Ratings
+### 4. (Optional) Address the Node.js 20 deprecation warning
 
-- `POST /api/library/:id/rating` — `{score: 0-5, note?: string}`. Overwrites any existing rating by the same user.
-- `DELETE /api/library/:id/rating` — deletes the current user's rating only.
-- Rating a non-watched entry implicitly transitions it to `watched` (per spec `03-ratings.md`).
-- Frontend: two side-by-side rating widgets on the title page, average on the `watched` tab.
-
-After slice 12, the MVP's user-facing behavior is complete. What comes after is provisioning, not code: follow `docs/runbooks/phase-0-provisioning.md`, do the first manual deploy, run a restore drill, then promote the deploy workflow from `workflow_dispatch` to push-to-main.
+CI emits a warning that `actions/{checkout,setup-go,setup-node,upload-artifact}` and
+`pnpm/action-setup` are on Node 20, which GitHub is deprecating
+2026-09-16. Set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` at the
+workflow level, or wait for the action authors to ship Node 24–capable
+versions. Warning only — nothing breaks until September.
 
 ## What is **not** the agent's job
 
-- **Provisioning the VPS, registering the domain, creating the Hetzner Storage Box, getting the TMDB API key.** All user-hands-on. Stop at the boundary and print a checklist.
-- **Rewriting already-merged ADRs.** They can be superseded, not edited in place.
+- Provisioning infrastructure (VPS, domain, Storage Box, TMDB API key).
+  Stop at the boundary and print a checklist.
+- Rewriting already-merged ADRs. They can be superseded; they do not
+  get edited in place.
+- Declaring the UI "tested" without real browser eyes on it. Unit tests
+  and curl verification are necessary, not sufficient — slice 11 and 12
+  have *not* been browser-smoke-tested in the sessions that built them.
 
-## Housekeeping worth doing
+## Browser smoke test the next session should do
 
-- Two minor cleanup candidates noted in the CI run:
-  - Node.js 20 deprecation warning on GitHub-maintained actions. Fixable by setting `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` at the workflow level, or waiting for action authors to ship Node 24-capable versions. Non-urgent; warning only until 2026-09-16.
-- The four Spring Boot worktrees (`auth-baseline`, `auth-google-oidc`, `auth-polish`, `backend-skeleton`) are vestigial from a previous architecture. Still safe to delete (`git worktree remove` + `git branch -D`) — not touched so far because they were not in scope.
+Before anything else, start both dev servers, log in, and walk through:
+
+```
+make dev   # prints two commands; run each in its own terminal
+```
+
+Then at `http://localhost:5173/`:
+
+1. Log in as the seeded user.
+2. Search for a title (requires `TMDB_API_KEY` in the env of the Go
+   process — export it before starting).
+3. "Add to library" on a result → verify it appears under "On our plate".
+4. Click the title → land on `/title/{id}` → click a star → save.
+   Verify the status bar flips to Watched and the entry migrates to
+   the Watched tab.
+5. Remove the rating → verify the library row still exists but loses
+   its badge.
+6. Remove the entry → gone from the library.
+
+Anything unexpected: file against the slice that introduced it.
+
+## Housekeeping
+
+- The four Spring Boot worktrees (`auth-baseline`, `auth-google-oidc`,
+  `auth-polish`, `backend-skeleton`) are still vestigial and safe to
+  delete if you want a clean `git worktree list`. They've been left
+  alone through every slice because they were never in scope.
+- Per-slice branches (`slice-6-frontend` through `slice-12-ratings`)
+  remain pushed for traceability; prune if they become noise.
 
 ## Conventions to respect (unchanged)
 
-- `~/.claude/CLAUDE.md`: loose TDD, use worktrees, atomic commits with short-but-expressive messages, push without asking, excessive happy/unhappy/edge tests, prettier on the frontend.
+- `~/.claude/CLAUDE.md`: loose TDD, use worktrees, atomic commits with
+  short-but-expressive messages, push without asking, excessive
+  happy/unhappy/edge tests, prettier on the frontend.
 - `specs/` is prose — don't put JSON Schema / OpenAPI / test fixtures there.
-- Every ADR Follow-up must also appear in `OPEN-QUESTIONS.md`. Resolved items move with a pointer; they don't disappear.
+- Every ADR Follow-up must also appear in `OPEN-QUESTIONS.md`. Resolved
+  items move with a pointer; they don't disappear.
+- Test conventions learned across slices:
+  - Handler tests call through `RequireAuth(d, handler)` directly for
+    mutating paths; go through `NewRouter` only for read-only paths.
+    The router's CSRF middleware otherwise short-circuits tests that
+    don't bother to forge a matching cookie+header pair.
+  - Data-layer tests use `t.TempDir()` per test for the SQLite file —
+    never the shared-cache in-memory form.
 
-## Things the agent got wrong (updated)
+## Things the agent got wrong (cumulative)
 
-- (Still true) Tried to FF-merge a branch into itself from the branch's worktree — silently no-op'd. Fix: run `git merge --ff-only <branch>` from the `main` worktree, not the slice worktree.
-- (Still true) `go mod tidy` prunes requires for packages nothing imports yet; `go get` alone isn't enough if no source file references the package.
-- (Still true) Attempted to re-Write `main.go` without Read-ing it first — got "File has not been read yet" from the tooling; used Read then Write. Be ready for that pattern when overwriting existing files.
-- (Still true) Don't shared-cache in-memory SQLite for tests. Use `t.TempDir()` per test.
-- (This session) `backend/internal/httpx/asset_404_cache_test.go` was written without a `FrontendBuilt()` gate, so `go test ./...` failed on fresh checkouts where only `dist/.gitkeep` exists. Fixed in `c984944`. Pattern for the next person: any test that depends on the embedded SPA must branch on `web.FrontendBuilt()`.
+- (Still true) FF-merge a branch into itself from its own worktree
+  silently no-ops. Run `git merge --ff-only <branch>` from the `main`
+  worktree.
+- (Still true) `go mod tidy` prunes requires for unused packages;
+  `go get` alone isn't enough if no source file references the dep.
+- (Still true) `Write` refuses to overwrite a file that hasn't been
+  `Read` first. Read, then Write.
+- (Still true) Don't shared-cache in-memory SQLite for tests. `t.TempDir()`.
+- (Slice 6) Any test that depends on the embedded SPA must branch on
+  `web.FrontendBuilt()`. Fixed in `c984944`.
+- (Slice 10) `auth.SessionStore.Load` returns `Session` by **value**,
+  not `*Session`. Context attach/retrieve must agree on the form —
+  mismatched types silently fail the `.(*auth.Session)` assertion and
+  `SessionFromContext` returns `!ok` inside the protected handler.
+- (Slice 11) The established test convention is to call mutating
+  handlers via `RequireAuth(d, handler).ServeHTTP(...)` and bypass
+  the router/CSRF. Trying to route mutating requests through
+  `NewRouter` without also forging a CSRF cookie+header will 403
+  every time.
+- (Slice 12) TypeScript `exactOptionalPropertyTypes: true` (turned on
+  by the Vite `react-ts` strict preset) treats `existing?: Rating`
+  and `existing: Rating | undefined` as *non*-interchangeable. Prefer
+  the explicit `| undefined` form when the value is reassignable.
