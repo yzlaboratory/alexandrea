@@ -1,15 +1,19 @@
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 
+import { useMe } from '../auth/useAuth';
 import { useTitle } from '../api/titles';
 import { useAddEntry, useDeleteEntry, useLibrary } from '../api/library';
+import type { LibraryEntry } from '../api/types';
 import { Poster } from '../components/Poster';
 import { StatusControls } from '../components/StatusControls';
+import { RatingWidget } from '../components/RatingWidget';
 
 export function TitlePage() {
   const { id } = useParams<{ id: string }>();
   const title = useTitle(id);
   const lib = useLibrary();
+  const { data: me } = useMe();
   const addEntry = useAddEntry();
   const deleteEntry = useDeleteEntry();
 
@@ -87,8 +91,32 @@ export function TitlePage() {
             )}
           </div>
         </article>
+
+        {entry && me ? <Ratings entry={entry} meID={me.user_id} meName={me.display_name} /> : null}
       </div>
     </main>
+  );
+}
+
+// Ratings renders the side-by-side rating cards. Per spec the UI shows
+// two slots (one per user). At v0 we only know the other user's display
+// name if they've already rated; if they haven't, we render a placeholder
+// card labelled "Partner" so the layout still has both slots.
+function Ratings({ entry, meID, meName }: { entry: LibraryEntry; meID: string; meName: string }) {
+  const otherRating = entry.ratings.find((r) => r.user_id !== meID);
+  const otherID = otherRating?.user_id ?? '__partner__';
+  const otherName = otherRating?.display_name ?? 'Partner';
+
+  return (
+    <section aria-labelledby="ratings-heading" className="space-y-3">
+      <h2 id="ratings-heading" className="text-lg font-semibold text-slate-100">
+        Ratings
+      </h2>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <RatingWidget entry={entry} userID={meID} displayName={meName} isSelf />
+        <RatingWidget entry={entry} userID={otherID} displayName={otherName} isSelf={false} />
+      </div>
+    </section>
   );
 }
 

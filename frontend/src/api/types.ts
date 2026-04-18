@@ -23,13 +23,32 @@ export type Title = {
   added_at: string;
 };
 
+export type Rating = {
+  id: string;
+  title_id: string;
+  user_id: string;
+  display_name: string;
+  score: number;
+  note?: string;
+  rated_at: string;
+};
+
 export type LibraryEntry = {
   id: string;
   status: Status;
   added_at: string;
   status_updated_at: string;
   title: Title;
+  ratings: Rating[];
 };
+
+// averageScore returns the mean of all ratings on an entry, or null if
+// none exist. Used on the Watched tab per spec 03-ratings.md.
+export function averageScore(ratings: Rating[]): number | null {
+  if (ratings.length === 0) return null;
+  const sum = ratings.reduce((acc, r) => acc + r.score, 0);
+  return sum / ratings.length;
+}
 
 export type SearchResult = {
   tmdb_id: number;
