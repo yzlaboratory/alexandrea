@@ -10,5 +10,5 @@ func NewRouter(d Deps) http.Handler {
 		mux.Handle("POST /logout", Logout(d))
 		mux.Handle("GET /api/me", Me(d))
 	}
-	return mux
+	return CSRFMiddleware(mux, d.CookieSecure)
 }

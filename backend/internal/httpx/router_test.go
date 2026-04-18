@@ -18,13 +18,28 @@ func TestRouter_HealthGETReturns200(t *testing.T) {
 }
 
 func TestRouter_HealthPOSTReturns405(t *testing.T) {
+	// POST hits the CSRF middleware first; with a matching token the
+	// request flows through to the mux, which then rejects the method.
 	req := httptest.NewRequest(http.MethodPost, "/api/health", nil)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "matching"})
+	req.Header.Set(csrfHeaderName, "matching")
 	rec := httptest.NewRecorder()
 
 	NewRouter(Deps{}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestRouter_POSTWithoutCSRFReturns403(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/health", nil)
+	rec := httptest.NewRecorder()
+
+	NewRouter(Deps{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
 	}
 }
 
