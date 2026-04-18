@@ -23,6 +23,14 @@ const (
 	cacheNoCache   = "no-cache"
 )
 
+// FrontendBuilt reports whether the embedded dist subtree contains a built
+// SPA. Returns false on fresh checkouts where only the .gitkeep sentinel is
+// present — i.e. before `make build` has copied frontend/dist into place.
+func FrontendBuilt() bool {
+	_, err := distRoot()
+	return err == nil
+}
+
 // distRoot returns the dist subtree with "dist/" stripped, or an error if the
 // frontend has not been built.
 func distRoot() (fs.FS, error) {

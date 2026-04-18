@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/yzlaboratory/entertainment-library/backend/internal/web"
 )
 
 // Regression: a missing /assets/* request must still carry the immutable
@@ -11,6 +13,9 @@ import (
 // + mux + asset handler), not only when the asset handler is called in
 // isolation.
 func TestRouter_MissingAssetStillCarriesImmutableCacheHeader(t *testing.T) {
+	if !web.FrontendBuilt() {
+		t.Skip("requires built frontend; run `make build`")
+	}
 	req := httptest.NewRequest(http.MethodGet, "/assets/does-not-exist.js", nil)
 	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "dummy"})
 	rec := httptest.NewRecorder()

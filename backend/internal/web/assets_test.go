@@ -17,7 +17,7 @@ func TestAssetsHandler_RespondsWithExpectedStatus(t *testing.T) {
 
 	AssetsHandler().ServeHTTP(rec, req)
 
-	if built := frontendBuilt(); built {
+	if built := FrontendBuilt(); built {
 		// Unknown asset under a real build should 404, not 500, and still
 		// wear the immutable cache header because the handler sets it
 		// before delegating.
@@ -40,7 +40,7 @@ func TestSPAHandler_ServesIndexOrReports503(t *testing.T) {
 
 	SPAHandler().ServeHTTP(rec, req)
 
-	if frontendBuilt() {
+	if FrontendBuilt() {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
@@ -58,7 +58,7 @@ func TestSPAHandler_ServesIndexOrReports503(t *testing.T) {
 }
 
 func TestSPAHandler_DeepLinkFallsBackToIndex(t *testing.T) {
-	if !frontendBuilt() {
+	if !FrontendBuilt() {
 		t.Skip("requires built frontend; run `make build`")
 	}
 	req := httptest.NewRequest(http.MethodGet, "/library/some-title", nil)
@@ -75,7 +75,7 @@ func TestSPAHandler_DeepLinkFallsBackToIndex(t *testing.T) {
 }
 
 func TestSPAHandler_StaticFileServedWhenPresent(t *testing.T) {
-	if !frontendBuilt() {
+	if !FrontendBuilt() {
 		t.Skip("requires built frontend; run `make build`")
 	}
 	req := httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
@@ -92,7 +92,3 @@ func TestSPAHandler_StaticFileServedWhenPresent(t *testing.T) {
 	}
 }
 
-func frontendBuilt() bool {
-	_, err := distRoot()
-	return err == nil
-}
