@@ -11,13 +11,27 @@ import (
 	"time"
 
 	"github.com/yzlaboratory/entertainment-library/backend/internal/httpx"
+	"github.com/yzlaboratory/entertainment-library/backend/internal/storage"
 )
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	addr := envOr("ENTLIB_HTTP_ADDR", ":8080")
+	dsn := envOr("ENTLIB_DB_DSN", "./entlib.sqlite")
+	db, err := storage.Open(dsn)
+	if err != nil {
+		logger.Error("open db", "err", err)
+		os.Exit(1)
+	}
+	defer db.Close()
 
+	if err := storage.Migrate(db); err != nil {
+		logger.Error("migrate", "err", err)
+		os.Exit(1)
+	}
+	logger.Info("db ready", "dsn", dsn)
+
+	addr := envOr("ENTLIB_HTTP_ADDR", ":8080")
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           httpx.NewRouter(),
