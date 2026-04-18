@@ -2,139 +2,121 @@
 
 Handoff note for the next session. Self-contained — readable cold.
 
-## Where the repo is (2026-04-18)
+## Where the repo is (2026-04-18, end-of-day)
+
+**The original 9-slice plan is fully merged to `main`.** What's next is *product* work: the library itself, which means wiring up TMDB and building the title / library / rating surfaces.
 
 - **5 product specs** in `specs/` — MVP shape frozen.
-- **5 ADRs** in `adr/` — all follow-ups that were within agent authority are resolved and logged in `OPEN-QUESTIONS.md`.
-- **Backend in Go** — single binary `entlib` with `serve` and `seed` subcommands. Auth pipeline works end-to-end over real HTTP (argon2id + SQLite sessions + CSRF double-submit).
-- **No frontend yet.** React/Vite scaffold is the next natural slice.
-- **No deploy artifacts yet.** Nothing in `deploy/` or `.github/`.
+- **5 ADRs** in `adr/` — follow-ups that were within agent authority are resolved and logged in `OPEN-QUESTIONS.md`.
+- **Backend (Go).** Single binary `entlib` with `serve` and `seed`. Argon2id + SQLite sessions + CSRF double-submit all working end-to-end.
+- **Frontend (React/Vite/TS).** Scaffold present, embedded into the binary via `//go:embed`. Login works in the browser against the real backend; home page shows `Hello, {display_name}` + logout. Everything library-shaped is still stubbed.
+- **Deploy artifacts.** `deploy/systemd/entlib.service`, `deploy/caddy/Caddyfile`, `deploy/backup/nightly-backup.sh`.
+- **CI.** `.github/workflows/ci.yml` green on `main` (test + build). `.github/workflows/deploy.yml` is `workflow_dispatch`-only; will be promoted to push-to-main after the 3rd clean manual deploy (per ADR 0001).
+- **Runbooks.** `docs/runbooks/{phase-0-provisioning,restore-from-backup,seed-users}.md`.
 
 ### Commit log since the last handoff
 
 ```
-0b73453 Add CSRF double-submit middleware per ADR 0005
-2b4bbc0 Add /login, /logout, and /api/me handlers
-e569bce Add entlib seed subcommand and dispatch in main
-772dc31 Add server-side session store backed by SQLite
-898228c Add argon2id password hashing per ADR 0003
-1ba2c87 V3 migration: title, library_entry, rating tables
-059d9a7 V2 migration: user_credential and session tables
-e80dcd3 Wire SQLite + goose; V1 migration creates user table
-693d3e2 Scaffold Go backend with stdlib router and /api/health
-2db20af Resolve five deferred picks from ADRs 0002/0003/0005
+7c98e41 Add seed-users runbook
+97af08f Add restore-from-backup runbook
+a9218fa Add phase-0 VPS provisioning runbook
+86850d1 Add GitHub Actions deploy workflow (workflow_dispatch)
+cd07c59 Add GitHub Actions CI workflow
+57930fe Add nightly SQLite backup script per ADR 0002
+8a61316 Add Caddyfile for TLS-terminating reverse proxy
+80b729a Add systemd unit for entlib per ADR 0001
+c984944 Skip asset-404 router test when frontend isn't built
+0b73c33 Add Makefile for combined frontend+backend build
+ebbf73f Serve embedded SPA via //go:embed with SPA-fallback routing
+36243a4 Scaffold React/TS/Vite frontend under frontend/ per ADR 0005
 ```
 
-### Slice progress (from the original plan)
+### Slice progress
 
-| # | Slice                                                     | Branch                          | Status |
-|---|-----------------------------------------------------------|---------------------------------|--------|
-| 1 | Go backend skeleton + /api/health                         | `go-backend-skeleton`           | done — merged |
-| 2 | SQLite + goose migrations (V1 user)                       | `slice-2-sqlite-migrations`     | done — merged |
-| 3 | Auth migrations (V2 user_credential + session)            | `slice-3-auth-migrations`       | done — merged |
-| 4 | Content migrations (V3 title, library_entry, rating)      | `slice-4-content-migrations`    | done — merged |
-| 5 | Auth handlers + `entlib seed` subcommand                  | `slice-5-auth`                  | done — merged |
-| 6 | Frontend skeleton + embed.FS wiring                       | —                               | **next** |
-| 7 | Deploy artifacts (systemd/Caddy/backup)                   | —                               | pending |
-| 8 | GitHub Actions (ci.yml + deploy.yml)                      | —                               | pending |
-| 9 | Runbook stubs                                             | —                               | pending |
-
-Each slice was developed in its own worktree, committed atomically, pushed, then fast-forward merged to `main`. Branches are preserved for traceability. Worktrees are still checked out on disk — safe to leave or prune (`git worktree remove <path>`).
+| # | Slice                                                | Status |
+|---|------------------------------------------------------|--------|
+| 1 | Go backend skeleton + /api/health                    | done — merged |
+| 2 | SQLite + goose migrations (V1 user)                  | done — merged |
+| 3 | Auth migrations (V2 user_credential + session)       | done — merged |
+| 4 | Content migrations (V3 title, library_entry, rating) | done — merged |
+| 5 | Auth handlers + `entlib seed` subcommand             | done — merged |
+| 6 | Frontend skeleton + embed.FS wiring                  | done — merged |
+| 7 | Deploy artifacts                                     | done — merged |
+| 8 | GitHub Actions CI + deploy                           | done — merged |
+| 9 | Runbook stubs                                        | done — merged |
 
 ## How the backend works now
 
-Everything below is on `main` and covered by tests (`cd backend && go test ./...`).
+Unchanged from the previous handoff — repeated here so the file stays self-contained.
 
-- **Binary:** `backend/cmd/entlib/` with three files — `main.go` (dispatcher), `serve.go`, `seed.go`.
-- **Env vars:**
-  - `ENTLIB_DB_DSN` — SQLite path (default `./entlib.sqlite`).
-  - `ENTLIB_HTTP_ADDR` — listen addr (default `:8080`).
-  - `ENTLIB_COOKIE_SECURE` — `true`/`false`, default `true`. Set to `false` for local HTTP dev or the Secure-cookie attribute blocks the session cookie.
-- **DB:** `modernc.org/sqlite` (pure-Go, no cgo) with the pragmas from ADR 0002. Schema is at version 3 (`user`, `user_credential`, `session`, `title`, `library_entry`, `rating`), applied via `pressly/goose` migrations embedded in the binary at `backend/db/migrations/`.
-- **Seeding:** `entlib seed --display-name Kira --username kira --password 'at-least-fourteen-chars'`. The password floor is 14 per ADR 0003 (decided 2026-04-18). Re-running rotates password + display name in place. **Username is the `user.id`** (since `id` is opaque per spec — the seed command uses the username as the id). This is the one piece ADR 0003 doesn't spell out explicitly; don't change it without thinking through the login lookup path.
-- **Auth handlers:**
-  - `POST /login` — form `username` + `password`. Constant-time path: unknown usernames run a dummy argon2 verify so timing doesn't distinguish "no such user" from "wrong password." Sets `ENTLIB_SESSION` (HttpOnly, Secure, Lax).
-  - `POST /logout` — deletes the session row and clears the cookie.
-  - `GET /api/me` — returns `{user_id, display_name}` for authenticated requests, 401 otherwise. Touches the session (sliding window; skips updates within 24h).
-  - `GET /api/health` — returns `{"status":"ok"}`. No auth required.
-- **CSRF:** Double-submit cookie per ADR 0005. Middleware wraps the entire mux. Mutating methods (POST/PUT/PATCH/DELETE) need `X-CSRF-Token: <value>` matching the `ENTLIB_CSRF` cookie (non-HttpOnly so the SPA can read it). CSRF fires *before* routing, so POSTs without a valid token return 403 not 405.
+- **Binary:** `backend/cmd/entlib/` with `main.go`, `serve.go`, `seed.go`.
+- **Env vars:** `ENTLIB_DB_DSN` (default `./entlib.sqlite`), `ENTLIB_HTTP_ADDR` (default `:8080`), `ENTLIB_COOKIE_SECURE` (default `true`). Also `TMDB_API_KEY` in `/etc/entlib/env` once TMDB wiring lands.
+- **DB:** `modernc.org/sqlite` (pure-Go), pragmas from ADR 0002, schema at V3 via goose. Tables: `user`, `user_credential`, `session`, `title`, `library_entry`, `rating`.
+- **Seeding:** `entlib seed --display-name … --username … --password '…'`. Password floor ≥14 chars. **Username becomes `user.id`** — the one invariant not spelled out in ADR 0003.
+- **Auth handlers:** `POST /login`, `POST /logout`, `GET /api/me`, `GET /api/health`. Constant-time dummy-hash for unknown usernames (`backend/internal/httpx/auth.go`).
+- **CSRF:** Double-submit per ADR 0005. Middleware fires *before* the mux — so POSTs to GET-only paths return 403, not 405. Dedicated test covers this.
+- **Frontend↔backend:** Vite dev server on `:5173` proxies `/api`, `/login`, `/logout` to `:8080`. In production the Go binary serves the embedded SPA directly.
 
-### End-to-end smoke that confirmed slice 5
+## How the frontend works now
 
-```
-ENTLIB_DB_DSN=/tmp/x.sqlite ./entlib seed --display-name Kira --username kira --password correcthorsebatterystaple
-ENTLIB_DB_DSN=/tmp/x.sqlite ENTLIB_COOKIE_SECURE=false ./entlib &
-
-# Bootstrap CSRF cookie
-curl -c cookies.txt http://127.0.0.1:8080/api/health
-CSRF=$(awk '/ENTLIB_CSRF/ {print $7}' cookies.txt)
-
-# Login
-curl -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" -d 'username=kira&password=correcthorsebatterystaple' http://127.0.0.1:8080/login
-
-# Whoami
-curl -b cookies.txt http://127.0.0.1:8080/api/me
-# {"display_name":"Kira","user_id":"kira"}
-```
-
-### Non-obvious bits you may trip on
-
-- **User ID == username.** Not documented in ADR 0003; inferred from the seed command's `--username` + the `user.id` opaque-string rule. If you want to change this (e.g., add a separate `username` column on `user_credential`), it's a V4 migration plus a login-lookup change.
-- **The `dummy hash` at package init** in `backend/internal/httpx/auth.go` runs `auth.HashPassword` at process start (~200 ms). It only runs once per process, and it's what equalises timing for unknown-username logins. Don't remove it.
-- **Tests use fast argon2 params** via `hashWithParams` with tiny mem/time costs. The production round-trip test (`TestHashPassword_DefaultParamsRoundTrip`) uses real params and takes ~200 ms — it's the only slow password test.
-- **SQLite `user` table is quoted in SQL** (`"user"`). It's a SQL reserved word in Postgres (fine in SQLite), and the schema matches ADR 0003's example. Keep the quotes for grep-ability and Postgres portability.
-- **CSRF check happens before mux routing.** A POST to a GET-only path returns 403, not 405. There's a dedicated test for this (`TestRouter_POSTWithoutCSRFReturns403`) so don't let anyone "fix" the 403-vs-405 mismatch without reading it.
+- `frontend/src/api/client.ts` — `apiRequest` / `apiJson` with automatic CSRF header on mutating calls; `ApiError(status)` for error surfacing.
+- `frontend/src/auth/useAuth.ts` — `useMe` (TanStack Query against `/api/me`, 401 → null), `useLogin`, `useLogout`.
+- `frontend/src/App.tsx` — React Router with `/login`, `/` (auth-gated `HomePage`), and `*` → `/` redirect.
+- `frontend/src/pages/HomePage.tsx` — the current placeholder saying "Your library is empty." This is what the next slice replaces with a real library view.
+- Tailwind v4 via `@tailwindcss/postcss`. Lucide for icons. Zustand is installed but not yet used (only needed once there's cross-component client state).
 
 ## What to do first, in order
 
-### 1. Slice 6 — Frontend skeleton + embed.FS wiring
+Product work. No more infra until something needs it.
 
-**Goal:** a Vite/React/TS SPA under `frontend/`, embedded into the Go binary via `//go:embed`, with just enough UI to prove the auth pipeline through the browser.
+### Slice 10 — TMDB server-side proxy
 
-Per ADR 0005 the stack is: React (latest stable), TypeScript strict, Vite, Tailwind, React Router, TanStack Query, Zustand, Vitest + React Testing Library, Lucide icons. Don't re-litigate any of those.
+**Goal:** the Go backend can call TMDB on behalf of an authenticated user and return the minimum needed to render a search result grid and a title page.
 
-Concrete shopping list for the slice:
+Per ADR 0004:
 
-1. `frontend/` scaffold via Vite's `react-ts` template. Strip the demo stuff.
-2. Tailwind + PostCSS config wired up.
-3. React Router with three routes: `/login`, `/`, `/*` → redirect based on auth state.
-4. A thin `useAuth` hook backed by TanStack Query against `GET /api/me`.
-5. Login page that reads the CSRF cookie with `document.cookie`, POSTs to `/login` with `X-CSRF-Token` header, then invalidates the `/api/me` query on success.
-6. Hello-world library view (auth-gated): "Hello, {display_name}" + logout button.
-7. `backend/internal/web/assets.go` — `//go:embed frontend/dist/*` and an `http.Handler` that serves them (with the caching headers from ADR 0005 — `index.html` no-cache, hashed `/assets/*` immutable).
-8. Non-/api, non-asset paths fall through to `index.html` so deep links work.
-9. `air` or similar for backend hot-reload during dev; Vite's proxy points to the Go backend on `:8080` for `/api`, `/login`, `/logout`.
+- Read `TMDB_API_KEY` at startup; fail fast if missing *unless* `ENTLIB_TMDB_OPTIONAL=true` (for local dev without a key).
+- `GET /api/search?q=<query>` → proxy to `/search/multi`, filter to `movie` + `tv`, return `{tmdb_id, kind, title, year, poster_path, overview}`.
+- `GET /api/tmdb/title/:kind/:id` → proxy to `/movie/:id` or `/tv/:id`, return the same shape plus overview.
+- No poster caching — `poster_path` only; frontend builds `https://image.tmdb.org/t/p/w500/{poster_path}`.
+- Rate-limit handling: TMDB allows ~40/sec. Single-user app, but add a simple `singleflight`-style dedupe for identical queries within ~250 ms so a debounced search box doesn't stampede.
+- Reuse existing auth gate — non-authenticated callers get 401.
 
-**Watch out for:** the `embed.FS` wants a directory that exists at `go build` time. CI needs to run `pnpm build` *before* `go build`. Locally you'll want a `make dev` target or equivalent that runs both (`vite dev` on `:5173` + `air` on the Go side).
+**Testing:** hit a recorded fixture (httptest.Server standing in for TMDB) in unit tests, plus one `//go:build integration` test that hits real TMDB when `TMDB_API_KEY` is present in the environment.
 
-### 2. Slice 7 — Deploy artifacts
+### Slice 11 — Title + library CRUD
 
-- `deploy/systemd/entlib.service` with `Restart=always`, `User=entlib`, `EnvironmentFile=/etc/entlib/env`, `WorkingDirectory=/var/lib/entlib`.
-- `deploy/caddy/Caddyfile` — single vhost terminating TLS, proxying `127.0.0.1:8080`.
-- `deploy/backup/nightly-backup.sh` — `sqlite3 .backup` + `age` + `scp` to Hetzner Storage Box (decided 2026-04-18).
+- `title` table already exists (V3). Add handlers:
+  - `POST /api/titles` — idempotent "add from TMDB": if a row with the same `tmdb_id` + `kind` exists, return it; else fetch from TMDB and insert.
+  - `GET /api/titles/:id` — read a local title row.
+- Library:
+  - `GET /api/library` — list entries with joined title data; optional `?status=want,watching` filter (default).
+  - `POST /api/library` — body `{title_id, status}` where status defaults to `want`.
+  - `PATCH /api/library/:id` — change status.
+  - `DELETE /api/library/:id` — hard delete. No soft delete per spec.
+- Frontend: replace the stub `HomePage` with a library view (default filter: `want`+`watching`), a search box calling `/api/search`, and a title page with the "add to library" + status controls.
 
-### 3. Slice 8 — GitHub Actions
+### Slice 12 — Ratings
 
-- `.github/workflows/ci.yml` — on PR/push: `go test`, `go vet`, `pnpm -C frontend install --frozen-lockfile && pnpm -C frontend build && pnpm -C frontend test`, then `go build`.
-- `.github/workflows/deploy.yml` — on push to `main`: same build, then scp the binary + `systemctl restart entlib`. Gate behind a `workflow_dispatch` trigger at first.
+- `POST /api/library/:id/rating` — `{score: 0-5, note?: string}`. Overwrites any existing rating by the same user.
+- `DELETE /api/library/:id/rating` — deletes the current user's rating only.
+- Rating a non-watched entry implicitly transitions it to `watched` (per spec `03-ratings.md`).
+- Frontend: two side-by-side rating widgets on the title page, average on the `watched` tab.
 
-### 4. Slice 9 — Runbook stubs
-
-- `docs/runbooks/phase-0-provisioning.md` — VPS setup order (apt, user, dirs, first binary, env file, seed command).
-- `docs/runbooks/restore-from-backup.md` — stop service, `age -d`, `sqlite3 .restore`, start service.
-- `docs/runbooks/seed-users.md` — `entlib seed` usage, the ≥14-char password rule, rotation procedure.
+After slice 12, the MVP's user-facing behavior is complete. What comes after is provisioning, not code: follow `docs/runbooks/phase-0-provisioning.md`, do the first manual deploy, run a restore drill, then promote the deploy workflow from `workflow_dispatch` to push-to-main.
 
 ## What is **not** the agent's job
 
-- **Provisioning the VPS, registering the domain, creating the Hetzner Storage Box, getting the TMDB API key.** All of those are user-hands-on steps. Stop at the boundary and print a checklist.
-- **Rewriting already-merged ADRs.** They can be superseded with new ADRs, not edited in place.
+- **Provisioning the VPS, registering the domain, creating the Hetzner Storage Box, getting the TMDB API key.** All user-hands-on. Stop at the boundary and print a checklist.
+- **Rewriting already-merged ADRs.** They can be superseded, not edited in place.
 
-## Housekeeping the next session could do
+## Housekeeping worth doing
 
-- The four Spring Boot worktrees (`auth-baseline`, `auth-google-oidc`, `auth-polish`, `backend-skeleton`) are vestigial from a previous architecture and unrelated to current code. They are safe to delete (`git worktree remove` + `git branch -D`). Left alone so far because they were not in scope.
-- The per-slice worktrees (`go-backend-skeleton`, `slice-2-sqlite-migrations`, …, `slice-5-auth`) are fine to prune if you want a tidier `git worktree list`; the branches can stay for traceability.
+- Two minor cleanup candidates noted in the CI run:
+  - Node.js 20 deprecation warning on GitHub-maintained actions. Fixable by setting `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` at the workflow level, or waiting for action authors to ship Node 24-capable versions. Non-urgent; warning only until 2026-09-16.
+- The four Spring Boot worktrees (`auth-baseline`, `auth-google-oidc`, `auth-polish`, `backend-skeleton`) are vestigial from a previous architecture. Still safe to delete (`git worktree remove` + `git branch -D`) — not touched so far because they were not in scope.
 
-## Conventions to respect (unchanged from last handoff)
+## Conventions to respect (unchanged)
 
 - `~/.claude/CLAUDE.md`: loose TDD, use worktrees, atomic commits with short-but-expressive messages, push without asking, excessive happy/unhappy/edge tests, prettier on the frontend.
 - `specs/` is prose — don't put JSON Schema / OpenAPI / test fixtures there.
@@ -142,7 +124,8 @@ Concrete shopping list for the slice:
 
 ## Things the agent got wrong (updated)
 
-- Tried to FF-merge a branch into itself from the branch's worktree — silently no-op'd. Fix: run `git merge --ff-only <branch>` from the `main` worktree, not the slice worktree.
-- Forgot `go mod tidy` prunes requires for packages nothing imports yet; `go get` alone isn't enough if no source file references the package.
-- Attempted to re-Write `main.go` without Read-ing it first — got "File has not been read yet" from the tooling; used Read then Write. Be ready for that pattern when overwriting existing files.
-- (Still true from last time) Don't shared-cache in-memory SQLite for tests. Use `t.TempDir()` per test.
+- (Still true) Tried to FF-merge a branch into itself from the branch's worktree — silently no-op'd. Fix: run `git merge --ff-only <branch>` from the `main` worktree, not the slice worktree.
+- (Still true) `go mod tidy` prunes requires for packages nothing imports yet; `go get` alone isn't enough if no source file references the package.
+- (Still true) Attempted to re-Write `main.go` without Read-ing it first — got "File has not been read yet" from the tooling; used Read then Write. Be ready for that pattern when overwriting existing files.
+- (Still true) Don't shared-cache in-memory SQLite for tests. Use `t.TempDir()` per test.
+- (This session) `backend/internal/httpx/asset_404_cache_test.go` was written without a `FrontendBuilt()` gate, so `go test ./...` failed on fresh checkouts where only `dist/.gitkeep` exists. Fixed in `c984944`. Pattern for the next person: any test that depends on the embedded SPA must branch on `web.FrontendBuilt()`.

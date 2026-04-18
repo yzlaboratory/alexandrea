@@ -43,9 +43,9 @@ Running list of decisions deferred or not yet started. Items graduate off this l
 ## Infra tasks (not ADR-shaped, but open)
 
 - Provision the Hetzner CX22 and a domain.
-- Create `/var/lib/entlib/` and a dedicated service user during VPS setup.
-- Write `docs/runbooks/restore-from-backup.md` once ops actually exists.
-- Set up GitHub Actions deploy workflow after the 3rd manual deploy (per ADR 0001).
+- Create `/var/lib/entlib/` and a dedicated service user during VPS setup. Steps now written up in `docs/runbooks/phase-0-provisioning.md`; resolves once executed.
+- ~~Write `docs/runbooks/restore-from-backup.md` once ops actually exists.~~ Stub landed 2026-04-18 at `docs/runbooks/restore-from-backup.md`. The first real restore drill at phase-0 hand-off will flush out whatever the stub got wrong.
+- ~~Set up GitHub Actions deploy workflow after the 3rd manual deploy (per ADR 0001).~~ Workflow landed 2026-04-18 as `.github/workflows/deploy.yml`, `workflow_dispatch`-only. Still open: promote the trigger to `push: branches: [main]` after the 3rd clean manual run.
 
 ## Conventions
 
