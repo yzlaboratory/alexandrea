@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+# Opt in to Node 24 for actions still shipping Node 20 bundles
+# (deprecation 2026-09-16). Matches ci.yml.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: deploy-prod
   cancel-in-progress: false

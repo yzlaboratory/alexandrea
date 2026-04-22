@@ -9,6 +9,14 @@ on:
 permissions:
   contents: read
 
+# Opt in to Node 24 for actions still shipping Node 20 bundles.
+# GitHub deprecates Node 20 runners 2026-09-16; this flag picks the
+# newer runtime when an action supports it and avoids the warning
+# that actions/{checkout,setup-go,setup-node,upload-artifact} and
+# pnpm/action-setup emit on every run.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
