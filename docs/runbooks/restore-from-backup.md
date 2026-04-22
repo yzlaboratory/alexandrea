@@ -20,13 +20,16 @@ Run as `root` unless noted.
 
 ## 1. Pick a snapshot
 
+Hetzner Storage Boxes don't allow arbitrary `ssh` commands — only SFTP/SCP. List via SFTP:
+
 ```bash
 . /etc/entlib/backup.env
-ssh -i "$ENTLIB_BACKUP_SSHKEY" "$ENTLIB_BACKUP_USER@$ENTLIB_BACKUP_HOST" \
-  "ls -lt $ENTLIB_BACKUP_DIR/entlib-*.sqlite | head"
+sftp -q -i "$ENTLIB_BACKUP_SSHKEY" "$ENTLIB_BACKUP_USER@$ENTLIB_BACKUP_HOST" <<EOF
+ls -la $ENTLIB_BACKUP_DIR
+EOF
 ```
 
-Pick one. Default is "most recent" unless you're intentionally rolling back further.
+Pick one. Default is "most recent" unless you're intentionally rolling back further. Snapshot filenames embed a lexicographically sortable UTC timestamp, so `sort | tail -1` over a file list gives you the newest.
 
 ## 2. Stop the service
 
@@ -87,3 +90,25 @@ Log in through the browser with an account from the snapshot era. Confirm `/api/
 ## Restore drill (run this at phase-0 hand-off, and every quarter)
 
 Fetch the most recent snapshot into `/tmp`, run `PRAGMA integrity_check`, and diff the table row counts against the live DB. No service interruption required. If the drill fails, the backup pipeline is broken — stop and fix before trusting it.
+
+One-liner on the VPS (run as `root`; scps as `entlib` so file ownership stays sane):
+
+```bash
+. /etc/entlib/backup.env
+LATEST=$(sudo -u entlib sftp -q -i "$ENTLIB_BACKUP_SSHKEY" "$ENTLIB_BACKUP_USER@$ENTLIB_BACKUP_HOST" <<EOF 2>/dev/null | grep -oE 'entlib-[0-9]{8}T[0-9]{6}Z\.sqlite' | sort | tail -1
+ls -1 $ENTLIB_BACKUP_DIR/entlib-*.sqlite
+EOF
+)
+TMP=$(sudo -u entlib mktemp -d)
+sudo -u entlib scp -q -i "$ENTLIB_BACKUP_SSHKEY" \
+  "$ENTLIB_BACKUP_USER@$ENTLIB_BACKUP_HOST:$ENTLIB_BACKUP_DIR/$LATEST" "$TMP/$LATEST"
+sudo -u entlib sqlite3 "$TMP/$LATEST" 'PRAGMA integrity_check;'
+for T in user user_credential session title library_entry rating; do
+  S=$(sudo -u entlib sqlite3 "$TMP/$LATEST" "SELECT count(*) FROM $T")
+  L=$(sudo -u entlib sqlite3 /var/lib/entlib/db.sqlite "SELECT count(*) FROM $T")
+  printf '  %-18s snap=%s live=%s\n' "$T" "$S" "$L"
+done
+sudo -u entlib rm -rf "$TMP"
+```
+
+Expect `ok` from `integrity_check` and matching counts for every table the restore would replace.
