@@ -2,11 +2,42 @@
 
 Bring a fresh Hetzner CX22 (Ubuntu 24.04 LTS, Nuremberg `nbg1`, per ADR 0001) from "SSH login works" to "entlib is reachable at `https://<domain>` and a user can log in."
 
-Do the manual bits first (the agent cannot): register a domain, point its A/AAAA records at the VPS IP, create a Hetzner Cloud account, create a Hetzner Storage Box and note its username/hostname, obtain a TMDB API key.
+Do the manual bits first (the agent cannot): register a domain, create a Hetzner Cloud account and generate an API token (Security → API tokens, read+write), obtain a TMDB API key.
 
-Run everything below as `root` unless a step specifies otherwise.
+Then run section 0 below to provision the VPS and Storage Box via Terraform, point DNS at the server IPs it prints, and continue from section 1 on the new box.
+
+Run everything in sections 1+ as `root` on the VPS unless a step specifies otherwise.
 
 ---
+
+## 0. Provision infrastructure with Terraform
+
+One-time prereqs on your workstation:
+
+- Terraform ≥ 1.6
+- Hetzner Cloud API token (see intro)
+- An SSH public key you want installed on the server and Storage Box
+- A password for the Storage Box web UI (generate with `openssl rand -base64 24`)
+
+```bash
+cd deploy/terraform
+cp terraform.tfvars.example terraform.tfvars
+# edit terraform.tfvars — set hcloud_token, ssh_public_key, storage_box_password.
+# Prefer exporting TF_VAR_hcloud_token over writing the token to disk.
+
+terraform init
+terraform plan
+terraform apply
+```
+
+Record the four outputs — you need them later:
+
+- `server_ipv4` and `server_ipv6` → create DNS A + AAAA records for your domain pointing at these. Wait for propagation before section 5 so Caddy can obtain a Let's Encrypt cert.
+- `storage_box_host` and `storage_box_username` → go into `/etc/entlib/backup.env` in section 10.
+
+State lives locally in `deploy/terraform/terraform.tfstate`. Back it up out-of-band; losing it means losing the ability to cleanly `terraform apply` against these resources (you'd have to `terraform import` or destroy + recreate).
+
+SSH to the server as `root@<server_ipv4>` using the key you passed in and continue below.
 
 ## 1. Base packages
 
@@ -161,3 +192,4 @@ Run the script once manually and confirm the snapshot lands on the Storage Box b
 - [ ] `journalctl -u entlib -n 50` is clean
 - [ ] First manual backup uploaded and visible on the Storage Box
 - [ ] Restore drill completed per [`restore-from-backup.md`](./restore-from-backup.md)
+- [ ] `deploy/terraform/terraform.tfstate` backed up somewhere that is not your workstation
