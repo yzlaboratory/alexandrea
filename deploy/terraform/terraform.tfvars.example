@@ -12,7 +12,7 @@ storage_box_password = "..."
 
 # Defaults are fine for MVP; override as needed:
 # server_name          = "entlib"
-# server_type          = "cx22"
+# server_type          = "cx23"
 # server_image         = "ubuntu-24.04"
 # server_location      = "nbg1"
 # storage_box_name     = "entlib-backups"

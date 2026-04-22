@@ -94,6 +94,11 @@ Authenticated (session cookie + CSRF):
 - **Library query invalidation is whole-cache, not per-row.** Rating
   mutations can change an entry's `status`, which moves it between tabs —
   a surgical patch is tempting but wrong. Keep the blunt invalidate.
+- **CX22 is gone from the Hetzner catalog.** ADR 0001 picked CX22; Hetzner
+  retired the CX-2x generation and the direct replacement is `cx23`
+  (identical 2 vCPU / 4 GB / 40 GB spec). The Terraform module defaults to
+  `cx23`. ADR 0001 stays as-is (ADRs are historical records, not current
+  truth).
 
 ## What to do first, in order
 

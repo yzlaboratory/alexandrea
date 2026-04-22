@@ -22,9 +22,9 @@ variable "server_name" {
 }
 
 variable "server_type" {
-  description = "Hetzner Cloud server type. ADR 0001 picked CX22."
+  description = "Hetzner Cloud server type. ADR 0001 picked CX22 (2 vCPU / 4 GB / 40 GB) but Hetzner retired the CX-2x generation; cx23 is the direct replacement with identical specs."
   type        = string
-  default     = "cx22"
+  default     = "cx23"
 }
 
 variable "server_image" {
