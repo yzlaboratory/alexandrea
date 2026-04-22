@@ -2,57 +2,72 @@
 
 Handoff note for the next session. Self-contained — readable cold.
 
-## Where the repo is (2026-04-18, end-of-day)
+## Where the repo is (2026-04-22, end-of-day)
 
-**MVP is feature-complete.** Every user-facing behaviour described in
-`specs/00-overview.md` through `specs/04-data-model.md` is implemented,
-tested, and green on `main`. The remaining work is *operational* — nobody
-can reach it at a real URL yet.
+**MVP is deployed and reachable.** Both phase-0 provisioning and the first
+nightly backup pipeline are live. Everything described in `specs/00-overview.md`
+through `specs/04-data-model.md` is implemented, tested, and running on the
+production VPS.
 
-- **5 product specs** in `specs/`, **5 ADRs** in `adr/`, frozen.
-- **Backend (Go).** Single binary `entlib` with `serve` and `seed`. Auth
-  (argon2id + SQLite sessions + CSRF double-submit), TMDB server-side
-  proxy with retry + singleflight, titles CRUD, library CRUD, ratings.
-- **Frontend (React/Vite/TS).** Embedded into the binary via `//go:embed`.
-  Library view with three tabs, TMDB search + add, title page with
-  status controls and two-rater side-by-side rating widgets, average
-  score badge on library rows.
-- **Deploy artifacts.** `deploy/systemd/entlib.service`,
-  `deploy/caddy/Caddyfile`, `deploy/backup/nightly-backup.sh`.
-- **CI.** `.github/workflows/ci.yml` green on every slice.
-  `.github/workflows/deploy.yml` is still `workflow_dispatch`-only;
-  promote to push-to-main after the 3rd clean manual deploy (ADR 0001).
-- **Runbooks.** `docs/runbooks/{phase-0-provisioning,restore-from-backup,seed-users}.md`.
+Entry point: <http://178.105.45.232:8080/> (plain HTTP, HTTPS deferred — see
+"Open threads" below).
+
+- **VPS.** Hetzner `cx23` at `178.105.45.232` (IPv6: `2a01:4f8:1c18:11e7::1`),
+  Ubuntu 24.04, provisioned through `deploy/terraform/` (state in the S3 bucket
+  listed in `~/.entlib-terraform/s3_backend_bucket`, native `use_lockfile`).
+  `entlib.service` is up, enabled, and restarts automatically.
+- **Storage Box.** Hetzner `bx11` at `u581173.your-storagebox.de`. Snapshots
+  live at `/entlib/` (note: *not* `/home/entlib/` — see quirks below).
+- **Users seeded.** Two rows in `user`: `kira` (Kira) and `SexyGirl99` (Eileen).
+  Passwords stashed at `~/.entlib-terraform/seeded-users.txt` and in the
+  consolidated `~/.credentials` file (both mode 0600).
+- **Nightly backup.** `/usr/local/bin/entlib-nightly-backup` + `/etc/cron.d/entlib-backup`
+  fire at 03:15 UTC, upload a `.backup`-consistent SQLite snapshot to the Storage
+  Box over SCP, prune snapshots older than 30 days via SFTP. Tested three times
+  manually; restore drill passed (`PRAGMA integrity_check=ok`, row counts match).
+- **Credentials.**
+  - `~/.credentials` — TMDB key, Hetzner API token, seeded user passwords.
+  - `~/.entlib-terraform/` — Terraform env, SSH keypair, storage box password.
+  - `~/.ssh/id_ed25519_entlib(.pub)` — same admin key, also available under
+    `~/.ssh/` with `Host entlib` / `Host entlib-backup` aliases in
+    `~/.ssh/config` so `ssh entlib` / `sftp entlib-backup` just work.
 
 ### Commit log since the last handoff
 
+`34ea18c Move Terraform state to S3 backend with native locking` is the
+tip on `main`. Phase-0 execution and backup-script fixes are still in
+the working tree uncommitted — the next session should land those.
+Changes in progress:
+
 ```
-b1a8de5 Add rating widgets on TitlePage + average on Watched tab
-65b2b8d Add POST/DELETE /api/library/:id/rating
-945ad41 Add library.Rating + embed ratings in Entry
-8160de3 Replace HomePage stub with real library view + search + title page
-422c859 Add /api/library CRUD handlers
-7b38973 Add library package and POST/GET /api/titles handlers
-9c086c7 Wire TMDB client into serve and require TMDB_API_KEY at startup
-b037459 Add /api/search and /api/tmdb/title/:kind/:id handlers
-47925af Add tmdb client package per ADR 0004
-520d2a0 Extract RequireAuth middleware and refactor Me
+ M .github/workflows/ci.yml                          # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24
+ M .github/workflows/deploy.yml                      # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24
+ M deploy/backup/nightly-backup.sh                   # SFTP-based prune
+ M deploy/terraform/storage_box.tf                   # accept extra ssh keys
+ M deploy/terraform/variables.tf                     # storage_box_extra_ssh_keys
+ M docs/runbooks/restore-from-backup.md              # SFTP-based drill
 ```
 
-### Slice progress
+### Phase progress
 
-| #     | Slice                                                | Status |
-|-------|------------------------------------------------------|--------|
-| 1–5   | Backend skeleton / migrations / auth                 | done — merged |
-| 6     | Frontend skeleton + embed.FS wiring                  | done — merged |
-| 7     | Deploy artifacts                                     | done — merged |
-| 8     | GitHub Actions CI + deploy                           | done — merged |
-| 9     | Runbook stubs                                        | done — merged |
-| 10    | TMDB server-side proxy                               | done — merged |
-| 11    | Title + library CRUD                                 | done — merged |
-| 12    | Ratings                                              | done — merged |
+| Phase                                          | Status                                                   |
+|------------------------------------------------|----------------------------------------------------------|
+| 0. Provision VPS + Storage Box                 | done — `terraform apply` ran, outputs cached locally     |
+| 0b. Base packages / firewall / service user    | done — VPS bootstrapped                                  |
+| 0c. First binary + systemd unit                | done — binary deployed manually via scp                  |
+| 0d. Seed users                                 | done — both rows in `user`                               |
+| 0e. Start + verify                             | done — `/api/health` ok, login smoke test green          |
+| 0f. Nightly backup + cron + remote dir         | done — cron at 03:15 UTC, 3 snapshots on Storage Box     |
+| 0g. Restore drill                              | done — integrity ok, row counts match                    |
+| 1. First manual workflow-dispatch deploy       | **not started** — deploy.yml has never run yet           |
+| 2. Promote deploy.yml to `push: main`          | not started — gated on 3 clean manual runs               |
+| 3. Domain + Caddy + TLS + flip COOKIE_SECURE   | not started — user deferred domain decision              |
+| 4. CI Node-24 flag                             | done — `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`         |
 
 ## HTTP surface as it stands today
+
+(Unchanged from the previous handoff — transcluded here so this note is
+self-contained.)
 
 Unauthenticated:
 - `GET /api/health`
@@ -61,165 +76,146 @@ Unauthenticated:
 
 Authenticated (session cookie + CSRF):
 - `GET /api/me`
-- `GET /api/search?q=<query>` (TMDB only; 503 if `ENTLIB_TMDB_OPTIONAL`)
+- `GET /api/search?q=<query>`
 - `GET /api/tmdb/title/{kind}/{id}` (`kind` ∈ `movie`/`series`)
 - `POST /api/titles` — `{tmdb_id, kind}`; idempotent on `tmdb_id`
 - `GET /api/titles/{id}`
-- `GET /api/library?status=want,watching` — default filter is `want,watching`
+- `GET /api/library?status=want,watching`
 - `POST /api/library` — `{title_id, status?}`; 409 on duplicate
 - `PATCH /api/library/{id}` — `{status}`
 - `DELETE /api/library/{id}` — 204
-- `POST /api/library/{id}/rating` — `{score: 0-5, note?}`; implicitly transitions entry to `watched`
-- `DELETE /api/library/{id}/rating` — scoped to caller's own rating
+- `POST /api/library/{id}/rating` — `{score: 0-5, note?}`; implicit → `watched`
+- `DELETE /api/library/{id}/rating` — scoped to caller
 
-## Non-obvious bits you may trip on
+## Non-obvious bits you may trip on (v0)
 
-- **User ID == username.** Not documented in ADR 0003; `entlib seed`
-  writes the `--username` value into `user.id` directly.
-- **CSRF fires before the mux.** A POST to a GET-only path returns 403,
-  not 405 — `TestRouter_POSTWithoutCSRFReturns403` enforces this; don't
-  let anyone "fix" the 403-vs-405 mismatch without reading the test.
-- **`web.FrontendBuilt()` gate.** Any backend test that depends on the
-  embedded SPA must branch on this. Fresh checkouts have `dist/.gitkeep`
-  only — the `httpx` asset-404 test used to fail until it was gated
-  (c984944).
-- **`username:kind` collision on TMDB IDs.** The `title.tmdb_id` column is
-  UNIQUE — lookup is by `tmdb_id` alone. If a movie and a series ever
-  shared an ID in TMDB (they don't; IDs are media-type-scoped), we'd
-  reject the second. Edge case, not worth extra schema cost.
-- **Ratings trigger implicit status transition.** Rating any non-`watched`
-  entry flips it to `watched` atomically in the same request. Don't add
-  a separate "rate and mark watched" button on the UI — the single action
-  is correct.
-- **Library query invalidation is whole-cache, not per-row.** Rating
-  mutations can change an entry's `status`, which moves it between tabs —
-  a surgical patch is tempting but wrong. Keep the blunt invalidate.
-- **CX22 is gone from the Hetzner catalog.** ADR 0001 picked CX22; Hetzner
-  retired the CX-2x generation and the direct replacement is `cx23`
-  (identical 2 vCPU / 4 GB / 40 GB spec). The Terraform module defaults to
-  `cx23`. ADR 0001 stays as-is (ADRs are historical records, not current
-  truth).
+Previous entries still apply. New ones from phase-0 execution:
+
+- **Hetzner Storage Box blocks `ssh <cmd>`.** Only SFTP / SCP / rsync work.
+  The first version of `nightly-backup.sh` used `ssh ... "find -delete"` for
+  prune; that fails with `exec request failed on channel 0`. The script now
+  lists+deletes over SFTP instead, parsing the lexicographic timestamp embedded
+  in each filename against a locally-computed cutoff. The same constraint hits
+  the restore runbook's "list snapshots" step — it's been rewritten to use
+  `sftp <<EOF ls -la $DIR EOF`.
+- **Storage Box wants pubkeys in TWO formats.** Every ed25519 key in
+  `~/.ssh/authorized_keys` on the Storage Box needs both the OpenSSH one-liner
+  *and* an RFC 4716 (`---- BEGIN SSH2 PUBLIC KEY ----`) block. If you only paste
+  the OpenSSH line, `sshd` logs "Server accepts key" but auth still fails
+  (surprising but reproducible). Generate the PEM block with
+  `ssh-keygen -e -f key.pub` and append.
+- **Cannot update `ssh_keys` on an existing `hcloud_storage_box` in-place.**
+  Terraform marks the attribute `forces replacement`, so changing it destroys
+  and recreates the box (new username, new host). For additional keys after
+  creation, edit `authorized_keys` over SFTP. The `storage_box_extra_ssh_keys`
+  variable that was just added applies only to *new* storage boxes.
+- **Storage Box SFTP chroot is at `/`, not `/home/<user>`.** The runbook's
+  example `ENTLIB_BACKUP_DIR=/home/entlib` was wrong for this box; the live
+  config uses `/entlib`. If you re-seed infrastructure, you can pick either.
+- **`/etc/entlib` is `0750 root:entlib`, not group-writable.** The runbook's
+  `sudo -u entlib ssh-keygen -f /etc/entlib/backup_ed25519` step fails with
+  "Permission denied" because `entlib` only has group-read, not group-write.
+  Generate as root, then `chown entlib:entlib` the private key. Updated in the
+  runbook.
+- **No Caddy, no TLS, no HTTPS.** Until a domain lands, entlib binds
+  `0.0.0.0:8080` directly (UFW opens 8080/tcp). `ENTLIB_COOKIE_SECURE=false`
+  in `/etc/entlib/env` because `Secure` cookies silently fail over HTTP.
+  When a domain lands, the two changes are: install Caddy per runbook section 5,
+  flip `ENTLIB_COOKIE_SECURE=true` in `/etc/entlib/env`, restart `entlib`.
 
 ## What to do first, in order
 
-### 1. Provision the VPS
+### 1. Commit and push the in-flight changes
 
-Walk through `docs/runbooks/phase-0-provisioning.md`. Stop points for
-the user (not the agent):
+The in-flight diff (listed above) needs to land before anything else. Every
+fix in it was observed against the live VPS and is load-bearing for the
+runbooks being truthful.
 
-- [ ] Register a domain (open item in `OPEN-QUESTIONS.md` — `.de` vs
-      `.app` still undecided).
-- [ ] Create the Hetzner CX22 in `nbg1` and point A/AAAA records at it.
-- [ ] Create a Hetzner Storage Box, note username + host, set up an SSH key.
-- [ ] Get a TMDB API key.
-- [ ] Generate an `age` keypair and put the **secret key somewhere that
-      is not this VPS** (the runbook is explicit: this is the one
-      failure mode backups cannot save us from).
+### 2. Browser smoke test the deployed instance
 
-Once that's done, the runbook's terminal commands finish the setup.
+The previous handoff flagged that slices 11 and 12 were not browser-smoke-tested.
+They still aren't — unit tests and curl verification are necessary, not
+sufficient. Point a browser at <http://178.105.45.232:8080/> (plain HTTP; the
+browser may warn about HTTP auth) and walk through:
 
-### 2. First three manual deploys
-
-Per ADR 0001, `deploy.yml` stays `workflow_dispatch`-only until the 3rd
-clean manual deploy. After the third, flip the trigger to
-`push: branches: [main]` and remove the dispatch-only warning in the
-workflow comment.
-
-### 3. Run a restore drill
-
-Decrypt the latest snapshot, integrity-check, diff row counts against
-live. The runbook has the recipe. Run it at hand-off and again
-quarterly. First drill will probably shake a bug out of the stub
-runbook — update it in place.
-
-### 4. (Optional) Address the Node.js 20 deprecation warning
-
-CI emits a warning that `actions/{checkout,setup-go,setup-node,upload-artifact}` and
-`pnpm/action-setup` are on Node 20, which GitHub is deprecating
-2026-09-16. Set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` at the
-workflow level, or wait for the action authors to ship Node 24–capable
-versions. Warning only — nothing breaks until September.
-
-## What is **not** the agent's job
-
-- Provisioning infrastructure (VPS, domain, Storage Box, TMDB API key).
-  Stop at the boundary and print a checklist.
-- Rewriting already-merged ADRs. They can be superseded; they do not
-  get edited in place.
-- Declaring the UI "tested" without real browser eyes on it. Unit tests
-  and curl verification are necessary, not sufficient — slice 11 and 12
-  have *not* been browser-smoke-tested in the sessions that built them.
-
-## Browser smoke test the next session should do
-
-Before anything else, start both dev servers, log in, and walk through:
-
-```
-make dev   # prints two commands; run each in its own terminal
-```
-
-Then at `http://localhost:5173/`:
-
-1. Log in as the seeded user.
-2. Search for a title (requires `TMDB_API_KEY` in the env of the Go
-   process — export it before starting).
-3. "Add to library" on a result → verify it appears under "On our plate".
-4. Click the title → land on `/title/{id}` → click a star → save.
-   Verify the status bar flips to Watched and the entry migrates to
-   the Watched tab.
-5. Remove the rating → verify the library row still exists but loses
-   its badge.
-6. Remove the entry → gone from the library.
+1. Log in as `kira` (password from `~/.credentials`).
+2. Search for a title — should hit TMDB and return results.
+3. Add to library → appears under "On our plate".
+4. Open the title → set a star rating → save. Status bar flips to Watched;
+   entry moves to the Watched tab.
+5. Remove the rating → row stays, badge gone.
+6. Remove the entry → gone.
+7. Log out. Log in as `SexyGirl99` (Eileen). Verify the library is shared.
 
 Anything unexpected: file against the slice that introduced it.
 
+### 3. First workflow-dispatch deploy
+
+`deploy.yml` has never run. Before promoting the trigger to `push: main`
+(ADR 0001's "3rd clean manual deploy" gate), the workflow needs working
+repo secrets set:
+
+- `DEPLOY_SSH_KEY` — the private key from `~/.ssh/id_ed25519_entlib`
+- `DEPLOY_KNOWN_HOSTS` — `ssh-keyscan 178.105.45.232` output
+- `DEPLOY_SSH_USER` — `root`
+- `DEPLOY_SSH_HOST` — `178.105.45.232`
+- `DEPLOY_HEALTH_URL` — `http://178.105.45.232:8080/api/health`
+
+Populate, then trigger a `workflow_dispatch` run. After three clean runs,
+promote the trigger and remove the comment above `on:` in `deploy.yml`.
+
+### 4. Domain + Caddy + TLS (when ready)
+
+The user has `svthalexweiler.de` already registered at Porkbun
+(`~/.porkbun.env`) but deferred using it for entlib. When the decision lands:
+
+1. Create A/AAAA records at the VPS's v4/v6 IPs (above).
+2. Install Caddy per `docs/runbooks/phase-0-provisioning.md` §5 (reinstate
+   that whole section — it was skipped this time around).
+3. `echo ENTLIB_DOMAIN=<domain> >/etc/default/caddy`, `systemctl restart caddy`.
+4. Flip `ENTLIB_COOKIE_SECURE=true` in `/etc/entlib/env`, restart `entlib`.
+5. Drop the UFW 8080/tcp rule; keep 80 + 443 only.
+
+### 5. Close out OPEN-QUESTIONS.md infra items
+
+The two "Infra tasks" bullets that say "Provision the Hetzner CX22 and a
+domain" and the restore-drill line can be marked resolved / struck through —
+keep the pointers to this session's runbook in place.
+
+## What is still **not** the agent's job
+
+- Registering a domain (the Porkbun account is the user's).
+- Deciding when to promote `deploy.yml` to push-on-main — that's a judgment
+  call per ADR 0001.
+- Rewriting already-merged ADRs (they supersede, they don't edit).
+
 ## Housekeeping
 
-- The four Spring Boot worktrees (`auth-baseline`, `auth-google-oidc`,
-  `auth-polish`, `backend-skeleton`) are still vestigial and safe to
-  delete if you want a clean `git worktree list`. They've been left
-  alone through every slice because they were never in scope.
-- Per-slice branches (`slice-6-frontend` through `slice-12-ratings`)
-  remain pushed for traceability; prune if they become noise.
+- Vestigial Spring Boot worktrees (`auth-baseline`, `auth-google-oidc`,
+  `auth-polish`, `backend-skeleton`) still safe to delete.
+- Per-slice branches remain pushed for traceability; prune if they're noise.
 
 ## Conventions to respect (unchanged)
 
-- `~/.claude/CLAUDE.md`: loose TDD, use worktrees, atomic commits with
-  short-but-expressive messages, push without asking, excessive
-  happy/unhappy/edge tests, prettier on the frontend.
-- `specs/` is prose — don't put JSON Schema / OpenAPI / test fixtures there.
-- Every ADR Follow-up must also appear in `OPEN-QUESTIONS.md`. Resolved
-  items move with a pointer; they don't disappear.
-- Test conventions learned across slices:
-  - Handler tests call through `RequireAuth(d, handler)` directly for
-    mutating paths; go through `NewRouter` only for read-only paths.
-    The router's CSRF middleware otherwise short-circuits tests that
-    don't bother to forge a matching cookie+header pair.
-  - Data-layer tests use `t.TempDir()` per test for the SQLite file —
-    never the shared-cache in-memory form.
+- `~/.claude/CLAUDE.md`: loose TDD, worktrees, atomic commits with short
+  expressive messages, push without asking, excessive happy/unhappy/edge
+  tests, prettier on the frontend.
+- `specs/` is prose only — no JSON Schema / OpenAPI / test fixtures there.
+- Every ADR Follow-up also appears in `OPEN-QUESTIONS.md`.
 
 ## Things the agent got wrong (cumulative)
 
-- (Still true) FF-merge a branch into itself from its own worktree
-  silently no-ops. Run `git merge --ff-only <branch>` from the `main`
-  worktree.
-- (Still true) `go mod tidy` prunes requires for unused packages;
-  `go get` alone isn't enough if no source file references the dep.
-- (Still true) `Write` refuses to overwrite a file that hasn't been
-  `Read` first. Read, then Write.
-- (Still true) Don't shared-cache in-memory SQLite for tests. `t.TempDir()`.
-- (Slice 6) Any test that depends on the embedded SPA must branch on
-  `web.FrontendBuilt()`. Fixed in `c984944`.
-- (Slice 10) `auth.SessionStore.Load` returns `Session` by **value**,
-  not `*Session`. Context attach/retrieve must agree on the form —
-  mismatched types silently fail the `.(*auth.Session)` assertion and
-  `SessionFromContext` returns `!ok` inside the protected handler.
-- (Slice 11) The established test convention is to call mutating
-  handlers via `RequireAuth(d, handler).ServeHTTP(...)` and bypass
-  the router/CSRF. Trying to route mutating requests through
-  `NewRouter` without also forging a CSRF cookie+header will 403
-  every time.
-- (Slice 12) TypeScript `exactOptionalPropertyTypes: true` (turned on
-  by the Vite `react-ts` strict preset) treats `existing?: Rating`
-  and `existing: Rating | undefined` as *non*-interchangeable. Prefer
-  the explicit `| undefined` form when the value is reassignable.
+Prior entries still apply. New from this session:
+
+- **Storage-Box ssh_keys is a replacement-only field.** Writing a
+  `terraform plan` that accidentally rotates the Storage Box credentials is
+  trivially easy — always check whether a change is marked `forces replacement`
+  on Hetzner-managed resources before applying.
+- **SFTP heredoc output includes the `sftp>` prompt line even with `-q`.** A
+  too-permissive glob in the first backup-script prune (`*/entlib-*.sqlite`)
+  matched the prompt line `sftp> ls -1 /entlib/entlib-*.sqlite`, queued a
+  bogus `rm /sftp>` command, and only failed softly. Regex-anchor the filter
+  to `^${DIR}/entlib-[0-9]{8}T[0-9]{6}Z\.sqlite$`, not a loose glob.
+- **GNU `sort` over SFTP batch output is fine, but don't trust `tail -1` alone
+  without first `grep -oE` filtering.** The list command's own echo line sorts
+  after real filenames and will be selected by `tail -1` if not filtered out.
