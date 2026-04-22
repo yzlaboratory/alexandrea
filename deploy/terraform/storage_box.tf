@@ -4,7 +4,7 @@ resource "hcloud_storage_box" "backups" {
   location         = var.storage_box_location
   password         = var.storage_box_password
 
-  ssh_keys = [var.ssh_public_key]
+  ssh_keys = concat([var.ssh_public_key], var.storage_box_extra_ssh_keys)
 
   access_settings = {
     reachable_externally = true

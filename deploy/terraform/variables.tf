@@ -62,3 +62,9 @@ variable "storage_box_password" {
   type        = string
   sensitive   = true
 }
+
+variable "storage_box_extra_ssh_keys" {
+  description = "Additional OpenSSH public keys authorized on the Storage Box. Used for per-VPS backup keys generated on the server (the admin key in ssh_public_key is appended automatically)."
+  type        = list(string)
+  default     = []
+}
