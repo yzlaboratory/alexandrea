@@ -13,7 +13,7 @@ Run everything below as `root` unless a step specifies otherwise.
 ```bash
 apt update
 apt upgrade -y
-apt install -y curl ca-certificates sqlite3 age ufw debian-keyring debian-archive-keyring apt-transport-https
+apt install -y curl ca-certificates sqlite3 ufw debian-keyring debian-archive-keyring apt-transport-https
 ```
 
 ## 2. Firewall
@@ -130,7 +130,6 @@ Backup env file:
 ```bash
 cat >/etc/entlib/backup.env <<'EOF'
 ENTLIB_DB_PATH=/var/lib/entlib/db.sqlite
-ENTLIB_BACKUP_RECIP=age1...                           # public key; secret key lives OFF this box
 ENTLIB_BACKUP_USER=u123456                            # Hetzner Storage Box username
 ENTLIB_BACKUP_HOST=u123456.your-storagebox.de
 ENTLIB_BACKUP_DIR=/home/entlib
@@ -152,7 +151,7 @@ cat >/etc/cron.d/entlib-backup <<'EOF'
 EOF
 ```
 
-Run the script once manually and confirm the encrypted file lands on the Storage Box before walking away.
+Run the script once manually and confirm the snapshot lands on the Storage Box before walking away.
 
 ## 11. Hand-off checklist
 
@@ -161,5 +160,4 @@ Run the script once manually and confirm the encrypted file lands on the Storage
 - [ ] Both users can log in through the browser
 - [ ] `journalctl -u entlib -n 50` is clean
 - [ ] First manual backup uploaded and visible on the Storage Box
-- [ ] The age **secret** key is stored somewhere that is not this VPS
 - [ ] Restore drill completed per [`restore-from-backup.md`](./restore-from-backup.md)
