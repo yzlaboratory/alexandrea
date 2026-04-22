@@ -71,6 +71,8 @@ install -d -o root   -g entlib -m 0750 /etc/entlib
 
 Created once. Readable by the service user only.
 
+With Caddy fronting (domain + TLS):
+
 ```bash
 cat >/etc/entlib/env <<'EOF'
 ENTLIB_DB_DSN=/var/lib/entlib/db.sqlite
@@ -82,7 +84,32 @@ chown root:entlib /etc/entlib/env
 chmod 0640 /etc/entlib/env
 ```
 
-## 5. Install Caddy
+**No-domain variant** (serve plain HTTP on the public IP until DNS/TLS lands):
+
+```bash
+cat >/etc/entlib/env <<'EOF'
+ENTLIB_DB_DSN=/var/lib/entlib/db.sqlite
+ENTLIB_HTTP_ADDR=0.0.0.0:8080
+ENTLIB_COOKIE_SECURE=false
+TMDB_API_KEY=<paste TMDB v3 api key>
+EOF
+chown root:entlib /etc/entlib/env
+chmod 0640 /etc/entlib/env
+```
+
+`ENTLIB_COOKIE_SECURE=false` is mandatory over plain HTTP — `Secure` cookies
+silently fail and login looks broken from the browser. Flip both values back
+(`127.0.0.1:8080` / `true`) when installing Caddy in §5.
+
+## 5. Install Caddy (skip if no domain yet)
+
+If a domain is ready and DNS points here, install Caddy and let it request
+a Let's Encrypt cert. If you're standing the box up *before* a domain is
+chosen (the current deployment's situation), skip this section, have
+entlib bind `0.0.0.0:8080` directly (§4), and open `8080/tcp` in UFW
+(already done in §2). You can add Caddy later with zero data migration —
+install the package, drop in the Caddyfile, flip `ENTLIB_COOKIE_SECURE=true`,
+and close 8080/tcp.
 
 ```bash
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
@@ -164,26 +191,78 @@ cat >/etc/entlib/backup.env <<'EOF'
 ENTLIB_DB_PATH=/var/lib/entlib/db.sqlite
 ENTLIB_BACKUP_USER=u123456                            # Hetzner Storage Box username
 ENTLIB_BACKUP_HOST=u123456.your-storagebox.de
-ENTLIB_BACKUP_DIR=/home/entlib
+ENTLIB_BACKUP_DIR=/entlib
 ENTLIB_BACKUP_SSHKEY=/etc/entlib/backup_ed25519
 EOF
 chown root:entlib /etc/entlib/backup.env
 chmod 0640 /etc/entlib/backup.env
 ```
 
-Generate an SSH key for the Storage Box, install the backup script, and register a cron job:
+`ENTLIB_BACKUP_DIR` is relative to the SFTP chroot on the Storage Box —
+`/entlib`, not `/home/entlib`. The directory doesn't exist by default;
+create it over SFTP from your workstation with `mkdir entlib`.
+
+Generate an SSH key for the Storage Box. `/etc/entlib` is mode `0750
+root:entlib` (read-only for the service user), so generate as root, then
+hand ownership of the key to `entlib`:
 
 ```bash
-sudo -u entlib ssh-keygen -t ed25519 -N '' -f /etc/entlib/backup_ed25519
-# Paste /etc/entlib/backup_ed25519.pub into the Hetzner Storage Box UI.
+ssh-keygen -t ed25519 -N '' -f /etc/entlib/backup_ed25519 -C "entlib-backup@$(hostname)"
+chown entlib:entlib /etc/entlib/backup_ed25519 /etc/entlib/backup_ed25519.pub
+chmod 0600 /etc/entlib/backup_ed25519
+chmod 0644 /etc/entlib/backup_ed25519.pub
+```
 
+Append the pubkey to the Storage Box's `authorized_keys`. Two gotchas:
+
+1. `hcloud_storage_box.ssh_keys` is marked `forces replacement` by the
+   Terraform provider — changing it destroys and recreates the box (new
+   username, new host, new credentials). Don't `terraform apply`. Edit
+   `authorized_keys` over SFTP instead.
+2. Hetzner Storage Boxes require every ed25519 pubkey in `authorized_keys`
+   to be present in BOTH OpenSSH format *and* RFC 4716 (`---- BEGIN SSH2
+   PUBLIC KEY ----`) format. If you only paste the OpenSSH line, auth
+   fails with `Permission denied` even though `sshd` logs "Server accepts key".
+
+Generate the RFC 4716 block with `ssh-keygen -e`, then append both forms
+from your workstation (you already have the admin key authorized):
+
+```bash
+# On the VPS:
+ssh-keygen -e -f /etc/entlib/backup_ed25519.pub > /tmp/backup_rfc4716.txt
+# Copy both the OpenSSH line (cat .../backup_ed25519.pub) and the RFC 4716
+# block (cat /tmp/backup_rfc4716.txt) somewhere you can paste from.
+
+# On your workstation, edit the remote authorized_keys over SFTP:
+WORK=$(mktemp -d); cd "$WORK"
+sftp u$NUM@u$NUM.your-storagebox.de:.ssh/authorized_keys ak.txt
+# ...append the OpenSSH line, a blank line, then the RFC 4716 block...
+sftp u$NUM@u$NUM.your-storagebox.de <<EOF
+put ak.txt .ssh/authorized_keys
+chmod 600 .ssh/authorized_keys
+EOF
+```
+
+Install the backup script and register the cron job:
+
+```bash
 install -m 0755 deploy/backup/nightly-backup.sh /usr/local/bin/entlib-nightly-backup
 cat >/etc/cron.d/entlib-backup <<'EOF'
 15 3 * * * entlib /usr/local/bin/entlib-nightly-backup >>/var/log/entlib-backup.log 2>&1
 EOF
+chmod 0644 /etc/cron.d/entlib-backup
+install -m 0640 -o entlib -g adm /dev/null /var/log/entlib-backup.log
 ```
 
-Run the script once manually and confirm the snapshot lands on the Storage Box before walking away.
+Run the script once manually and confirm the snapshot lands on the Storage
+Box before walking away:
+
+```bash
+sudo -u entlib /usr/local/bin/entlib-nightly-backup
+sudo -u entlib sftp -q -i /etc/entlib/backup_ed25519 u$NUM@u$NUM.your-storagebox.de:/entlib <<'EOF'
+ls -la
+EOF
+```
 
 ## 11. Hand-off checklist
 
