@@ -49,3 +49,11 @@ backend/internal/web/dist/*
 
 # Logs
 *.log
+
+# Terraform (keep .terraform.lock.hcl tracked — it pins provider versions)
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+*.tfvars
+!*.tfvars.example
