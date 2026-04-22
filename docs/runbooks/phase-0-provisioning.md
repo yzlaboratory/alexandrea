@@ -14,10 +14,13 @@ Run everything in sections 1+ as `root` on the VPS unless a step specifies other
 
 One-time prereqs on your workstation:
 
-- Terraform ≥ 1.6
+- Terraform ≥ 1.10 (needed for native S3 state locking)
 - Hetzner Cloud API token (see intro)
 - An SSH public key you want installed on the server and Storage Box
 - A password for the Storage Box web UI (generate with `openssl rand -base64 24`)
+- AWS credentials with read/write on the state bucket (see below)
+
+State lives in the S3 bucket configured in `versions.tf` (region `eu-central-1`, object `entlib/terraform.tfstate`, versioned, SSE-S3 encrypted, public access blocked, native `use_lockfile` state locking). Point your AWS CLI at an identity that can `s3:GetObject`/`s3:PutObject`/`s3:DeleteObject` on that key and `s3:ListBucket` on the bucket.
 
 ```bash
 cd deploy/terraform
@@ -34,8 +37,6 @@ Record the four outputs — you need them later:
 
 - `server_ipv4` and `server_ipv6` → create DNS A + AAAA records for your domain pointing at these. Wait for propagation before section 5 so Caddy can obtain a Let's Encrypt cert.
 - `storage_box_host` and `storage_box_username` → go into `/etc/entlib/backup.env` in section 10.
-
-State lives locally in `deploy/terraform/terraform.tfstate`. Back it up out-of-band; losing it means losing the ability to cleanly `terraform apply` against these resources (you'd have to `terraform import` or destroy + recreate).
 
 SSH to the server as `root@<server_ipv4>` using the key you passed in and continue below.
 
@@ -192,4 +193,3 @@ Run the script once manually and confirm the snapshot lands on the Storage Box b
 - [ ] `journalctl -u entlib -n 50` is clean
 - [ ] First manual backup uploaded and visible on the Storage Box
 - [ ] Restore drill completed per [`restore-from-backup.md`](./restore-from-backup.md)
-- [ ] `deploy/terraform/terraform.tfstate` backed up somewhere that is not your workstation
