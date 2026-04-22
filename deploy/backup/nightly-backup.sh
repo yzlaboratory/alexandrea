@@ -56,14 +56,44 @@ log "snapshot: $ENTLIB_DB_PATH -> $SNAPSHOT"
 sqlite3 "$ENTLIB_DB_PATH" ".backup '$SNAPSHOT'"
 
 SSH_OPTS=(-i "$ENTLIB_BACKUP_SSHKEY" -o StrictHostKeyChecking=yes -o BatchMode=yes)
+REMOTE="$ENTLIB_BACKUP_USER@$ENTLIB_BACKUP_HOST"
 
-log "upload: $SNAPSHOT -> $ENTLIB_BACKUP_USER@$ENTLIB_BACKUP_HOST:$ENTLIB_BACKUP_DIR/$REMOTE_NAME"
-scp "${SSH_OPTS[@]}" "$SNAPSHOT" \
-	"$ENTLIB_BACKUP_USER@$ENTLIB_BACKUP_HOST:$ENTLIB_BACKUP_DIR/$REMOTE_NAME"
+log "upload: $SNAPSHOT -> $REMOTE:$ENTLIB_BACKUP_DIR/$REMOTE_NAME"
+scp "${SSH_OPTS[@]}" "$SNAPSHOT" "$REMOTE:$ENTLIB_BACKUP_DIR/$REMOTE_NAME"
 
+# Prune old snapshots. Hetzner Storage Box blocks ssh-exec, so we do
+# list+delete over SFTP. Snapshot filenames embed a lexicographically
+# sortable UTC stamp (entlib-YYYYMMDDTHHMMSSZ.sqlite), so we compute a
+# cutoff stamp locally and delete anything older than it.
 log "prune: removing snapshots older than $RETAIN_DAYS days on $ENTLIB_BACKUP_HOST"
-# Hetzner Storage Box's restricted shell supports find(1).
-ssh "${SSH_OPTS[@]}" "$ENTLIB_BACKUP_USER@$ENTLIB_BACKUP_HOST" \
-	"find '$ENTLIB_BACKUP_DIR' -maxdepth 1 -name 'entlib-*.sqlite' -type f -mtime +$RETAIN_DAYS -delete"
+CUTOFF="$(date -u -d "-${RETAIN_DAYS} days" +%Y%m%dT%H%M%SZ)"
+LIST_OUT="$WORKDIR/list.out"
+sftp -q "${SSH_OPTS[@]}" "$REMOTE" >"$LIST_OUT" 2>/dev/null <<EOF
+ls -1 $ENTLIB_BACKUP_DIR/entlib-*.sqlite
+EOF
+
+BATCH="$WORKDIR/rm.batch"
+: >"$BATCH"
+while IFS= read -r path; do
+	# sftp -q still prints "sftp> <command>" prompt lines; skip them by
+	# requiring an exact-dir prefix and a snapshot-shaped filename. The
+	# regex also drops stray whitespace or any line containing glob
+	# metacharacters (the prompt line ends with "...entlib-*.sqlite").
+	[[ "$path" =~ ^${ENTLIB_BACKUP_DIR}/entlib-[0-9]{8}T[0-9]{6}Z\.sqlite$ ]] || continue
+	fname=${path##*/}
+	stamp=${fname#entlib-}
+	stamp=${stamp%.sqlite}
+	if [[ "$stamp" < "$CUTOFF" ]]; then
+		printf 'rm %s\n' "$path" >>"$BATCH"
+	fi
+done <"$LIST_OUT"
+
+if [[ -s "$BATCH" ]]; then
+	COUNT=$(wc -l <"$BATCH")
+	log "prune: deleting $COUNT stale snapshot(s)"
+	sftp -q -b "$BATCH" "${SSH_OPTS[@]}" "$REMOTE" >/dev/null
+else
+	log "prune: no snapshots older than cutoff $CUTOFF"
+fi
 
 log "done: $REMOTE_NAME"
