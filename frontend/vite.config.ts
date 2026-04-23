@@ -17,5 +17,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: false,
+    // E2E lives in ./e2e and runs under vitest.config.e2e.ts in node — keep
+    // the default jsdom run from picking those files up.
+    exclude: ['node_modules', 'dist', 'e2e/**'],
   },
 });

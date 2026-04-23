@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.2.0",
     "@testing-library/jest-dom": "^6.9.0",
     "@testing-library/react": "^16.1.0",
@@ -35,6 +37,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
     "jsdom": "^25.0.0",
+    "playwright": "^1.59.1",
     "postcss": "^8.4.47",
     "prettier": "^3.4.0",
     "tailwindcss": "^4.2.0",

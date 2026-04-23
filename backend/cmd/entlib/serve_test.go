@@ -1,10 +1,16 @@
 package main
 
 import (
+	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	"github.com/yzlaboratory/entertainment-library/backend/internal/tmdb"
 )
 
 func silentLogger() *slog.Logger {
@@ -52,5 +58,34 @@ func TestBuildTMDBClient_InvalidOptionalRejected(t *testing.T) {
 	t.Setenv("ENTLIB_TMDB_OPTIONAL", "not-a-bool")
 	if _, err := buildTMDBClient(silentLogger()); err == nil {
 		t.Fatal("invalid ENTLIB_TMDB_OPTIONAL must surface a parse error")
+	}
+}
+
+func TestBuildTMDBClient_BaseURLOverride(t *testing.T) {
+	var hits atomic.Int32
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":[]}`))
+	}))
+	defer stub.Close()
+
+	t.Setenv("TMDB_API_KEY", "deadbeef")
+	t.Setenv("ENTLIB_TMDB_OPTIONAL", "")
+	t.Setenv("ENTLIB_TMDB_BASE_URL", stub.URL)
+
+	c, err := buildTMDBClient(silentLogger())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	client, ok := c.(*tmdb.Client)
+	if !ok {
+		t.Fatalf("client type = %T; want *tmdb.Client", c)
+	}
+	if _, err := client.Search(context.Background(), "anything"); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("stub hit count = %d; want 1 (request must route through ENTLIB_TMDB_BASE_URL, not real TMDB)", got)
 	}
 }

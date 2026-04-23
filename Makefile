@@ -1,4 +1,4 @@
-.PHONY: build build-frontend build-backend test test-frontend test-backend dev clean
+.PHONY: build build-frontend build-backend test test-frontend test-backend test-e2e dev clean
 
 DIST_SRC := frontend/dist
 DIST_DST := backend/internal/web/dist
@@ -24,6 +24,13 @@ test-frontend:
 
 test-backend:
 	cd backend && go test ./...
+
+# Drives the canonical user journey through a real Chromium against a freshly-
+# built entlib binary backed by a temp sqlite + a stubbed TMDB. Requires the
+# binary to exist (depends on `build`) and credentials in env. See
+# frontend/e2e/README.md for full setup.
+test-e2e: build
+	cd frontend && pnpm test:e2e
 
 dev:
 	@echo "Start two terminals:"

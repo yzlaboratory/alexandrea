@@ -94,8 +94,16 @@ func runServe() {
 func buildTMDBClient(logger *slog.Logger) (httpx.TMDBSearcher, error) {
 	key := os.Getenv("TMDB_API_KEY")
 	if key != "" {
+		opts := tmdb.Options{}
+		// ENTLIB_TMDB_BASE_URL is the E2E escape hatch: point the client at a
+		// local stub so tests can drive search/get without touching real TMDB.
+		// Production never sets this.
+		if base := os.Getenv("ENTLIB_TMDB_BASE_URL"); base != "" {
+			opts.BaseURL = base
+			logger.Info("tmdb base url overridden", "base", base)
+		}
 		logger.Info("tmdb ready")
-		return tmdb.New(key, tmdb.Options{}), nil
+		return tmdb.New(key, opts), nil
 	}
 	optional := false
 	if v := os.Getenv("ENTLIB_TMDB_OPTIONAL"); v != "" {
