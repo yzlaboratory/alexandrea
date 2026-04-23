@@ -32,7 +32,7 @@ async function login(page: Page, username: string, password: string): Promise<vo
 }
 
 describe('smoke flow', () => {
-  it('logs in, adds a title, rates it, removes the rating, then verifies the partner sees the shared library', async () => {
+  it('walks the canonical journey: login, add, rate, partner-share, unrate, remove, logout', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
 
@@ -74,7 +74,27 @@ describe('smoke flow', () => {
     await page.getByRole('tab', { name: 'Watched' }).click();
     await expect(page.getByRole('link', { name: 'The Matrix', exact: true })).toBeVisible();
 
-    // 5. Remove the rating; the row stays.
+    // 5. Verify the partner sees the shared library entry (rating included). Run
+    //    this before the primary user mutates the entry further, so we observe
+    //    the full "rated Watched" state across users.
+    const partnerCtx = await browser.newContext();
+    const partnerPage = await partnerCtx.newPage();
+    try {
+      await login(partnerPage, stack.users.partner.username, stack.users.partner.password);
+      await expect(partnerPage.getByRole('heading', { level: 1 })).toContainText(
+        `Hello, ${stack.users.partner.displayName}`,
+      );
+      await partnerPage.getByRole('tab', { name: 'Watched' }).click();
+      const partnerLib = partnerPage.getByRole('region', { name: 'Library' });
+      await expect(partnerLib.getByRole('link', { name: 'The Matrix', exact: true })).toBeVisible();
+      // The row's average-score badge proves the partner sees the rating,
+      // not just the bare entry. 4/5 from the primary → 4.0 average.
+      await expect(partnerLib.getByLabel('Average score 4.0 of 5')).toBeVisible();
+    } finally {
+      await partnerCtx.close();
+    }
+
+    // 6. Primary removes the rating; the row stays on the Watched tab.
     await page.getByRole('link', { name: 'The Matrix', exact: true }).click();
     await page.waitForURL(/\/title\//);
     await page.getByRole('button', { name: 'Edit' }).click();
@@ -82,21 +102,32 @@ describe('smoke flow', () => {
     await expect(page.getByText('e2e note')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Watched', exact: true })).toBeDisabled();
 
-    // 6. Verify the partner sees the shared library entry.
+    // 7. Primary removes the entry entirely from the title page. The title
+    //    page re-renders without a library entry, so the rating widget
+    //    disappears and "Add to library" comes back.
+    await page.getByRole('button', { name: 'Remove from library' }).click();
+    await expect(page.getByRole('button', { name: 'Add to library' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Watched', exact: true })).toHaveCount(0);
+
+    // Back on the home page the row is gone from every tab.
+    await page.getByRole('link', { name: 'Library' }).click();
+    await page.waitForURL(`${stack.baseUrl}/`);
+    for (const tab of ['On our plate', 'Watched', 'Abandoned'] as const) {
+      await page.getByRole('tab', { name: tab }).click();
+      await expect(
+        libraryRegion.getByRole('link', { name: 'The Matrix', exact: true }),
+      ).toHaveCount(0);
+    }
+
+    // 8. Primary logs out; the guard redirects back to /login and the form is
+    //    visible again. /api/me no longer reports a session.
+    await page.getByRole('button', { name: /sign out/i }).click();
+    await page.waitForURL(`${stack.baseUrl}/login`);
+    await expect(page.getByRole('textbox', { name: 'Username' })).toBeVisible();
+    const meRes = await page.request.get(`${stack.baseUrl}/api/me`);
+    expect(meRes.status()).toBe(401);
+
     await ctx.close();
-    const partnerCtx = await browser.newContext();
-    const partnerPage = await partnerCtx.newPage();
-    await login(partnerPage, stack.users.partner.username, stack.users.partner.password);
-    await expect(partnerPage.getByRole('heading', { level: 1 })).toContainText(
-      `Hello, ${stack.users.partner.displayName}`,
-    );
-    await partnerPage.getByRole('tab', { name: 'Watched' }).click();
-    await expect(
-      partnerPage
-        .getByRole('region', { name: 'Library' })
-        .getByRole('link', { name: 'The Matrix', exact: true }),
-    ).toBeVisible();
-    await partnerCtx.close();
 
     // The TMDB stub really was the only path TMDB traffic took. If this
     // ever drops to zero, the env override regressed and the real upstream
