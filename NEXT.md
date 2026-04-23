@@ -2,12 +2,13 @@
 
 Handoff note for the next session. Self-contained — readable cold.
 
-## Where the repo is (2026-04-22, end-of-day)
+## Where the repo is (2026-04-23, end-of-day)
 
-**MVP is deployed and reachable.** Both phase-0 provisioning and the first
-nightly backup pipeline are live. Everything described in `specs/00-overview.md`
-through `specs/04-data-model.md` is implemented, tested, and running on the
-production VPS.
+**MVP is deployed, reachable, and end-to-end verified.** Phase-0 provisioning,
+the nightly backup pipeline, and the first live-VPS browser smoke test are all
+behind us. Everything described in `specs/00-overview.md` through
+`specs/04-data-model.md` is implemented, tested, and running on the production
+VPS — and exercised end-to-end against it by both curl and a real Chromium.
 
 Entry point: <http://178.105.45.232:8080/> (plain HTTP, HTTPS deferred — see
 "Open threads" below).
@@ -34,18 +35,20 @@ Entry point: <http://178.105.45.232:8080/> (plain HTTP, HTTPS deferred — see
 
 ### Commit log since the last handoff
 
-`34ea18c Move Terraform state to S3 backend with native locking` is the
-tip on `main`. Phase-0 execution and backup-script fixes are still in
-the working tree uncommitted — the next session should land those.
-Changes in progress:
+`db849c3 Extend E2E smoke to cover entry removal and logout` is the tip on
+`main`. The working tree is clean (only untracked: the local `entlib` build
+artifact). All phase-0 fixes the previous handoff flagged as in-flight have
+been committed and pushed. Notable landings this session:
 
 ```
- M .github/workflows/ci.yml                          # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24
- M .github/workflows/deploy.yml                      # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24
- M deploy/backup/nightly-backup.sh                   # SFTP-based prune
- M deploy/terraform/storage_box.tf                   # accept extra ssh keys
- M deploy/terraform/variables.tf                     # storage_box_extra_ssh_keys
- M docs/runbooks/restore-from-backup.md              # SFTP-based drill
+db849c3  Extend E2E smoke to cover entry removal and logout
+9a01576  Add full-stack E2E smoke test for the canonical user journey
+d4c3fc7  Refresh NEXT.md: MVP deployed and reachable
+87cfcbd  Opt CI/deploy workflows into Node 24 actions runtime
+7d98028  Document no-domain path and Storage Box quirks in phase-0 runbook
+ce315ef  Update restore runbook for SFTP-only Storage Box
+b1f7b30  Support multiple Storage Box SSH keys via Terraform
+5c7776b  Rewrite backup prune to use SFTP
 ```
 
 ### Phase progress
@@ -59,6 +62,8 @@ Changes in progress:
 | 0e. Start + verify                             | done — `/api/health` ok, login smoke test green          |
 | 0f. Nightly backup + cron + remote dir         | done — cron at 03:15 UTC, 3 snapshots on Storage Box     |
 | 0g. Restore drill                              | done — integrity ok, row counts match                    |
+| 0h. Full-stack E2E smoke (local)               | done — `pnpm test:e2e`, real Chromium, TMDB stub, ~2.5s  |
+| 0i. Live-VPS browser smoke                     | done 2026-04-23 — API + real-browser UI both green       |
 | 1. First manual workflow-dispatch deploy       | **not started** — deploy.yml has never run yet           |
 | 2. Promote deploy.yml to `push: main`          | not started — gated on 3 clean manual runs               |
 | 3. Domain + Caddy + TLS + flip COOKIE_SECURE   | not started — user deferred domain decision              |
@@ -125,31 +130,7 @@ Previous entries still apply. New ones from phase-0 execution:
 
 ## What to do first, in order
 
-### 1. Commit and push the in-flight changes
-
-The in-flight diff (listed above) needs to land before anything else. Every
-fix in it was observed against the live VPS and is load-bearing for the
-runbooks being truthful.
-
-### 2. Browser smoke test the deployed instance
-
-The previous handoff flagged that slices 11 and 12 were not browser-smoke-tested.
-They still aren't — unit tests and curl verification are necessary, not
-sufficient. Point a browser at <http://178.105.45.232:8080/> (plain HTTP; the
-browser may warn about HTTP auth) and walk through:
-
-1. Log in as `kira` (password from `~/.credentials`).
-2. Search for a title — should hit TMDB and return results.
-3. Add to library → appears under "On our plate".
-4. Open the title → set a star rating → save. Status bar flips to Watched;
-   entry moves to the Watched tab.
-5. Remove the rating → row stays, badge gone.
-6. Remove the entry → gone.
-7. Log out. Log in as `SexyGirl99` (Eileen). Verify the library is shared.
-
-Anything unexpected: file against the slice that introduced it.
-
-### 3. First workflow-dispatch deploy
+### 1. First workflow-dispatch deploy
 
 `deploy.yml` has never run. Before promoting the trigger to `push: main`
 (ADR 0001's "3rd clean manual deploy" gate), the workflow needs working
@@ -161,10 +142,14 @@ repo secrets set:
 - `DEPLOY_SSH_HOST` — `178.105.45.232`
 - `DEPLOY_HEALTH_URL` — `http://178.105.45.232:8080/api/health`
 
-Populate, then trigger a `workflow_dispatch` run. After three clean runs,
-promote the trigger and remove the comment above `on:` in `deploy.yml`.
+The local `gh` CLI is authenticated with `repo` scope, so an agent *can*
+populate these non-interactively with `gh secret set … --repo yzlaboratory/entertainment-library`.
+The private-key upload is worth an explicit go-ahead from the user first,
+but it's not an agent-blocker. After population, trigger a `workflow_dispatch`
+run. After three clean runs, promote the trigger and remove the comment above
+`on:` in `deploy.yml`.
 
-### 4. Domain + Caddy + TLS (when ready)
+### 2. Domain + Caddy + TLS (when ready)
 
 The user has `svthalexweiler.de` already registered at Porkbun
 (`~/.porkbun.env`) but deferred using it for entlib. When the decision lands:
@@ -175,12 +160,6 @@ The user has `svthalexweiler.de` already registered at Porkbun
 3. `echo ENTLIB_DOMAIN=<domain> >/etc/default/caddy`, `systemctl restart caddy`.
 4. Flip `ENTLIB_COOKIE_SECURE=true` in `/etc/entlib/env`, restart `entlib`.
 5. Drop the UFW 8080/tcp rule; keep 80 + 443 only.
-
-### 5. Close out OPEN-QUESTIONS.md infra items
-
-The two "Infra tasks" bullets that say "Provision the Hetzner CX22 and a
-domain" and the restore-drill line can be marked resolved / struck through —
-keep the pointers to this session's runbook in place.
 
 ## What is still **not** the agent's job
 
@@ -219,3 +198,14 @@ Prior entries still apply. New from this session:
 - **GNU `sort` over SFTP batch output is fine, but don't trust `tail -1` alone
   without first `grep -oE` filtering.** The list command's own echo line sorts
   after real filenames and will be selected by `tail -1` if not filtered out.
+- **Chrome MCP `form_input` doesn't trigger React `onChange`.** It sets the
+  DOM `.value` property directly; React reads from its own state, so a
+  controlled form looks filled on screen but still submits with empty state.
+  Use `computer.type` for real keystrokes against any React-controlled input,
+  not `form_input`. Caused a "login silently does nothing" dead end during
+  the 2026-04-23 browser smoke.
+- **Default agent posture on GitHub repo secrets was too conservative.** The
+  local `gh` token has `repo` scope, which covers Actions secret writes — an
+  agent *can* run `gh secret set`. Worth confirming with the user before
+  uploading a private SSH key, but not an agent-blocker the way "modify
+  access controls" is.
