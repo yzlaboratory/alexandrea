@@ -209,3 +209,4 @@ Prior entries still apply. New from this session:
   agent *can* run `gh secret set`. Worth confirming with the user before
   uploading a private SSH key, but not an agent-blocker the way "modify
   access controls" is.
+# ci: probe (please ignore)
