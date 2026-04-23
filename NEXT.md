@@ -29,9 +29,18 @@ Entry point: <http://178.105.45.232:8080/> (plain HTTP, HTTPS deferred — see
 - **Credentials.**
   - `~/.credentials` — TMDB key, Hetzner API token, seeded user passwords.
   - `~/.entlib-terraform/` — Terraform env, SSH keypair, storage box password.
-  - `~/.ssh/id_ed25519_entlib(.pub)` — same admin key, also available under
-    `~/.ssh/` with `Host entlib` / `Host entlib-backup` aliases in
-    `~/.ssh/config` so `ssh entlib` / `sftp entlib-backup` just work.
+  - `~/.ssh/id_ed25519_entlib(.pub)` — admin SSH key (interactive access),
+    aliased as `Host entlib` / `Host entlib-backup` in `~/.ssh/config`.
+  - `~/.ssh/entlib_github_actions_deploy(.pub)` — dedicated CI deploy key
+    generated 2026-04-23. Its public half is in `root@178.105.45.232:~/.ssh/authorized_keys`;
+    its private half is the value of the `DEPLOY_SSH_KEY` repo secret. Do not
+    reuse this key for anything else — if the CI key ever leaks, revoke it
+    by removing the pubkey from `authorized_keys` and rotating the secret.
+- **Auto-deploy.** `deploy.yml` fires on every `push` to `main` (and still
+  supports `workflow_dispatch` for out-of-band redeploys). Repo secrets
+  `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_SSH_USER`, `DEPLOY_SSH_HOST`,
+  `DEPLOY_HEALTH_URL` are populated. Each run builds Go + the Vite SPA,
+  scp's the binary, restarts the systemd unit, and curl-smokes `/api/health`.
 
 ### Commit log since the last handoff
 
@@ -64,8 +73,8 @@ b1f7b30  Support multiple Storage Box SSH keys via Terraform
 | 0g. Restore drill                              | done — integrity ok, row counts match                    |
 | 0h. Full-stack E2E smoke (local)               | done — `pnpm test:e2e`, real Chromium, TMDB stub, ~2.5s  |
 | 0i. Live-VPS browser smoke                     | done 2026-04-23 — API + real-browser UI both green       |
-| 1. First manual workflow-dispatch deploy       | **not started** — deploy.yml has never run yet           |
-| 2. Promote deploy.yml to `push: main`          | not started — gated on 3 clean manual runs               |
+| 1. First manual workflow-dispatch deploys      | done 2026-04-23 — 3 clean runs satisfied ADR 0001 gate   |
+| 2. Promote deploy.yml to `push: main`          | done 2026-04-23 — auto-deploy live as of commit 05f07f2  |
 | 3. Domain + Caddy + TLS + flip COOKIE_SECURE   | not started — user deferred domain decision              |
 | 4. CI Node-24 flag                             | done — `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`         |
 
@@ -130,26 +139,7 @@ Previous entries still apply. New ones from phase-0 execution:
 
 ## What to do first, in order
 
-### 1. First workflow-dispatch deploy
-
-`deploy.yml` has never run. Before promoting the trigger to `push: main`
-(ADR 0001's "3rd clean manual deploy" gate), the workflow needs working
-repo secrets set:
-
-- `DEPLOY_SSH_KEY` — the private key from `~/.ssh/id_ed25519_entlib`
-- `DEPLOY_KNOWN_HOSTS` — `ssh-keyscan 178.105.45.232` output
-- `DEPLOY_SSH_USER` — `root`
-- `DEPLOY_SSH_HOST` — `178.105.45.232`
-- `DEPLOY_HEALTH_URL` — `http://178.105.45.232:8080/api/health`
-
-The local `gh` CLI is authenticated with `repo` scope, so an agent *can*
-populate these non-interactively with `gh secret set … --repo yzlaboratory/entertainment-library`.
-The private-key upload is worth an explicit go-ahead from the user first,
-but it's not an agent-blocker. After population, trigger a `workflow_dispatch`
-run. After three clean runs, promote the trigger and remove the comment above
-`on:` in `deploy.yml`.
-
-### 2. Domain + Caddy + TLS (when ready)
+### 1. Domain + Caddy + TLS (when ready)
 
 The user has `svthalexweiler.de` already registered at Porkbun
 (`~/.porkbun.env`) but deferred using it for entlib. When the decision lands:
@@ -209,4 +199,13 @@ Prior entries still apply. New from this session:
   agent *can* run `gh secret set`. Worth confirming with the user before
   uploading a private SSH key, but not an agent-blocker the way "modify
   access controls" is.
-# ci: probe (please ignore)
+- **`gh workflow run` can return HTTP 500 while still creating the run.** Saw
+  this twice on 2026-04-23: the API responded 500 "Failed to run workflow
+  dispatch" but the run was in fact queued and ran to completion. Always
+  re-check `gh run list` after a 500 before retrying — blind retries stack
+  duplicate runs that then fight the concurrency group.
+- **GitHub push triggers can lag ~1 minute.** After promoting `deploy.yml` to
+  `push: branches: [main]`, the first auto-deploy didn't appear for ~55s
+  after the push event registered. `gh run list` looked empty for well over
+  the usual few-second trigger-to-queue latency. Don't start probing with
+  extra pushes — they land in the delayed queue and compound confusion.
