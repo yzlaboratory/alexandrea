@@ -1,9 +1,12 @@
 name: Deploy
 
-# Manual-only for now. Promote to `push: branches: [main]` after the 3rd
-# clean manual run (per ADR 0001). When that happens, keep the manual
-# trigger around for out-of-band redeploys.
+# Per ADR 0001: auto-deploy on push to main. Three clean manual runs
+# landed on 2026-04-23 (runs 24830797972, 24840832370, 24840841887)
+# before this trigger was promoted. The workflow_dispatch trigger is
+# retained for out-of-band redeploys of an arbitrary ref.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       ref:
