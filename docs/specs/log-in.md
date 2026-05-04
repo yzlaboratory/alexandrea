@@ -74,6 +74,25 @@ Feature: Log in, log out, and reset password
     Then I am redirected to the login page
     And visiting any page that requires a session sends me back to the login page
 
+  Scenario: Anonymous visitor lands on a minimal home page
+    Given I am not logged in
+    When I open the root URL of the app
+    Then I see a minimal landing page consisting of an app pitch, a "Sign up" call-to-action, and a "Log in" link
+    And I do not see any catalog preview, any user data, or any media-type navigation
+
+  Scenario: Anonymous visitor on a protected URL is redirected to the login page
+    Given I am not logged in
+    When I open a URL that requires a session — Catalog, Watchlist, Library, Shares tab, Account settings, or any deep-linked detail overlay over those surfaces
+    Then I am redirected to the login page
+    And the original destination is preserved so I land on it after a successful login
+
+  Scenario: Anonymous visitor on a Share URL is not redirected
+    Given I am not logged in
+    And an active Share URL exists
+    When I open the Share URL
+    Then I see the Share view as defined in share-top-rated.md
+    And I am not redirected to the login page
+
   Scenario: Request a password-reset link
     Given I am on the password-reset request page
     When I submit any email address
