@@ -74,7 +74,11 @@ specified.
 
 **User**:
 A holder of an account. Owns exactly one Watchlist and one Library per
-media type. Identified by a verified email address.
+media type. Identified by a verified email address. Email comparison
+(signup uniqueness, login lookup, email-change uniqueness, password-
+reset lookup) is **case-insensitive**: addresses are normalised to
+lowercase on insert and on every compare. `Ada@Example.com` and
+`ada@example.com` are the same account.
 _Avoid_: account, member, customer.
 
 **Owner**:

@@ -30,6 +30,19 @@ Feature: Create an account
     And no second verification email is sent
     And no account is created
 
+  Scenario Outline: Email comparison is case-insensitive
+    Given an account already exists for "ada@example.com"
+    When I submit "<typed>" with any otherwise-valid password
+    Then I see an error stating the email is already registered
+    And no account is created
+    And no verification email is sent
+
+    Examples:
+      | typed             |
+      | ADA@EXAMPLE.COM   |
+      | Ada@Example.com   |
+      | ada@EXAMPLE.com   |
+
   Scenario: Password is shorter than 12 characters
     When I submit a valid email and a password shorter than 12 characters
     Then I see an error stating the password must be at least 12 characters
