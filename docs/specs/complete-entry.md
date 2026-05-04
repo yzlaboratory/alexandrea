@@ -79,6 +79,21 @@ Feature: Complete an entry and rate it
     And my Rating for the entry is replaced wholesale by the newly submitted Rating
     And no duplicate library entry is created
 
+  Scenario: Same-day re-completion appends a duplicate Completion Date
+    Given an entry in my library already has a Completion Date of today
+    When I Complete it again today and submit a new Rating containing at least Overall Enjoyment
+    Then today's date is appended again as an additional Completion Date — the list now contains today's date twice
+    And my Rating is replaced wholesale by the newly submitted Rating
+    And no duplicate library entry is created
+
+  Scenario: Concurrent edits to the same Rating resolve as last-write-wins
+    Given I have the Rating editor open for the same library entry in two browser tabs
+    And I submit a Rating from tab A first
+    When I subsequently submit a different Rating from tab B
+    Then my stored Rating becomes whatever tab B submitted, in full — no merge with tab A's values
+    And no version-conflict warning is shown to either tab
+    And the entry's recorded Completion Dates are unchanged by the edits (the editor never appends a Completion Date — only the Complete action does, per the previous scenarios)
+
   Scenario: Edit a Rating after the fact pre-fills the form with current values
     Given an entry is in my library with a Rating that contains Story=8 and Overall Enjoyment=9
     When I open the Rating editor
