@@ -63,7 +63,7 @@ Feature: View an entry's detail in an overlay
   Scenario: Books detail field set
     Given the entry I press is a Books entry
     When the detail overlay opens
-    Then the overlay shows synopsis, page count, publication date, authors, original language, available editions or translation languages, subjects or genres, cover, and the upstream provider's external rating
+    Then the overlay shows synopsis, page count, publication date, authors, original language, the set of distinct languages drawn from the work's editions, subjects or genres, cover, and the upstream provider's external rating when one is present (see ADR 0006)
 
   Scenario: Games detail field set
     Given the entry I press is a Games entry

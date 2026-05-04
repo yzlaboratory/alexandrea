@@ -58,6 +58,13 @@ Feature: Browse and search a media catalog
       | title           | asc                 |
       | external rating | desc                |
 
+  Scenario: Sorting Books by external rating excludes entries OpenLibrary has no rating for
+    Given I am on the Books catalog browse page
+    And some entries have an OpenLibrary community rating and others have none
+    When I sort by external rating
+    Then only entries with a present OpenLibrary rating appear in the grid
+    And entries with no rating are excluded from this sort, per ADR 0006
+
   Scenario: Filtering by genre
     Given I have a grid of catalog results on screen
     When I apply a genre filter
