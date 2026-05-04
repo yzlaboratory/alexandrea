@@ -22,7 +22,10 @@ Genre is **irrelevant** to Rating shape; the previous "Documentary" special
 case is removed. The lifecycle is **one-way**: a Library entry cannot be
 moved back to the Watchlist. Removing it from the Library is a permanent
 delete that discards all Completion Dates and the Rating; rediscovery is
-through the catalog browse.
+through the catalog browse. Throughout this spec, "today's date" means
+today in the **user's browser timezone** at submission time, stored as a
+`YYYY-MM-DD` calendar date with no time-of-day component (see
+`CONTEXT.md` under Completion Date).
 
 ```gherkin
 Feature: Complete an entry and rate it

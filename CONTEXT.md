@@ -38,9 +38,15 @@ same.
 _Avoid (in domain/code)_: watch, finish, consume, mark-as-watched.
 
 **Completion Date**:
-The date on which an entry was Completed. An entry may have many
-Completion Dates (re-watches/re-reads/re-plays); the **Rating** attached
-to the entry is single and is overwritten on each Completion.
+The date on which an entry was Completed. Stored as a `YYYY-MM-DD`
+calendar date with no time-of-day component. "Today" is computed in
+the **user's browser timezone** at submission time — not server UTC,
+not an account-locked timezone — so a user who clicks "Mark as
+watched" at 9pm local on May 4 always gets `2026-05-04` regardless
+of where the server lives. An entry may have many Completion Dates
+(re-watches/re-reads/re-plays), and same-day re-completions append a
+duplicate of today's date; the **Rating** attached to the entry is
+single and is overwritten on each Completion.
 
 ### Rating
 
