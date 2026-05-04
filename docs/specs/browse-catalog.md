@@ -7,9 +7,11 @@ Games). The same browse mechanics apply to all four types, parameterised by
 watchlist (see `add-to-watchlist.md`) or complete it directly (see
 `complete-entry.md`). The catalog is **live** — title, cover, release date,
 genres, and external rating are fetched from the provider through a
-rate-limit-only cache (see ADR 0001) and never stored locally. Lists use
-**infinite scroll**: 20 entries are fetched at a time and appended as the
-user scrolls.
+rate-limit-only cache (see ADR 0001) and never stored locally. The
+catalog renders as an **infinite-scrolling grid** of cover art and brief
+metadata: 20 entries are fetched at a time and appended as the user
+scrolls. Pressing any entry opens its **detail overlay** (see
+`view-entry-detail.md`).
 
 ```gherkin
 Feature: Browse and search a media catalog
@@ -26,7 +28,7 @@ Feature: Browse and search a media catalog
     Then I see entries from <provider>'s nearest "popular" feed: <provider_endpoint>
     And each entry shows its title, cover or poster, release date, and external rating
     And the external rating is shown raw with the provider's native scale (e.g. "7.8/10 TMDB", "4.2/5 OpenLibrary", "84/100 IGDB")
-    And the list is rendered as an infinite-scrolling feed in chunks of 20 entries
+    And the grid is rendered as an infinite-scrolling feed of cover art and brief metadata in chunks of 20 entries
 
     Examples:
       | media_type | provider     | provider_endpoint                                |
@@ -39,13 +41,13 @@ Feature: Browse and search a media catalog
     Given I am on the Movies catalog browse page
     When I search for "blade runner"
     Then I see catalog entries whose title matches "blade runner"
-    And the popular list is replaced by the search results
-    And the results render as an infinite-scrolling feed in chunks of 20
+    And the popular grid is replaced by the search results
+    And the results render as an infinite-scrolling grid of covers in chunks of 20
 
   Scenario Outline: Sorting catalog results
-    Given I have a list of catalog results on screen
+    Given I have a grid of catalog results on screen
     When I change the sort to <sort> in <direction> direction
-    Then the list reorders accordingly
+    Then the grid reorders accordingly
     And my current search and filters are preserved
     And my sort choice is persisted per (user, surface, media_type)
 
@@ -57,25 +59,25 @@ Feature: Browse and search a media catalog
       | external rating | desc                |
 
   Scenario: Filtering by genre
-    Given I have a list of catalog results on screen
+    Given I have a grid of catalog results on screen
     When I apply a genre filter
-    Then only entries matching that genre remain in the list
+    Then only entries matching that genre remain in the grid
 
   Scenario: Filtering by original language
-    Given I have a list of catalog results on screen
+    Given I have a grid of catalog results on screen
     When I apply an "original language = English" filter
-    Then only entries whose upstream `original_language` (or equivalent per provider) is English remain in the list
+    Then only entries whose upstream `original_language` (or equivalent per provider) is English remain in the grid
 
   Scenario: Filtering by available-in language
-    Given I have a list of catalog results on screen
+    Given I have a grid of catalog results on screen
     When I apply an "available in = German" filter
-    Then only entries that the provider reports as available in German (TMDB spoken/translated languages, OpenLibrary translation editions, IGDB language_supports) remain in the list
+    Then only entries that the provider reports as available in German (TMDB spoken/translated languages, OpenLibrary translation editions, IGDB language_supports) remain in the grid
     And entries whose original language is non-German but that have a German release qualify
 
   Scenario Outline: Type-appropriate length filters
     Given I am browsing the <media_type> catalog
     When I apply the filter <filter>
-    Then only entries matching that filter remain in the list
+    Then only entries matching that filter remain in the grid
 
     Examples:
       | media_type | filter     |
@@ -83,7 +85,7 @@ Feature: Browse and search a media catalog
       | TV         | runtime    |
       | Books      | page count |
 
-  Scenario: Combining multiple filters narrows the list further
+  Scenario: Combining multiple filters narrows the grid further
     Given I am browsing the Movies catalog
     When I apply both a genre filter and an original-language filter
     Then only entries matching all applied filters remain

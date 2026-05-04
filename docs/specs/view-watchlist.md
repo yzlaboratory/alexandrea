@@ -3,9 +3,11 @@
 The logged-in user views the **Watchlist** for one media type. Only entries
 that have **not** been Completed appear here — once Completed, an entry moves
 to the **Library** (see `complete-entry.md` and `browse-library.md`). The
-list uses infinite scroll in chunks of 20, like the catalog. Removal from
-the Watchlist is non-destructive (no Rating exists yet) and is confirmed by
-a toast with undo, not a modal.
+watchlist renders as an **infinite-scrolling grid** of cover art and brief
+metadata, in chunks of 20, like the catalog; pressing any entry opens its
+**detail overlay** (see `view-entry-detail.md`). Removal from the Watchlist
+is non-destructive (no Rating exists yet) and is confirmed by a toast with
+undo, not a modal.
 
 ```gherkin
 Feature: View my watchlist
@@ -23,7 +25,7 @@ Feature: View my watchlist
     When I open my Movies watchlist
     Then I see only the three not-yet-Completed movies
     And the movie I Completed does not appear here
-    And the list is rendered as an infinite-scrolling feed in chunks of 20 entries
+    And the watchlist is rendered as an infinite-scrolling grid of cover art and brief metadata in chunks of 20 entries
 
   Scenario: Empty watchlist
     Given I have no entries on my watchlist for this media type

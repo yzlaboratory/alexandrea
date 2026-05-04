@@ -4,8 +4,10 @@ The logged-in user views the **Library** for one media type — every entry
 they have **Completed**, with the user's Rating and Completion Dates
 attached. Entries arrive here via `complete-entry.md` (from the watchlist
 or directly from the catalog) and may only leave via permanent deletion in
-that spec — there is no path back to the watchlist. The list uses infinite
-scroll in chunks of 20.
+that spec — there is no path back to the watchlist. The library renders as
+an **infinite-scrolling grid** of cover art and brief metadata, in chunks of
+20, like the catalog and watchlist; pressing any entry opens its **detail
+overlay** (see `view-entry-detail.md`).
 
 Filtering by a per-aspect Characteristic **excludes** entries that have no
 value for that Characteristic (e.g. `Story ≥ 8` excludes Movies that were
@@ -29,10 +31,10 @@ Feature: Browse my library
     When I open the library
     Then I see an empty-state message inviting me to browse the catalog or my watchlist
 
-  Scenario: Library renders as an infinite-scrolling feed
+  Scenario: Library renders as an infinite-scrolling grid
     Given I have many entries in my library for this media type
     When I open the library
-    Then I see entries fetched in chunks of 20
+    Then I see entries rendered as a grid of cover art and brief metadata in chunks of 20
     And more chunks load as I scroll
 
   Scenario: Searching the library by title

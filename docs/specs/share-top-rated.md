@@ -20,6 +20,12 @@ cross-actions and per-row status badges; the Owner sees a banner
 naming the Share as their own and a link to the Shares tab for this
 media type.
 
+The Share view renders the subset as the same **infinite-scrolling
+grid** of cover art used everywhere else; pressing any entry opens
+its **detail overlay** (see `view-entry-detail.md`), which shows the
+Owner's Rating and — for a logged-in opener — the same cross-actions
+or status badge that the row carries.
+
 ```gherkin
 Feature: Share a filtered subset of my library with a friend
   As a library Owner
