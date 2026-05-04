@@ -7,14 +7,18 @@ covers exactly one media type. Shares are **immutable** (to change
 anything, revoke and create a new one) and **live** (they reflect the
 current state of the Owner's Library every time the Friend loads the
 page). Default expiry is 30 days, with an opt-out at creation. Revoked
-and expired Shares are kept in "My share links" forever (see `OOS.md`
-items 9 and 10 for the deferred rate-limit and observability options).
+and expired Shares stay resolvable by URL (Friends see a terminal
+message), but they are **hidden from the Owner's management surface** —
+the per-media-type **Shares** tab shows only active Shares (see
+`manage-shares.md`). Per-Owner rate limiting and share usage
+observability are deferred (`OOS.md` items 9 and 10).
 
 The Share view's **content** is the same for every opener (anonymous
 visitor, logged-in User, even the Owner of the Share). What differs is
 the **affordance overlay**: a logged-in opener additionally sees
 cross-actions and per-row status badges; the Owner sees a banner
-naming the Share as their own and a link to "My share links".
+naming the Share as their own and a link to the Shares tab for this
+media type.
 
 ```gherkin
 Feature: Share a filtered subset of my library with a friend
@@ -33,18 +37,18 @@ Feature: Share a filtered subset of my library with a friend
     Then a new unguessable Share URL is generated
     And the Share captures the exact (filters, sort) snapshot active when I created it
     And the Share is set to expire 30 days from now
-    And the Share appears on my "My share links" page with its expiry date
+    And the Share appears on my Shares tab for this media type with its expiry date
     And a toast confirms the creation and offers a "Copy link" affordance
 
   Scenario: Generate a Share with no expiry
     Given I have applied filters and a sort to my library
     When I create a Share and disable the expiry option
     Then a new unguessable Share URL is generated with no expiry date
-    And the Share appears on my "My share links" page marked as never-expiring
+    And the Share appears on my Shares tab for this media type marked as never-expiring
 
   Scenario: A Share is immutable
     Given I have an active Share
-    When I view the Share on my "My share links" page
+    When I view the Share on my Shares tab
     Then I cannot edit its filters, sort, or expiry
     And to change anything I must revoke this Share and create a new one
 
@@ -103,7 +107,7 @@ Feature: Share a filtered subset of my library with a friend
     When I open the Share URL while logged in as the Owner
     Then I see the same anonymous content (no cross-actions for myself)
     And a banner at the top reads "This is one of your shared views"
-    And the banner contains a link to "My share links" where I can revoke it
+    And the banner contains a link to the Shares tab for this media type where I can revoke it
 
   # ----- Liveness -----
 
@@ -129,7 +133,7 @@ Feature: Share a filtered subset of my library with a friend
 
   Scenario: Revoking a Share is terminal
     Given I have an active Share
-    When I revoke it from the "My share links" page
+    When I revoke it from my Shares tab (see manage-shares.md for the modal-confirmed flow)
     Then the Share becomes inactive immediately
     And a Friend opening the URL sees the message "This share link is no longer active"
     And there is no way to un-revoke the Share — to share the same picks again I must create a new Share with a new URL
@@ -141,11 +145,12 @@ Feature: Share a filtered subset of my library with a friend
     And the message is distinct from the revocation message
     And there is no way to extend the expiry — to share the same picks again I must create a new Share with a new URL
 
-  Scenario: Revoked and expired Shares are archived forever on "My share links"
-    Given I have created several Shares over time, some now revoked and some now expired
-    When I open the "My share links" page
-    Then I see all of my Shares — active, revoked, and expired — each labelled with its current status
-    And no Share is auto-purged from the page
+  Scenario: Revoked and expired Shares stay resolvable for Friends but are hidden from the Owner
+    Given I have one Share I revoked yesterday and one Share that expired last month
+    When a Friend opens either URL
+    Then the Friend sees the appropriate terminal message (revoked or expired) defined above
+    And no Share URL ever returns a 404 or generic error
+    And on my Shares tab for this media type I see only my active Shares — neither hidden Share appears in my management surface (see manage-shares.md)
 
   # ----- Per-media-type strictness -----
 

@@ -22,8 +22,8 @@ Feature: Log in, log out, and reset password
     And I am on the login page
     When I submit my correct email and password
     Then I am redirected to the Books catalog browse page
-    And I see a two-level navigation: media types (Movies, TV, Books, Games) at the top, and surface tabs (Catalog, Watchlist, Library) within the selected media type
-    And an account menu offers logout and "My share links"
+    And I see a two-level navigation: media types (Movies, TV, Books, Games) at the top, and surface tabs (Catalog, Watchlist, Library, Shares) within the selected media type
+    And an account menu offers logout
 
   Scenario: First-ever login defaults to Movies catalog
     Given I have never selected a media type before

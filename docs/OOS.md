@@ -38,10 +38,10 @@ When work begins on one of these, move it into a normal spec under
 9. **Share-link creation rate limiting.** v1 places no per-Owner cap on the
    number of Share links created or held active. Revisit if a real abuse
    pattern appears.
-10. **Share usage observability for the Owner.** The "My share links" page
-    shows URL, captured filter+sort, expiry, and status only — no
-    last-opened timestamp, view count, or per-friend signal. Deferred for
-    privacy and simplicity; revisit if owners ask for it.
+10. **Share usage observability for the Owner.** The Shares tab shows the
+    captured filter+sort, expiry, and "Copy URL" / "Revoke" affordances
+    only — no last-opened timestamp, view count, or per-friend signal.
+    Deferred for privacy and simplicity; revisit if owners ask for it.
 11. **Backfilled / custom Completion Dates.** v1 always records today's
     date when an entry is Completed (whether first-time or re-completed).
     Editing or backfilling a Completion Date — useful for "I watched this
