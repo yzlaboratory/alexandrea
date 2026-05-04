@@ -90,6 +90,22 @@ Feature: Browse my library
     When I apply "Overall Enjoyment >= 7" together with "Music >= 8"
     Then only entries that satisfy both filters remain
 
+  Scenario: Filters and sort persist across sessions; search does not
+    Given I have applied a sort, one or more filters, and a search on the library for this media type
+    When I close the tab, log out, or open the library from a different device
+    Then my sort and filters are restored exactly as I left them, persisted server-side per (user, surface, media_type)
+    And the filter chips show the restored filter values
+    And a "Clear filters" affordance is visible whenever any filter is active
+    And the search input is empty — search is transient and does not persist across sessions
+
+  Scenario: Clear filters resets every filter but leaves sort and search alone
+    Given I have one or more filters applied on the library for this media type
+    When I click "Clear filters"
+    Then every active filter on this surface for this media type is removed
+    And my sort is unchanged
+    And the search input is unchanged
+    And the persisted filter state for this (user, surface, media_type) is reset to empty
+
   Scenario: Library shows multiple Completion Dates if present
     Given an entry in my library has been Completed on more than one date
     When I view the entry in the library
