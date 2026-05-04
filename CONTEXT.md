@@ -21,6 +21,12 @@ _Avoid_: media item, title record.
 The provider-issued identifier for a Catalog Item (e.g. a TMDB id).
 The only piece of catalog metadata our database holds.
 
+**TV entry granularity**:
+For TV, the Catalog Item is the **entire series** (TMDB `/tv/{id}`).
+Seasons and episodes are not first-class — there is no per-season
+Watchlist or Library row, and one Rating covers the whole series. See
+ADR 0005.
+
 ### Lifecycle verbs
 
 **Complete**:
@@ -98,7 +104,7 @@ opener additionally sees:
 
 When the opener is the Owner of the share they are viewing, they see
 the same anonymous content plus a "this is your shared view" notice
-and a link to "My share links" for revoking it.
+and a link to the **Shares** tab for this media type for revoking it.
 
 **Uncompleted (filter)**:
 A share-view-only filter, available to a logged-in Friend, that hides
