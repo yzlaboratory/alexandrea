@@ -33,6 +33,18 @@ Feature: View an entry's detail in an overlay
     And the URL updates to a deep link for that entry on the current surface
     And the grid behind the overlay is visually de-emphasised but retains its scroll position
 
+  Scenario: Detail overlay shape on desktop is a centered modal
+    Given I am on a wide (desktop) viewport
+    When the detail overlay opens
+    Then the overlay is rendered as a centered modal card over a dimmed backdrop that covers the grid
+    And the grid behind the backdrop retains its scroll position
+
+  Scenario: Detail overlay shape on mobile is a bottom sheet
+    Given I am on a narrow (mobile) viewport
+    When the detail overlay opens
+    Then the overlay is rendered as a bottom sheet that slides up from the bottom of the viewport
+    And the grid remains partially visible above the sheet, retaining its scroll position
+
   Scenario Outline: Dismissing the overlay returns me to the grid at the same scroll position
     Given the detail overlay is open over the grid
     When I dismiss the overlay by <gesture>
@@ -41,11 +53,12 @@ Feature: View an entry's detail in an overlay
     And the URL updates back to the surface URL without the entry deep link
 
     Examples:
-      | gesture                                         |
-      | clicking outside the overlay                    |
-      | pressing the close affordance inside the overlay|
-      | pressing the Escape key                         |
-      | pressing the browser back button                |
+      | gesture                                                                |
+      | clicking or tapping outside the overlay (the backdrop or visible grid) |
+      | pressing the close affordance inside the overlay                       |
+      | pressing the Escape key (desktop only)                                 |
+      | pressing the browser back button                                       |
+      | dragging the bottom sheet down past the dismissal threshold (mobile)   |
 
   Scenario: Refreshing while the overlay is open re-opens it
     Given the detail overlay is open over the grid for a specific entry
