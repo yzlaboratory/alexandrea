@@ -16,6 +16,11 @@ from the account menu. Account-level — not media-type-scoped.
   renders all the Owner's Shares terminally inactive for any Friend
   who has the URL.
 
+All emails sent by these flows are subject to the cross-cutting
+email policy in ADR 0011: single `noreply@<domain>` sender, unified
+per-recipient rate limit shared across every flow, with the
+deletion-confirmation email as the one exempt case.
+
 ```gherkin
 Feature: Manage my account
   As a logged-in User
@@ -120,6 +125,7 @@ Feature: Manage my account
     And every active session for this account on every device is invalidated immediately
     And I am redirected to a page confirming the deletion
     And I am no longer logged in
+    And a deletion-confirmation email is sent to the address that was my account email immediately before deletion (per ADR 0011), exempt from the unified rate limit
 
   Scenario: Confirming deletion with the wrong password aborts the delete
     Given the delete-account modal is open

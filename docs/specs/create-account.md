@@ -5,7 +5,9 @@ created in an unverified state; a verification email is sent and must be
 acknowledged before the user can log in. This is the only sign-up path in v1
 (see `docs/OOS.md` for deferred OAuth and magic-link options). The password
 policy follows ADR 0002 (NIST 800-63B): minimum 12 characters and not present
-in the HaveIBeenPwned breach corpus.
+in the HaveIBeenPwned breach corpus. All emails are sent from the single
+`noreply@<domain>` sender and counted against the unified per-recipient rate
+limit defined in ADR 0011 (1/min, 5/hr, shared across every flow).
 
 ```gherkin
 Feature: Create an account
@@ -73,15 +75,15 @@ Feature: Create an account
     Then I am told my email must be verified before logging in
     And I am offered a way to resend the verification email
 
-  Scenario: Resend-verification rate limit
-    Given I have just requested a verification email for "ada@example.com"
-    When I request another verification email for the same address within the next minute
-    Then the request is rejected with a "please wait before requesting another verification email" message
+  Scenario: Resend-verification rate limit (unified bucket per ADR 0011)
+    Given I have just received any email at "ada@example.com" from this service in the last minute
+    When I request another verification email for the same address
+    Then the request is rejected with a "please wait before requesting another email" message
     And no second email is sent
 
-  Scenario: Resend-verification hourly cap
-    Given I have already requested 5 verification emails for "ada@example.com" within the past hour
-    When I request a 6th verification email within that hour
-    Then the request is rejected with a "you have requested too many verification emails recently" message
+  Scenario: Resend-verification hourly cap (unified bucket per ADR 0011)
+    Given "ada@example.com" has received 5 emails from this service within the past hour, across any combination of flows (verification, password reset, email change, etc.)
+    When I request a 6th email of any flow for that address within that hour
+    Then the request is rejected with a "you have requested too many emails recently" message
     And no email is sent
 ```

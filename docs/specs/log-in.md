@@ -6,7 +6,9 @@ logs out, and recovers access via an email-based password reset. Bundled
 into one spec because all three flows share the same authentication
 surface and lifecycle. Session lifetime, password-reset link expiry,
 failed-login throttling, and post-login navigation are all v1-decided
-values; see ADR 0002 for the password policy.
+values; see ADR 0002 for the password policy and ADR 0011 for the
+cross-cutting email policy (single sender, unified per-recipient rate
+limit) that the password-reset email obeys.
 
 ```gherkin
 Feature: Log in, log out, and reset password
