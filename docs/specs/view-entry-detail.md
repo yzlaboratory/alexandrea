@@ -8,7 +8,10 @@ pill, Library Rating + Completion Dates) or the Owner's Rating when
 reached from a Share view. The overlay is **deep-linkable** — opening
 it changes the URL, the browser back button closes it, and refreshing
 while it is open re-opens it on the same surface. The grid behind the
-overlay never loses its scroll position on dismiss.
+overlay never loses its scroll position on dismiss. The URL shape
+is a path segment containing the upstream external id under the
+surface route — e.g. `/movies/catalog/27205`, `/books/library/OL45804W`,
+`/share/<token>/1942` — defined in ADR 0008.
 
 Upstream metadata is fetched live through the rate-limit-only cache
 (ADR 0001). A Catalog Item that has entered `pending_removal` per
