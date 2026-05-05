@@ -18,6 +18,11 @@ Upstream metadata is fetched live through the rate-limit-only cache
 **"removed by &lt;provider&gt;"** affordance per ADR 0009 — the local
 row, Rating, and Completion Dates are preserved.
 
+The overlay's a11y obligations — `role="dialog"`, focus trap on open,
+focus restoration to the originating grid item on dismiss, keyboard
+equivalents for every gesture (including the mobile drag-down
+dismiss) — are pinned in ADR 0010 and not repeated as scenarios here.
+
 ```gherkin
 Feature: View an entry's detail in an overlay
   As any opener of an entry-grid surface
