@@ -120,10 +120,12 @@ Feature: Complete an entry and rate it
     When I click "Undo" before the toast disappears
     Then the entry, all its Completion Dates, and its Rating are restored
 
-  Scenario: A Catalog Item removed upstream cascade-deletes my library entry
+  Scenario: A Catalog Item removed upstream preserves my library entry with a "removed by <provider>" affordance
     Given an entry in my library references an external_id that the upstream provider has removed
-    And the removal has been confirmed twice per ADR 0003
-    When the cascade fires
-    Then the entry, its Completion Dates, and its Rating are dropped from my library
-    And no notification is shown to me (the entry simply ceases to appear)
+    And the removal has been confirmed by a fresh fetch per ADR 0009
+    When I view my library
+    Then the entry remains in my library with its Rating and every Completion Date preserved
+    And the entry's tile and detail overlay render the "Removed by <provider>" affordance in place of upstream metadata
+    And the only entry-level affordance offered for it is "Remove from my library"
+    And nothing is automatically deleted on my behalf
 ```

@@ -14,9 +14,9 @@ surface route — e.g. `/movies/catalog/27205`, `/books/library/OL45804W`,
 `/share/<token>/1942` — defined in ADR 0008.
 
 Upstream metadata is fetched live through the rate-limit-only cache
-(ADR 0001). A Catalog Item that has entered `pending_removal` per
-ADR 0003 renders a "currently unavailable" state in the overlay
-rather than a partial detail page.
+(ADR 0001). A Catalog Item the upstream has removed renders a
+**"removed by &lt;provider&gt;"** affordance per ADR 0009 — the local
+row, Rating, and Completion Dates are preserved.
 
 ```gherkin
 Feature: View an entry's detail in an overlay
@@ -122,12 +122,21 @@ Feature: View an entry's detail in an overlay
     And when I am logged in and the entry is on my own watchlist or in my own library, the overlay shows the matching status badge and my own Rating side by side with the Owner's per share-top-rated.md
     And when I am logged in and the entry is not yet on my own watchlist or in my own library, the overlay offers the cross-actions "Add to my watchlist" and "Complete and rate now" defined in share-top-rated.md
 
-  Scenario: A Catalog Item in pending_removal renders unavailable
-    Given the entry I press has been marked pending_removal per ADR 0003
+  Scenario: A Catalog Item the upstream has removed renders a "removed by <provider>" affordance
+    Given the entry I press has been confirmed removed by its upstream provider on a fresh fetch (per ADR 0009)
     When the detail overlay opens
-    Then the overlay shows a "currently unavailable" message in place of metadata
-    And no add, complete, rating, or remove affordances are shown
+    Then the overlay shows a "Removed by <provider>" affordance in place of upstream metadata, where <provider> is TMDB for Movies and TV, OpenLibrary for Books, or IGDB for Games
+    And my local Rating and Completion Dates for the entry remain visible (when the entry is in my Library)
+    And the only affordance offered is "Remove from my library" (or "Remove from my watchlist" when the entry is on my watchlist)
+    And no add or complete affordances are shown
     And dismissing the overlay returns me to the grid normally
+
+  Scenario: An upstream "currently unavailable" failure does not flip the entry to "removed"
+    Given the upstream provider for this media type returns a transient failure (per ADR 0009)
+    When the detail overlay opens
+    Then the overlay shows the existing "currently unavailable" transient message — not the "removed by <provider>" affordance
+    And the local row, Rating, and Completion Dates are unaffected
+    And the next successful fresh fetch resolves the transient state without further user action
 ```
 
 ## Open questions

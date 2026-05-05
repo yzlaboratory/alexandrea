@@ -158,6 +158,16 @@ Feature: Share a filtered subset of my library with a friend
     And no Share URL ever returns a 404 or generic error
     And on my Shares tab for this media type I see only my active Shares — neither hidden Share appears in my management surface (see manage-shares.md)
 
+  # ----- Removed-upstream entries -----
+
+  Scenario: An entry the upstream has removed still appears in the Share with a "removed by <provider>" affordance
+    Given an active Share for my Movies library
+    And an entry in the Share's qualifying subset has been confirmed removed upstream per ADR 0009
+    When a Friend opens the Share URL
+    Then the entry appears in the shared subset alongside the others
+    And the entry's tile and detail overlay render the "Removed by <provider>" affordance in place of upstream metadata
+    And my Rating and Completion Dates for the entry are still visible — the Share never destroys my data because of an upstream change
+
   # ----- Per-media-type strictness -----
 
   Scenario: Shares are per media type

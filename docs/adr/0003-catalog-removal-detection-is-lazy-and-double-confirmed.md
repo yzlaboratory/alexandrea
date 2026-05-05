@@ -1,5 +1,13 @@
 # Catalog removal detection is lazy and double-confirmed
 
+> **Status: Superseded by ADR 0009.** The cascade-on-double-
+> confirmation mechanism described below was retracted: upstream
+> removal no longer destroys local rows, so the double-confirmation
+> guard it provided is no longer needed. The four normalised
+> adapter outcomes (`present`, `removed`, `redirected_to`,
+> `transient_failure`) survive in ADR 0009 with different actions
+> attached. Read this ADR for historical rationale only.
+
 The cascade behaviour committed to in ADR 0001 needs a detection
 mechanism. We do not run a periodic sweep against the three upstream
 providers (TMDB, OpenLibrary, IGDB). Instead, removal is detected

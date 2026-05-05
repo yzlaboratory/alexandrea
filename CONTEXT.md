@@ -136,7 +136,9 @@ the owner's picks I haven't seen yet".
 - A **Rating** has one or more **Characteristics**
 - Every local entry references exactly one **Catalog Item** by
   `(external_provider, external_id, media_type)`; if the upstream
-  provider removes the Catalog Item, all local references cascade-delete
+  provider removes the Catalog Item, the local entry is **preserved**
+  (with its Rating and Completion Dates) and rendered with a
+  "removed by &lt;provider&gt;" affordance — see ADR 0009
 
 ## Flagged ambiguities
 
