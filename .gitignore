@@ -4,16 +4,29 @@
 # Editors / IDEs
 .idea/
 .vscode/
+*.iml
 *.swp
 *.swo
 
-# Environment / secrets
+# Environment / secrets — actual secrets live in ~/.credentials, never here
 .env
 .env.*
 !.env.example
 
-# Node (in case tooling lands here later)
+# Java / Gradle / Spring Boot (backend)
+.gradle/
+build/
+out/
+*.class
+hs_err_pid*
+replay_pid*
+
+# Node / Vite (frontend)
 node_modules/
+dist/
+.vite/
+*.local
+.eslintcache
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -25,32 +38,16 @@ __pycache__/
 .venv/
 venv/
 
-# Go
-backend/entlib
-backend/entlib-*
-*.test
-*.out
-coverage.txt
-
-# Local SQLite artifacts (dev/test)
+# SQLite (the production data file plus dev/test artefacts)
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-
-# Build / dist
-dist/
-build/
-out/
-# Keep the embed sentinel so `go build` works on a fresh checkout before
-# the frontend has been built.
-!backend/internal/web/dist/
-backend/internal/web/dist/*
-!backend/internal/web/dist/.gitkeep
+*.db
 
 # Logs
 *.log
 
-# Terraform (keep .terraform.lock.hcl tracked — it pins provider versions)
+# Terraform — keep .terraform.lock.hcl tracked (it pins provider versions)
 .terraform/
 *.tfstate
 *.tfstate.*
