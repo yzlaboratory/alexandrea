@@ -47,3 +47,24 @@ When work begins on one of these, move it into a normal spec under
     Editing or backfilling a Completion Date — useful for "I watched this
     last weekend" and essential for bulk historical imports — is
     deferred. Likely re-emerges alongside any future bulk-import feature.
+12. **Recent-activity / per-user audit surface.** A timeline of writes
+    to a user's account (added X to watchlist, completed Y, created Share
+    Z) is not exposed in v1. Originally motivated by the email-change
+    revert flow (since removed); still useful for general "what changed?"
+    questions. Deferred — the user remains in control of cleanup without
+    one, just less efficiently.
+13. **Explicit "Cancel pending email change" affordance** on the Account
+    settings page. v1 has two implicit cancellation paths — initiating a
+    fresh email change (which supersedes the pending one per
+    `manage-account.md`) and changing the password (which invalidates
+    any pending email-change verification token per ADR 0012). An
+    explicit cancel button for the benign typo case is deferred; the
+    24-hour token expiry plus the two implicit paths are sufficient for
+    v1.
+14. **User-initiated data export.** A *"download my data"* button that
+    produces a machine-readable archive of the user's watchlists,
+    libraries, ratings, completion dates, and shares is deferred. v1
+    covers the right-to-erasure side (account deletion is irreversible
+    and cascade-deletes everything) but does not surface a portability
+    affordance. Revisit if real users ask for it or if a regulatory
+    forcing function appears.
