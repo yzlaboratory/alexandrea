@@ -6,9 +6,16 @@ logs out, and recovers access via an email-based password reset. Bundled
 into one spec because all three flows share the same authentication
 surface and lifecycle. Session lifetime, password-reset link expiry,
 failed-login throttling, and post-login navigation are all v1-decided
-values; see ADR 0002 for the password policy and ADR 0011 for the
+values; see ADR 0002 for the password policy, ADR 0011 for the
 cross-cutting email policy (single sender, unified per-recipient rate
-limit) that the password-reset email obeys.
+limit) that the password-reset email obeys, and ADR 0012 for the
+session-invalidation behaviour on password reset.
+
+HIBP fail-open behaviour on password reset is per ADR 0002: if the
+HaveIBeenPwned breach-check API is unreachable, a new password that
+meets the local 12-character rule is accepted without breach screening,
+silently. The Gherkin below describes the intended steady-state
+behaviour.
 
 ```gherkin
 Feature: Log in, log out, and reset password
@@ -51,11 +58,18 @@ Feature: Log in, log out, and reset password
     Then I see the same generic "credentials are invalid" error as for a wrong password
     And I am not logged in
 
-  Scenario: Failed-login throttle uses exponential backoff after the third attempt
+  Scenario: Failed-login throttle uses per-IP exponential backoff capped at 30 seconds
     Given I am on the login page
-    When I submit incorrect credentials three times in a row for the same email or from the same IP
-    Then each subsequent failed attempt is delayed by an exponentially increasing wait (1s, 2s, 4s, 8s, ...) before the response is returned
-    And the backoff resets to zero on the next successful login
+    When the same client IP submits incorrect credentials three times in a row, regardless of which email each attempt targeted
+    Then each subsequent failed attempt from that IP is delayed before responding by an exponentially increasing wait — 1s, 2s, 4s, 8s, 16s — then capped at 30s for every further failed attempt
+    And the per-IP backoff resets to zero on either a successful login from that IP or one hour with no failed attempts from that IP
+
+  Scenario: Per-email coarse slowdown defends against credential stuffing across many IPs
+    Given more than 50 failed login attempts have been recorded against "ada@example.com" within the past hour, regardless of which IPs they came from
+    When any further login attempt is made for "ada@example.com" — from any IP, including a brand-new one
+    Then the response is delayed so that the email never accepts more than 1 attempt per minute until either a successful login for "ada@example.com" or 60 consecutive minutes pass with no failed attempts against that email
+    And the email is never locked out — every attempt is eventually answered, only delayed
+    And legitimate fat-fingering by the account owner that does not exceed 50 failures per hour does not trigger this slowdown
 
   Scenario: Sliding 30-day session
     Given I am logged in
@@ -105,6 +119,7 @@ Feature: Log in, log out, and reset password
     Given a password-reset link was sent to my email less than 1 hour ago
     When I open the link and submit a new password that is at least 12 characters and not in the HaveIBeenPwned breach corpus
     Then my password is updated
+    And every active session for the account on every device is invalidated immediately
     And I am redirected to the login page
     And the reset link becomes single-use and can no longer be used
 
