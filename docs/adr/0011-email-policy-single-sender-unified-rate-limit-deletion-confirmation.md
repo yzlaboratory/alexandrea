@@ -60,6 +60,24 @@ extra email per account deletion.
 This email is exempt from the unified rate limit (it is a one-off
 per account, not user-triggered in a way that could be abused).
 
+## v1 transport: AWS SES
+
+The v1 transport is **AWS SES** with **Easy DKIM** (SES creates
+and rotates the DKIM keys; Route 53 holds the published CNAMEs).
+SPF and DMARC records are likewise published in the same Route 53
+hosted zone for full alignment. Outbound calls from the EC2
+instance use IAM role-based credentials, not long-lived secrets.
+
+Operational caveat: SES starts in **sandbox mode** — only
+verified addresses can receive mail. Production access requires
+an AWS support request and typically clears in 24–48h. Plan to
+file the request during dev so the launch isn't blocked on it.
+
+The transport sits behind a `TransactionalEmailSender` interface
+in the backend so swapping providers later (Postmark, Resend, …)
+is a single-class change. The SES decision is the v1 binding,
+not a permanent commitment.
+
 ## Consequences
 
 - **One transport configuration, one DKIM/SPF/DMARC alignment** —
