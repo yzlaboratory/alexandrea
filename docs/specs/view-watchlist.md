@@ -50,8 +50,8 @@ Feature: View my watchlist
       | release date    | desc                |
       | external rating | desc                |
 
-  Scenario: Filtering the watchlist by genre
-    When I apply a genre filter
+  Scenario: Filtering the watchlist by genre using the per-media-type vocabulary
+    When I apply a genre filter using the available genre values for this media type (per ADR 0013 — TMDB enums for Movies and TV, IGDB enum for Games, the curated mapped list for Books)
     Then only watchlist entries matching that genre remain
 
   Scenario: Filters and sort persist across sessions; search does not

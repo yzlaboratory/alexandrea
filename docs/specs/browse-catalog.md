@@ -65,10 +65,30 @@ Feature: Browse and search a media catalog
     Then only entries with a present OpenLibrary rating appear in the grid
     And entries with no rating are excluded from this sort, per ADR 0006
 
-  Scenario: Filtering by genre
-    Given I have a grid of catalog results on screen
-    When I apply a genre filter
-    Then only entries matching that genre remain in the grid
+  Scenario Outline: Filtering by genre uses the per-media-type vocabulary defined in ADR 0013
+    Given I am browsing the <media_type> catalog
+    When I open the genre filter
+    Then I see <vocabulary_source> as the available genre values
+    And applying any one of them narrows the grid to entries matching that genre
+
+    Examples:
+      | media_type | vocabulary_source                                                            |
+      | Movies     | TMDB's native Movies genre enum                                              |
+      | TV         | TMDB's native TV genre enum                                                  |
+      | Games      | IGDB's native genre enum                                                     |
+      | Books      | the app's curated ~15-value list mapped to OpenLibrary subjects (ADR 0013)   |
+
+  Scenario: A Books entry matches a curated genre when any subject matches any of that genre's aliases
+    Given a Books catalog result whose OpenLibrary subjects include "Sci-Fi" and "American literature"
+    When I apply the curated genre filter "Science Fiction" (whose alias list includes "Sci-Fi", "Science fiction", "Speculative fiction")
+    Then the entry remains in the grid because at least one of its subjects matches at least one alias
+
+  Scenario: A Books entry that matches multiple curated genres appears under each of them
+    Given a Books catalog result that matches both "Fantasy" and "Young Adult" through its OpenLibrary subjects
+    When I filter by "Fantasy"
+    Then the entry remains in the grid
+    And when I instead filter by "Young Adult"
+    Then the entry also remains in the grid
 
   Scenario: Filtering by original language
     Given I have a grid of catalog results on screen

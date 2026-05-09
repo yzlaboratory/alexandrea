@@ -54,8 +54,8 @@ Feature: Browse my library
       | title           | asc                 |
       | release date    | desc                |
 
-  Scenario: Filter the library by genre
-    When I apply a genre filter
+  Scenario: Filter the library by genre using the per-media-type vocabulary
+    When I apply a genre filter using the available genre values for this media type (per ADR 0013 — TMDB enums for Movies and TV, IGDB enum for Games, the curated mapped list for Books)
     Then only library entries matching that genre remain
 
   Scenario: Filter the library by completion year
