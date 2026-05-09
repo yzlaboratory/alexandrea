@@ -27,6 +27,13 @@ today in the **user's browser timezone** at submission time, stored as a
 `YYYY-MM-DD` calendar date with no time-of-day component (see
 `CONTEXT.md` under Completion Date).
 
+The backend stores the `YYYY-MM-DD` the client supplies and performs
+**no per-date validation** — it does not check that the supplied date
+is "today" in any timezone. An authenticated user can in principle
+submit any date and corrupt only their own library; `OOS.md` item 11's
+restriction against backfilled / custom Completion Dates is a UI-level
+deferral, not a server-enforced one.
+
 ```gherkin
 Feature: Complete an entry and rate it
   As a logged-in user
