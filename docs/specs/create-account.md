@@ -7,7 +7,15 @@ acknowledged before the user can log in. This is the only sign-up path in v1
 policy follows ADR 0002 (NIST 800-63B): minimum 12 characters and not present
 in the HaveIBeenPwned breach corpus. All emails are sent from the single
 `noreply@<domain>` sender and counted against the unified per-recipient rate
-limit defined in ADR 0011 (1/min, 5/hr, shared across every flow).
+limit defined in ADR 0011 (1/min, 5/hr, shared across every flow). An account
+that is never verified is deleted **7 days after creation**, freeing the email
+for a fresh signup; resending the verification email issues a new 24-hour
+verification token but does not reset the 7-day GC clock.
+
+HIBP fail-open behaviour is per ADR 0002: if the HaveIBeenPwned
+breach-check API is unreachable, a password that meets the local
+12-character rule is accepted without breach screening, silently. The
+Gherkin below describes the intended steady-state behaviour.
 
 ```gherkin
 Feature: Create an account
@@ -26,11 +34,19 @@ Feature: Create an account
     And I am redirected to the login page after verification
 
   Scenario: Email already in use
-    Given an account already exists for "ada@example.com"
+    Given an account already exists for "ada@example.com" — either verified, or unverified and less than 7 days old
     When I submit "ada@example.com" with any password
     Then I see an error stating the email is already registered
     And no second verification email is sent
     And no account is created
+
+  Scenario: Stale unverified account is preempted by a fresh signup
+    Given an unverified account exists for "ada@example.com" that was created more than 7 days ago and never verified
+    When I submit "ada@example.com" with a valid password
+    Then the stale unverified account is deleted
+    And a fresh unverified account is created for me with the new password
+    And a verification email is sent to "ada@example.com"
+    And any previously-issued verification link for the deleted account no longer works
 
   Scenario Outline: Email comparison is case-insensitive
     Given an account already exists for "ada@example.com"
@@ -63,11 +79,27 @@ Feature: Create an account
     And no account is created
     And no verification email is sent
 
-  Scenario: Verification link is opened after the 24-hour window
+  Scenario: Verification link is opened after the 24-hour window but within the 7-day account window
     Given a verification link was sent to "ada@example.com" more than 24 hours ago
+    And the unverified account for "ada@example.com" was created less than 7 days ago
     When the recipient clicks the expired verification link
     Then they see a message that the link has expired
     And they are offered a way to request a new verification email
+
+  Scenario: Verification link is clicked after the unverified account has been GC'd
+    Given the unverified account for "ada@example.com" was created more than 7 days ago and was deleted
+    When the recipient clicks any old verification link for that account
+    Then they see a message that the signup expired and they should sign up again
+    And no account is restored
+    And no verification email is sent
+
+  Scenario: Verification fails because the address was claimed by another account in the meantime
+    Given I have created an account with "ada@example.com" and the verification link has not yet been used or expired
+    And in the meantime "ada@example.com" has been claimed by another account — either a separate signup that verified first or an email-change verification that landed first
+    When I click my verification link
+    Then I see an error stating that "ada@example.com" is already registered
+    And my unverified account is not promoted to verified
+    And I am offered a way to start a fresh signup with a different address
 
   Scenario: Logging in before verification is blocked
     Given I have created an account but not yet clicked the verification link
