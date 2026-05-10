@@ -17,11 +17,16 @@ origins behind it:
   `/index.html` so React Router can resolve client-side paths —
   including the path-segment detail-overlay URLs of ADR 0008.
 - **Database** — SQLite, single file on the EC2 instance's disk.
-  Holds every persistent table the app needs: users, sessions,
-  watchlist/library rows, ratings, completion dates, shares,
-  per-(user, surface, media_type) preferences, the catalog cache
-  of ADR 0007, the email rate-limit bucket of ADR 0011, and every
-  one-shot token (verification / reset / revert).
+  Holds every persistent library table: watchlist/library rows,
+  ratings, completion dates, shares, per-(user, surface,
+  media_type) preferences, and the catalog cache of ADR 0007.
+  Each per-user row carries a foreign-key reference to a
+  **kiraauth User ID** (an opaque identifier the library does not
+  generate). Authentication state — Users, sessions, password
+  hashes, verification/reset tokens, and the email rate-limit
+  bucket — is owned by **kiraauth** (a separate backend) and
+  never lives in this database. See ADR 0016 and the
+  auth-integration spec for how the library consumes kiraauth.
 - **Deployment** — one GitHub Actions workflow with two artifacts:
   the Spring Boot Docker image is pushed to a registry and pulled
   by the EC2 instance; the React build is `aws s3 sync`'d to the
@@ -34,12 +39,14 @@ origins behind it:
 Two simpler architectures were considered and rejected:
 
 - **Split origin on separate hostnames** (`app.example.com` for
-  the SPA on S3+CloudFront, `api.example.com` for the API on
-  EC2). Rejected because cookies cross an origin boundary —
-  ADR 0012's `HttpOnly; Secure; SameSite=Strict` cookies cannot
-  be sent across origins, forcing `SameSite=None` and CORS
-  preflights on every auth-bearing request. The auth surface
-  area triples for no architectural gain.
+  the SPA on S3+CloudFront, `api.example.com` for the library API
+  on EC2). Rejected because, even with auth living on kiraauth's
+  own host, the library API still benefits from sharing an origin
+  with its SPA: any consumer-app cookie (e.g. last-used media
+  type, kiraauth's session cookie if the integration shape pins
+  shared parent-domain cookies per kiraauth ADR 0004) can be
+  scoped tightly, and the library SPA can call `/api/*` without
+  CORS preflights.
 - **Spring Boot serves everything from EC2** (one Docker image
   with the React bundle embedded as static resources, a
   fall-through rule to `index.html`). Genuinely simpler v1 ops,
@@ -50,13 +57,14 @@ Two simpler architectures were considered and rejected:
   provides.
 
 The chosen shape — **CloudFront as a single virtual host with
-two behaviors** — keeps the auth-cookie simplicity of same-origin
+two behaviors** — keeps the library API and SPA on one origin
 while giving the SPA edge caching:
 
-- **The browser sees one origin.** Sessions per ADR 0012 are
-  plain `HttpOnly; Secure; SameSite=Strict` cookies on
-  `app.example.com`. CORS does not enter the picture. The split
-  is invisible to the SPA and to the auth flows.
+- **The browser sees one origin for the library.** The library
+  SPA and the library API are same-origin; CORS does not enter
+  the picture for library-internal traffic. Cross-origin traffic
+  to kiraauth is a separate concern handled per kiraauth's
+  integration shape (kiraauth ADR 0004).
 - **Edge caching for the SPA bundle is free.** CloudFront's
   always-free tier (1 TB egress, 10M requests/month) covers
   indie-scale traffic indefinitely; spike absorption is
@@ -93,10 +101,10 @@ reflexive default; we chose against it deliberately:
   scheduled `VACUUM INTO` dumps shipped to S3.
 - **Litestream-style streaming replication can be added later**
   if a hot standby ever becomes worth it. Today it isn't.
-- **All app state lives in one place.** Sessions, rate-limit
-  buckets, cache, preferences, business data — same DB, same
-  transactional boundary. No "I forgot to restart Redis"
-  failure mode.
+- **All library state lives in one place.** Cache, preferences,
+  business data — same DB, same transactional boundary. No "I
+  forgot to restart Redis" failure mode. Auth state lives in
+  kiraauth's own database; the library never reaches into it.
 
 Accepted costs:
 
@@ -147,13 +155,12 @@ library:
   log driver ships them to CloudWatch. No APM, no metrics
   pipeline, no distributed tracing in v1 — those are deferred
   in `OOS.md` and revisited if real ops needs emerge.
-- **Every unguessable token in the system is 128-bit
+- **Every unguessable token the library issues is 128-bit
   URL-safe random**, generated from a CSPRNG and stored in
-  SQLite. This covers session ids (ADR 0012), email-verification
-  tokens (signup + email-change), password-reset tokens, email-
-  change revert tokens, and Share URL tokens (`share-top-rated.md`).
-  A consistent format means one helper, one length, one expiry-
-  table shape across all token-bearing flows.
+  SQLite. In v1 this is exactly one shape: Share URL tokens
+  (`share-top-rated.md`). Auth-related tokens (session, email-
+  verification, password-reset) are issued by kiraauth, not by
+  the library, and live in kiraauth's database.
 
 ## Consequences
 
@@ -165,13 +172,13 @@ library:
 - **The cache layer of ADR 0007** is a SQLite table with TTL
   columns and lazy expiry on read. No external cache
   dependency.
-- **The email rate-limit bucket of ADR 0011** is a SQLite table
-  with rolling-window counters per recipient address. Cheap and
-  transactional.
-- **Sessions per ADR 0012** are SQLite rows keyed by an opaque
-  session id; revocation is a `DELETE`. The sliding 30-day
-  renewal updates `last_seen_at` on every authenticated
-  request.
+- **Authentication is provided by kiraauth, not by the library.**
+  The library API authenticates each request by resolving a
+  kiraauth Session ID to a User ID per kiraauth ADR 0004's
+  integration shape (which is itself a TBD as of writing). The
+  library holds no password hashes, issues no auth tokens, and
+  sends no auth-related email. Cascade on user deletion is
+  handled by ADR 0016.
 - **The CloudFront SPA-fallback rule is load-bearing.** The
   CloudFront distribution must rewrite S3-origin 404s on
   `text/html` requests to `/index.html` with HTTP 200, or every
@@ -193,15 +200,20 @@ library:
 - **MUI's `ThemeProvider`** carries the contrast tokens; any
   custom component must consume the theme rather than hardcode
   colors, or it will silently violate ADR 0010.
-- **`SameSite=Strict` is the only CSRF defense.** Because the
-  SPA and the API share an origin (single CloudFront virtual
-  host), and session cookies are `SameSite=Strict`, no cross-site
-  request can carry the session cookie and CSRF is structurally
-  impossible against authenticated endpoints. Spring Security's
-  CSRF token filter is therefore **disabled**. If a future
-  architecture change splits the SPA and API onto separate
-  origins, CSRF protection must be re-introduced (token filter
-  re-enabled, or alternative defense) and this ADR superseded.
+- **CSRF strategy is bound to kiraauth's integration shape and
+  is currently TBD.** The original v1 plan rested on
+  `SameSite=Strict` session cookies on a single virtual host —
+  same-origin SPA and API made cross-site authenticated requests
+  structurally impossible. With auth moving to kiraauth on a
+  separate host (kiraauth ADR 0004), the CSRF picture depends on
+  which session-resolution shape is chosen there: a shared
+  parent-domain cookie keeps a same-site posture against the
+  library API; a token-introspection model removes cookie-based
+  CSRF entirely (the SPA explicitly attaches the token). A
+  successor ADR will re-pin the library's CSRF strategy when
+  kiraauth ADR 0004's mechanics are decided. Until then,
+  Spring Security's CSRF token filter must be **re-enabled**
+  (the v1 same-origin shortcut no longer applies).
 - **Recovery point objective is ≤24 hours.** With daily SQLite
   dumps to S3, the worst-case data loss after an EC2 instance or
   EBS volume failure is everything written since the last backup
