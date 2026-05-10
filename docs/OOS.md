@@ -27,9 +27,11 @@ When work begins on one of these, move it into a normal spec under
 6. **Snapshot share links.** All shares are live — they reflect the current
    state of the owner's library every time the friend loads the page.
    Frozen-in-time snapshot links are deferred.
-7. **Alternative authentication methods.** v1 supports email + password with
-   email verification. OAuth providers (Google, GitHub, …) and passwordless
-   magic links are deferred.
+7. **Alternative authentication methods.** Authentication is owned by
+   kiraauth, not by this repo — v1 supports email + password with email
+   verification, and any OAuth / magic-link / passkey work is tracked on
+   the kiraauth side. Listed here only so a reader looking for the
+   deferral knows where it lives.
 8. **Per-aspect Characteristics for Books and Games.** v1 Ratings for Books
    and Games carry only the mandatory Overall Enjoyment Characteristic.
    Optional per-aspect Characteristics (e.g. Writing for Books; Gameplay,
@@ -54,17 +56,15 @@ When work begins on one of these, move it into a normal spec under
     questions. Deferred — the user remains in control of cleanup without
     one, just less efficiently.
 13. **Explicit "Cancel pending email change" affordance** on the Account
-    settings page. v1 has two implicit cancellation paths — initiating a
-    fresh email change (which supersedes the pending one per
-    `manage-account.md`) and changing the password (which invalidates
-    any pending email-change verification token per ADR 0012). An
-    explicit cancel button for the benign typo case is deferred; the
-    24-hour token expiry plus the two implicit paths are sufficient for
-    v1.
-14. **User-initiated data export.** A *"download my data"* button that
-    produces a machine-readable archive of the user's watchlists,
-    libraries, ratings, completion dates, and shares is deferred. v1
-    covers the right-to-erasure side (account deletion is irreversible
-    and cascade-deletes everything) but does not surface a portability
-    affordance. Revisit if real users ask for it or if a regulatory
-    forcing function appears.
+    settings page. Lives entirely on the kiraauth side; tracked there.
+    Listed here only so a reader looking for the deferral knows where
+    it lives.
+14. **User-initiated library data export.** A *"download my library
+    data"* button that produces a machine-readable archive of the
+    user's watchlists, libraries, ratings, completion dates, and
+    shares is deferred. v1 covers the right-to-erasure side (the
+    library hard-cascades on a kiraauth user-deleted notification per
+    ADR 0016) but does not surface a portability affordance. Revisit
+    if real users ask for it or if a regulatory forcing function
+    appears. Auth-side data (email, login history) is kiraauth's
+    concern, not this repo's.
