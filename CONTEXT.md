@@ -79,12 +79,14 @@ specified.
 ### Identity & sharing
 
 **User**:
-A holder of an account. Owns exactly one Watchlist and one Library per
-media type. Identified by a verified email address. Email comparison
-(signup uniqueness, login lookup, email-change uniqueness, password-
-reset lookup) is **case-insensitive**: addresses are normalised to
-lowercase on insert and on every compare. `Ada@Example.com` and
-`ada@example.com` are the same account.
+An identity that owns exactly one Watchlist and one Library per
+media type. Identity itself — email, password, sessions, verification
+state — is owned by **kiraauth** (a separate backend service); within
+the entertainment library a User is identified only by the opaque
+**kiraauth User ID**, stored as a foreign key on every per-user row.
+The library never holds an email address, a password, or a session
+token. See ADR 0014 for the integration shape and ADR 0016 for what
+the library does when kiraauth notifies it of a User deletion.
 _Avoid_: account, member, customer.
 
 **Owner**:
