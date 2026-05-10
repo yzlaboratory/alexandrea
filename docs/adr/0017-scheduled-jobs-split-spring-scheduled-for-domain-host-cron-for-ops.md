@@ -6,24 +6,24 @@ constraint into two homes, and pin which goes where.
 ## The split
 
 **Spring `@Scheduled` (in-JVM, transactional, Spring-bean-using)** owns
-**domain jobs** — work that reads or writes the application's data
-through normal Spring services and benefits from the same JDBC pool,
-the same `@Transactional` boundaries, and the same logging shape as
-the request-serving code:
+**domain jobs** — work that reads or writes the library's data through
+normal Spring services and benefits from the same JDBC pool, the same
+`@Transactional` boundaries, and the same logging shape as the
+request-serving code:
 
-- **Unverified-account GC.** Daily sweep that deletes unverified
-  accounts older than 7 days, per `create-account.md`. The sweep is
-  required (not just lazy on signup collision) because the spec
-  guarantees deleted accounts' verification links *"no longer work"*
-  even when nobody triggers a fresh signup at the same address.
-- **Expired-token cleanup.** Daily sweep over verification, reset,
-  email-change, and any other expiry-bearing token tables for rows
-  past their expiry. Token validation itself is already lazy-and-
-  expiry-aware at the use site; this sweep is purely to keep the
-  tables small.
-- Any future domain-state housekeeping (e.g. pruning ancient
-  email-rate-limit bucket rows past the rolling window) lands here
-  by default.
+- **Catalog-cache TTL sweep.** Daily sweep over the catalog cache of
+  ADR 0007 to drop rows past their 7-day TTL. Cache reads are already
+  lazy-and-TTL-aware at the use site; this sweep is purely to keep
+  the table small.
+- Any future library-state housekeeping (e.g. pruning expired Share
+  rows that revoke-or-expiry policy now wants reaped, deduplicating
+  catalog-cache stragglers across providers) lands here by default.
+
+Auth-domain jobs — unverified-account GC, expired auth-token
+cleanup, email-rate-limit bucket pruning — are not on this list.
+Those run inside **kiraauth's** scheduler on kiraauth's host, not
+in the library's JVM. The library does not reach across the
+service boundary to schedule auth-side work.
 
 **Host cron (on the EC2 instance, JVM-independent)** owns **ops jobs**
 — work that must survive the application being down, or that
