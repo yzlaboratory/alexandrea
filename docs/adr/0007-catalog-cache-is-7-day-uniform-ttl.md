@@ -8,6 +8,21 @@ outcome from the provider adapter, per ADR 0003). On a cache miss
 we fetch upstream synchronously; we do **not** serve stale entries
 while revalidating in the background.
 
+The cache has **two coexisting layers**, both under this 7-day TTL:
+
+- a **per-entry metadata cache** keyed by
+  `(provider, external_id, media_type)`, backing individual title
+  lookups — the detail overlay (#6) and the rendering of local
+  Watchlist/Library rows that store only the external id (#2, #4, #7); and
+- a **feed/query page cache** keyed by
+  `(provider, media_type, feed/query, filters, sort, page)`, backing the
+  browse listings (#3).
+
+Both are first-class — a cached feed page is **not** a substitute for the
+per-entry rows it references, and neither layer is optional. This two-layer
+cache is what makes most browse pages within a session cache hits, and it
+is the granularity ADR 0015's stale-while-error operates on.
+
 ## Why 7 days
 
 - The product is a personal tracker, not a news source. Users do

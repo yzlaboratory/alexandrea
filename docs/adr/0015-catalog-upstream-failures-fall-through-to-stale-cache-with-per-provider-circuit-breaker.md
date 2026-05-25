@@ -12,7 +12,10 @@ rate-limit response, a malformed body, or a timeout.
   cache holds a previously-fetched row for the same `(provider,
   external_id, media_type)` — even if its TTL has expired — that
   stale row is served. A best-effort background refresh is queued
-  but its outcome does not block the request.
+  but its outcome does not block the request. This applies to **both**
+  cache layers of ADR 0007: a failed per-entry refresh serves the stale
+  row, and a failed feed/query-page fetch with a warm-but-expired page
+  serves that stale page (see #3).
 - **Cold miss falls through to a user-facing error.** If there is
   no cached row at all, the request fails with the same generic
   *"this title is temporarily unavailable, try again in a moment"*
