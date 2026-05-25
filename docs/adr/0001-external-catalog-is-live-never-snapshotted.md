@@ -7,6 +7,13 @@ for Games) through a cache layer whose only job is to avoid upstream
 rate limits — it is not a source of truth and is not relied on for
 durability.
 
+**Carve-out (ADR 0019):** local list rows (Watchlist, Library) persist a
+denormalized snapshot of the sort/filter keys (`title`, `release_date`,
+`genres`) so the user's own lists sort and filter without upstream. That
+snapshot is a query index refreshed from the same upstream — not a source of
+truth and not a catalog mirror — so the "never stored" rule still holds for
+everything else and for authoritativeness.
+
 Local rows reference Catalog Items by
 `(external_provider, external_id, media_type)`. The cascade-on-removal
 behaviour originally written into this ADR was **retracted by ADR 0009**
