@@ -2,8 +2,9 @@
 
 Each local list row — a **Watchlist** entry (#7) and a **Library** entry
 (#4) — persists a denormalized snapshot of the catalog fields used as sort
-and filter keys: **`title`**, **`release_date`**, and **`genres`** (stored in
-the per-media-type filter vocabulary). This is in addition to the
+and filter keys: **`title`**, **`release_date`**, **`genres`** (stored in
+the per-media-type filter vocabulary), and **`external_rating`**. This is in
+addition to the
 `(external_provider, external_id, media_type)` reference and the user-owned
 data (Rating, Completion Dates). It lets sorting, filtering, and pagination of
 the user's own lists run as a pure local SQLite query that does **not** depend
@@ -23,13 +24,18 @@ keys locally removes that coupling.
 
 ## What is and isn't snapshotted
 
-- **Snapshotted:** `title`, `release_date`, `genres`. For Books, the snapshot
-  stores the **resolved curated genres** (ADR 0013), so library genre
-  filtering is a local set-membership test — not the provider-side
-  `subject:(alias OR …)` query the *catalog* uses (ADR 0018).
-- **Not snapshotted:** cover art, synopsis, external rating, and everything
-  else remain cache/upstream-sourced per ADR 0001 / ADR 0007. A cold cover
-  degrades to a placeholder while the row still sorts and filters correctly.
+- **Snapshotted:** `title`, `release_date`, `genres`, `external_rating`. For
+  Books, the snapshot stores the **resolved curated genres** (ADR 0013), so
+  library genre filtering is a local set-membership test — not the
+  provider-side `subject:(alias OR …)` query the *catalog* uses (ADR 0018).
+  `external_rating` is stored **null-honest** per ADR 0006 (absent stays
+  `null`, never `0`); it backs the Watchlist's external-rating sort (#7) as a
+  local query, with nulls excluded from that sort exactly as on the catalog,
+  and the Watchlist tile shows this snapshot value so its badge and sort key
+  always agree (the detail overlay #6 still shows the live/cached value).
+- **Not snapshotted:** cover art, synopsis, and everything else remain
+  cache/upstream-sourced per ADR 0001 / ADR 0007. A cold cover degrades to a
+  placeholder while the row still sorts and filters correctly.
 
 The snapshot is **not** a catalog mirror and **not** a source of truth — it is
 a query index over data the user owns (their list membership), denormalized
@@ -41,6 +47,8 @@ The snapshot is captured when the row is created (Completion for Library, add
 for Watchlist) and refreshed opportunistically whenever the per-entry metadata
 cache refreshes that entry. It therefore trails upstream within the same
 staleness envelope as ADR 0007's 7-day TTL — acceptable for sort/filter keys.
+`external_rating` is the most volatile of these keys, but a sort key that is
+up to a week stale is fine for a personal backlog.
 
 ## Relationship to ADR 0001
 
