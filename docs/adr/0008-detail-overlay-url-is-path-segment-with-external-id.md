@@ -44,6 +44,22 @@ ids only ever come from TMDB and `/games/...` ids only ever come
 from IGDB. A numeric collision between providers is structurally
 impossible.
 
+## Direct load always opens the overlay, not a full page
+
+Although nested-route routers can render the entry URL as a standalone full
+page when visited directly, we do **not** do that. A direct load or refresh of
+an entry URL **always** opens the detail overlay over the surface grid (#6).
+To keep that coherent:
+
+- **The grid behind is paged by surface.** On a local surface (Watchlist,
+  Library) the grid is paged and scrolled to include the entry's row, which is
+  locatable from the ADR 0019 snapshot under the active sort and filters. On
+  the Catalog or a Share view the entry's position in the provider feed is not
+  knowable without scanning, so the grid renders from the top.
+- **A surface-URL history entry is synthesized** behind the overlay on direct
+  load, so the browser back button closes the overlay to the grid rather than
+  navigating out of the app — identical to the navigated-from-grid case.
+
 ## Consequences
 
 - **URL shape is now part of the public surface.** Once URLs are
