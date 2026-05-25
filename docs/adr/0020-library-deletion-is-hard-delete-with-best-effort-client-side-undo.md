@@ -34,3 +34,13 @@ Rating" are literally true the instant the delete returns.
 - **Double delete is safe.** A second DELETE of an already-deleted entry is a
   no-op; the unique constraint (one row per `(user, Catalog Item, media_type)`)
   keeps a re-create single even if two tabs race an undo.
+
+## Watchlist removal uses the same shape
+
+Removing an entry from the **Watchlist** (#7) is the same hard-delete +
+best-effort client-side restore, with two differences: there is no Rating or
+Completion Date to discard, and Undo restores the row to **Watchlist** state.
+The returned payload includes the original **`date added`** (alongside the
+ADR 0019 snapshot), so Undo re-creates the row in its previous position under
+every sort — without it, a fresh `date added` would bounce the entry to the
+top of the date-added sort.
