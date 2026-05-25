@@ -38,7 +38,7 @@ invisible to that sort."
 
 ## Why not drop external rating for Books entirely?
 
-- It would make `view-entry-detail.md` and `browse-catalog.md`
+- It would make #6 and #3
   divergent across media types in a deeper way than null-honesty.
   Some readers genuinely want the OpenLibrary rating where it
   exists; hiding it for everyone to avoid the asymmetry costs
@@ -48,7 +48,7 @@ invisible to that sort."
 
 - **Books `external rating` sort silently shrinks the result set**
   to entries that have a community rating. The empty-result
-  scenario in `browse-catalog.md` still applies if the shrink is
+  scenario in #3 still applies if the shrink is
   total.
 - **The other three media types are unaffected.** TMDB and IGDB
   ratings are dense; in practice no entry is excluded.

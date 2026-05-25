@@ -87,7 +87,7 @@ A text input where users type a subject substring (`mystery`,
 - Persistence per (user, surface, media_type) becomes
   awkward — a typed string is a vague restored state.
 - Sharing semantics get harder — a captured filter (per
-  `share-top-rated.md`) wants enumerable values to display as
+  #1) wants enumerable values to display as
   a pill on the Friend's Share view.
 
 Curated genres slot cleanly into the existing chip-filter system.
@@ -100,7 +100,7 @@ Curated genres slot cleanly into the existing chip-filter system.
   user reports; the response is to extend an alias list, not to
   redesign the system.
 - **The detail overlay still shows raw upstream subjects** for
-  Books (per `view-entry-detail.md`'s "subjects or genres" line).
+  Books (per #6's "subjects or genres" line).
   Curation is a filter-input concern, not a display concern —
   users see what OpenLibrary actually has.
 - **Curated genres are stable v1 contracts.** Removing a curated

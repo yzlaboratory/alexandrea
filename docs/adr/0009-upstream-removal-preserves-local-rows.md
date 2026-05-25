@@ -15,7 +15,7 @@ is preserved exactly as it was.
 
 The user can manually delete the entry from their Library or remove
 it from their Watchlist if they no longer want it; those paths are
-already covered by `complete-entry.md` and `view-watchlist.md`.
+already covered by #5 and #7.
 
 ## Provider adapter outcomes
 
@@ -30,7 +30,7 @@ raw response into one of four outcomes:
   Catalog Item's external_id and re-fetch. No affordance change,
   no user notification.
 - `transient_failure` — render the existing "currently unavailable"
-  transient UI from `browse-catalog.md`. Do **not** promote a
+  transient UI from #3. Do **not** promote a
   transient failure to `removed`. A 503, an auth blip, or a
   network timeout must never flip a user's display to "removed by
   <provider>."

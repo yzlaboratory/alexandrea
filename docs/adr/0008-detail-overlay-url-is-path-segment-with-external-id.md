@@ -1,6 +1,6 @@
 # Detail-overlay URL is a path segment with the external id
 
-The deep-linkable detail overlay defined in `view-entry-detail.md`
+The deep-linkable detail overlay defined in #6
 uses a **path-segment** URL containing the upstream provider's
 **external id**, scoped under the surface route. Examples:
 

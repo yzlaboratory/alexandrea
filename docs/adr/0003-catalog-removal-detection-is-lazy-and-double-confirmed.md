@@ -33,7 +33,7 @@ fetch (either later in the same request flow or on the next access
 to the same Catalog Item). A single `removed` marks the local row
 as `pending_removal` and renders the entry with the same
 "currently unavailable" UI used for the existing
-`External catalog is unreachable` scenario in `browse-catalog.md`.
+`External catalog is unreachable` scenario in #3.
 This guards against a single TMDB hiccup nuking a user's library.
 
 ## OpenLibrary merges (301) are migrations, not removals

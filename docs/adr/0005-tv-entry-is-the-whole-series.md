@@ -16,7 +16,7 @@ episodes were re-watched.
 Ongoing shows (still airing upstream) may be Completed at any time.
 If a future season drops and the user re-watches, that is a normal
 re-completion: another Completion Date is appended and the Rating
-is overwritten wholesale per `complete-entry.md`.
+is overwritten wholesale per #5.
 
 ## Why not per-season?
 
@@ -37,5 +37,5 @@ A user who feels strongly that "S1 was 10/10, S5 was 4/10" cannot
 record that nuance — they get one Rating for the whole series. If
 this pattern is worth supporting later, per-season entries would be
 a deliberate feature with a clear data-model change, captured in
-`OOS.md` first and graduated into a spec only when the use case is
+the deferred-items backlog (#9) first and graduated into a ticket only when the use case is
 real. It must not be added by drift.

@@ -39,7 +39,7 @@ flag — was the obvious alternative. Rejected because:
   nothing user-visible.
 - **Right-to-erasure is cleaner.** A user-deleted notification
   leaves no row in any table that says *"this used to belong to a
-  User."* Future regulatory pressure (`OOS.md` item 14 deferred a
+  User."* Future regulatory pressure (the deferred-items backlog #9 defers a
   portability affordance — erasure is its sibling) lands better
   against a clean cascade.
 - **The resolver is simpler.** One rule — *"unknown or inactive
@@ -73,10 +73,10 @@ table that survives cascade is a focused later addition.
   message page (everything else). 404s only appear for malformed
   routes, not for "Share not found."
 - **The active-Shares listing on the Owner's Shares tab
-  (`manage-shares.md`) is unchanged** — it already shows only active
+  (#1) is unchanged** — it already shows only active
   Shares from the live Share rows. After the cascade there is no
   Owner left to show a tab to.
 - **A revoked/expired Share row is retained on the live account** so
   the Owner's *own* user history (should we ever expose one — see
-  `OOS.md` item 12) can distinguish revoked from expired. Cascade
+  the deferred-items backlog #9) can distinguish revoked from expired. Cascade
   only fires on the user-deleted notification.

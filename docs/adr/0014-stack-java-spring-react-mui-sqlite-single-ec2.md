@@ -26,7 +26,7 @@ origins behind it:
   hashes, verification/reset tokens, and the email rate-limit
   bucket — is owned by **kiraauth** (a separate backend) and
   never lives in this database. See ADR 0016 and the
-  auth-integration spec for how the library consumes kiraauth.
+  kiraauth integration spec (#8) for how the library consumes kiraauth.
 - **Deployment** — one GitHub Actions workflow with two artifacts:
   the Spring Boot Docker image is pushed to a registry and pulled
   by the EC2 instance; the React build is `aws s3 sync`'d to the
@@ -128,7 +128,7 @@ library:
   still audit, but the floor is high.
 - **The components map cleanly to the spec surfaces.** `Drawer
   anchor="bottom"` for the mobile bottom-sheet of
-  `view-entry-detail.md`; `Dialog` for the centered desktop
+  #6; `Dialog` for the centered desktop
   modal; `Chip` for filter chips; `Snackbar` for the toast
   notifications used throughout the specs.
 - **Theming covers contrast.** MUI's palette + the contrast
@@ -154,11 +154,11 @@ library:
   emits structured JSON logs to stdout; the Docker container's
   log driver ships them to CloudWatch. No APM, no metrics
   pipeline, no distributed tracing in v1 — those are deferred
-  in `OOS.md` and revisited if real ops needs emerge.
+  in the deferred-items backlog (#9) and revisited if real ops needs emerge.
 - **Every unguessable token the library issues is 128-bit
   URL-safe random**, generated from a CSPRNG and stored in
   SQLite. In v1 this is exactly one shape: Share URL tokens
-  (`share-top-rated.md`). Auth-related tokens (session, email-
+  (#1). Auth-related tokens (session, email-
   verification, password-reset) are issued by kiraauth, not by
   the library, and live in kiraauth's database.
 

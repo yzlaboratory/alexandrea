@@ -5,7 +5,7 @@ scoped to **exactly one media type at a time** — Movies, TV, Books,
 or Games. There is no unified "everything I want to consume" or
 "everything I have rated" surface; switching media type is an
 explicit navigation step. The deferral of unified views is recorded
-in `OOS.md` item 3.
+in the deferred-items backlog (#9).
 
 We chose strict-per-type because:
 
@@ -22,7 +22,7 @@ We chose strict-per-type because:
 
 The accepted cost: the user must switch type to compare across
 types. We judge this acceptable for v1 — the use cases for
-cross-type browsing are weak, and OOS.md preserves the option.
+cross-type browsing are weak, and the deferred-items backlog (#9) preserves the option.
 
 This ADR exists so a future engineer does not quietly unify the
 surfaces under "consistency". Unifying is a real refactor (a
