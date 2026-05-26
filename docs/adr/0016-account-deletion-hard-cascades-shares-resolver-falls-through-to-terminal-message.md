@@ -1,5 +1,14 @@
 # Library hard-cascades on a kiraauth user-deleted notification; the Share resolver falls through to a single "no longer active" terminal message
 
+> **Status — superseded in part by ADR 0021.** kiraauth is gone; the library
+> now owns identity in-app (ADR 0021). v1 ships **no self-service account
+> deletion**, so the deletion **cascade** below does not fire in v1 and
+> right-to-erasure is deferred (see #8). The **Share-resolver terminal-message
+> rule** below stays in force for revoked, expired, and never-existed tokens;
+> the *deleted-Owner* case cannot arise until a deletion feature exists, at
+> which point the cascade re-activates — triggered locally, not by a kiraauth
+> notification. The text below is retained as the original record.
+
 The entertainment library does not own user identities — kiraauth
 does. The library only learns that a User has been deleted when
 kiraauth fires a **user-deleted notification** (see kiraauth ADR

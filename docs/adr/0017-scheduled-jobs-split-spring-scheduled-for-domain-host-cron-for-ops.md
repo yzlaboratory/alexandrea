@@ -19,11 +19,13 @@ request-serving code:
   rows that revoke-or-expiry policy now wants reaped, deduplicating
   catalog-cache stragglers across providers) lands here by default.
 
-Auth-domain jobs — unverified-account GC, expired auth-token
-cleanup, email-rate-limit bucket pruning — are not on this list.
-Those run inside **kiraauth's** scheduler on kiraauth's host, not
-in the library's JVM. The library does not reach across the
-service boundary to schedule auth-side work.
+- **Auth-domain jobs.** Since auth is in-app (ADR 0021),
+  unverified-account GC, expired auth-token cleanup (verification /
+  reset / pending-email-change tokens), and email-rate-limit bucket
+  pruning run as `@Scheduled` jobs in the library's JVM too — through
+  the same Spring services and transactional boundaries as the rest of
+  the domain work. (These were previously assigned to kiraauth's
+  scheduler; kiraauth is retired.)
 
 **Host cron (on the EC2 instance, JVM-independent)** owns **ops jobs**
 — work that must survive the application being down, or that

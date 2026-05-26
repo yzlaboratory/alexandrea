@@ -79,14 +79,14 @@ specified.
 ### Identity & sharing
 
 **User**:
-An identity that owns exactly one Watchlist and one Library per
-media type. Identity itself — email, password, sessions, verification
-state — is owned by **kiraauth** (a separate backend service); within
-the entertainment library a User is identified only by the opaque
-**kiraauth User ID**, stored as a foreign key on every per-user row.
-The library never holds an email address, a password, or a session
-token. See ADR 0014 for the integration shape and ADR 0016 for what
-the library does when kiraauth notifies it of a User deletion.
+An identity that owns exactly one Watchlist and one Library per media
+type. The library **owns** identity: email, Argon2id password hash,
+email-verification state, and sessions live in the library's own
+database and are managed by Spring Security (see ADR 0021). A User is
+identified internally by a local `users.id`, carried as a foreign key
+on every per-user row. v1 authentication is **email + password with
+email verification** — an unverified account cannot reach protected
+surfaces.
 _Avoid_: account, member, customer.
 
 **Owner**:
