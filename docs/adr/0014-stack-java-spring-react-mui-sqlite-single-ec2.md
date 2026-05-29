@@ -157,11 +157,10 @@ library:
   in the deferred-items backlog (#9) and revisited if real ops needs emerge.
 - **Every unguessable token the library issues is 128-bit
   URL-safe random**, generated from a CSPRNG and stored in
-  SQLite. In v1 this is exactly one shape: Share URL tokens
-  (#1). Auth-related tokens — session ids, email-verification,
-  password-reset, and pending-email-change tokens — are issued by
-  the library itself (Spring Security) and stored in SQLite per
-  ADR 0021.
+  SQLite. The token shapes are Share URL tokens (#1), session
+  ids, and the email-verification, password-reset, and
+  pending-email-change tokens introduced by ADR 0021 — all
+  issued by the library itself.
 
 ## Consequences
 
