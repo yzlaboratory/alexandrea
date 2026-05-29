@@ -150,11 +150,19 @@ library:
   layer is reproducible from the Docker image and Terraform,
   and `VACUUM INTO` produces a guaranteed-consistent copy that
   a snapshot of a live volume cannot.
-- **Observability is CloudWatch Logs only for v1.** Spring Boot
-  emits structured JSON logs to stdout; the Docker container's
-  log driver ships them to CloudWatch. No APM, no metrics
-  pipeline, no distributed tracing in v1 — those are deferred
-  in the deferred-items backlog (#9) and revisited if real ops needs emerge.
+- **Observability is Grafana Cloud Logs (Loki) for v1.** Spring
+  Boot emits structured JSON logs to stdout; a Grafana Alloy
+  companion container on the EC2 instance scrapes the Docker
+  logging socket and ships logs to a Grafana Cloud Loki tenant.
+  The free tier (50 GB/month ingest, 14-day retention) is the
+  steady-state plan — indie traffic stays well inside it; the
+  Pro tier ($19/month base plus per-GB ingest, 30-day retention)
+  is the upgrade path if ingest ever outgrows free. CloudWatch
+  is **not** in the loop: container stdout is read by Alloy on
+  the host, not by the Docker `awslogs` driver. No APM, no
+  metrics pipeline, no distributed tracing in v1 — those are
+  deferred in the deferred-items backlog (#9) and revisited if
+  real ops needs emerge.
 - **Every unguessable token the library issues is 128-bit
   URL-safe random**, generated from a CSPRNG and stored in
   SQLite. The token shapes are Share URL tokens (#1), session
