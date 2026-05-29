@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+
+# 1. Gitleaks — secret scan on the staged diff. Fail fast if anything matches.
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "✗ gitleaks is not installed. Install with: brew install gitleaks"
+  echo "  (or see https://github.com/gitleaks/gitleaks#installing)"
+  exit 1
+fi
+gitleaks protect --staged --redact --no-banner || exit 1
+
+# 2. Frontend — run lint-staged inside frontend/ only if staged files touch it.
+if git diff --cached --name-only | grep -q '^frontend/'; then
+  (cd frontend && npx --no -- lint-staged) || exit 1
+fi

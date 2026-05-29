@@ -1,0 +1,13 @@
+# Gitleaks config — extends the bundled default ruleset.
+# Add repo-specific allowlist entries here if a real string is being flagged
+# as a false positive (e.g. an example value in a docs/ADR snippet).
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Repo-wide allowlist"
+paths = [
+  '''docs/adr/.*\.md''',  # ADRs may discuss token shapes in prose
+  '''CONTEXT\.md''',
+]
