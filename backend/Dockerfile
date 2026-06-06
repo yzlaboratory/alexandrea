@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 #
 # The Spring Boot image CI ships and `docker compose up` runs locally (ADR 0023).
-# Java 25 + Spring Boot 4 per ADR 0014; base tags are Renovate-managed.
+# Java 25 + Spring Boot 4 per ADR 0014; base image tags are pinned by hand.
 #
 # Three stages: build the boot jar, split it into layers, assemble a slim
 # non-root runtime. The layer split (Spring Boot's `tools` jarmode) keeps the

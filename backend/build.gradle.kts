@@ -1,6 +1,6 @@
 // Spring Boot 4 backend per ADR 0014 (stack) and ADR 0021 (auth in-app).
-// Versions intentionally pinned — Renovate will surface updates as PRs once
-// it's enabled. SonarQube Cloud (ADR 0022) consumes the JaCoCo XML this build
+// Versions are pinned and bumped by hand for now — no dependency-update bot
+// is wired up. SonarQube Cloud (ADR 0022) consumes the JaCoCo XML this build
 // emits at backend/build/reports/jacoco/test/jacocoTestReport.xml.
 
 plugins {
