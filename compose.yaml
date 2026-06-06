@@ -1,0 +1,28 @@
+# Local backend dev entry point (ADR 0023, "Local backend dev workflow").
+# `docker compose up` builds the same prod-shape image CI ships and runs it
+# against a SQLite volume — Dockerfile mistakes surface here, not in CI.
+#
+# The compose project name is deliberately NOT pinned with `name:`. It defaults
+# to the directory basename, so each /implement-issues worktree (its own
+# directory) gets its own project and therefore its own `sqlite-data` volume.
+# Parallel subagents never contend on a single SQLite file lock (ADR 0023).
+
+services:
+  backend:
+    build:
+      context: ./backend
+    image: alexandrea-backend
+    ports:
+      - "${ALEXANDREA_PORT:-8080}:8080"
+    environment:
+      # dev profile: readable console logs and Secure=false session cookies, so
+      # the cookie is actually issued over http://localhost (application.yml).
+      # Override to `prod` to exercise the JSON-logging / Secure-cookie shape.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      ALEXANDREA_DB_PATH: /data/alexandrea.db
+    volumes:
+      - sqlite-data:/data
+
+volumes:
+  # Auto-namespaced by the (unpinned) project name → per-worktree isolation.
+  sqlite-data:

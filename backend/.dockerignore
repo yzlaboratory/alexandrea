@@ -1,0 +1,28 @@
+# Build context is backend/. Keep local build/run artefacts out of the image so
+# the build is reproducible and the context upload stays small. The Gradle
+# wrapper (gradlew, gradle/wrapper/*) is deliberately NOT ignored — the build
+# stage needs it.
+
+.gradle/
+build/
+bin/
+
+# Local SQLite data and any stray dumps (the real DB lives on a mounted volume).
+data/
+*.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# VCS / editor clutter that has no business in the image.
+.git/
+.gitignore
+.idea/
+*.iml
+*.swp
+*.swo
+.DS_Store
+
+# Don't bake the Dockerfile/ignore themselves into the context build layers.
+Dockerfile
+.dockerignore
