@@ -1,0 +1,110 @@
+# Code quality gate (ADR 0022). The local toolchain fails fast per language;
+# Sonar is the cross-language audit on top, consuming the coverage these jobs emit.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # The canonical gate (typecheck, lint, format:check, knip, madge, test) —
+      # one source of truth, the same `check` developers run locally.
+      - run: npm run check
+
+      # react-doctor audit (ADR 0022) — React-specific anti-pattern pass.
+      - run: npm run doctor
+
+      # Re-run tests with coverage so Sonar has LCOV. The suite is small; the
+      # extra run is cheaper than letting the gate and the coverage step drift.
+      - run: npm run test:coverage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/lcov.info
+          if-no-files-found: error
+
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # `check` runs tests and, via finalizedBy in build.gradle.kts, the JaCoCo
+      # report Sonar consumes.
+      - run: ./gradlew check
+
+      # Sonar's Java analyzer needs the compiled classes + the JaCoCo XML.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-build
+          path: |
+            backend/build/classes
+            backend/build/libs
+            backend/build/reports/jacoco
+          if-no-files-found: error
+
+  sonar:
+    name: sonar
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    # Reads the token into env so it can gate the steps below: without it, every
+    # step skips and the job goes green — Sonar never blocks a PR until the token
+    # is configured (ADR 0022 secret SONAR_TOKEN).
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - if: env.SONAR_TOKEN == ''
+        run: echo "SONAR_TOKEN not set — skipping Sonar scan. Add it in repo secrets to enable the gate." >> "$GITHUB_STEP_SUMMARY"
+
+      # fetch-depth 0 so Sonar can attribute new vs legacy code by git blame.
+      - if: env.SONAR_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - if: env.SONAR_TOKEN != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+
+      - if: env.SONAR_TOKEN != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: backend/build
+
+      - if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@v4
