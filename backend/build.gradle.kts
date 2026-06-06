@@ -86,3 +86,12 @@ tasks.jacocoTestReport {
 // `test` is `finalizedBy(jacocoTestReport)` above, so `./gradlew check` runs
 // the full local gate including coverage — the JVM-side counterpart to the
 // frontend's `npm run check`.
+
+// SonarQube's Java analyzer resolves types against the dependency jars
+// (sonar.java.libraries — ADR 0022). `check` never assembles them, so this
+// stages the runtime classpath into a stable directory the scanner points at.
+// CI runs `./gradlew check collectSonarLibraries`.
+tasks.register<Copy>("collectSonarLibraries") {
+    from(configurations.runtimeClasspath)
+    into(layout.buildDirectory.dir("sonar-libraries"))
+}

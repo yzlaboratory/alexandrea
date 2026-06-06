@@ -62,16 +62,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       # `check` runs tests and, via finalizedBy in build.gradle.kts, the JaCoCo
-      # report Sonar consumes.
-      - run: ./gradlew check
+      # report Sonar consumes; collectSonarLibraries stages the dependency jars.
+      - run: ./gradlew check collectSonarLibraries
 
-      # Sonar's Java analyzer needs the compiled classes + the JaCoCo XML.
+      # Sonar's Java analyzer needs the compiled classes, dependency jars, and
+      # the JaCoCo XML.
       - uses: actions/upload-artifact@v4
         with:
           name: backend-build
           path: |
             backend/build/classes
-            backend/build/libs
+            backend/build/sonar-libraries
             backend/build/reports/jacoco
           if-no-files-found: error
 
