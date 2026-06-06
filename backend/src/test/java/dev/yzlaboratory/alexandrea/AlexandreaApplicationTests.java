@@ -1,4 +1,4 @@
-package dev.yzlaboratory.entlib;
+package dev.yzlaboratory.alexandrea;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,7 +16,7 @@ import org.springframework.test.context.ActiveProfiles;
     "spring.flyway.enabled=false",
 })
 @ActiveProfiles("dev")
-class EntertainmentLibraryApplicationTests {
+class AlexandreaApplicationTests {
 
     @Test
     void contextLoads() {

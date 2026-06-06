@@ -80,7 +80,7 @@ fast; Sonar's pass is the audit, not the primary gate.
   the cap)** for two consecutive analyses. At that point we move to the
   **Team plan ($32/month)** which extends the cap to 100k LOC. Above 100k
   we revisit.
-- **Public-repo alternative** — if `yzlaboratory/entertainment-library`
+- **Public-repo alternative** — if `yzlaboratory/alexandrea`
   is made public, the LOC cap disappears and the only reasons to upgrade
   are Team-tier features (advanced security reports, OWASP/MISRA bundles,
   AI-driven code fixes). That decision is deferred — it depends on whether

@@ -17,13 +17,13 @@ origins behind it:
   `/index.html` so React Router can resolve client-side paths —
   including the path-segment detail-overlay URLs of ADR 0008.
 - **Database** — SQLite, single file on the EC2 instance's disk.
-  Holds every persistent library table: watchlist/library rows,
+  Holds every persistent table: watchlist/library rows,
   ratings, completion dates, shares, per-(user, surface,
   media_type) preferences, and the catalog cache of ADR 0007.
   It **also** holds authentication state — the `users` table
   (email, Argon2id password hash, verification state), sessions
   (Spring Session JDBC), the verification / reset / email-change
-  tokens, and the email rate-limit bucket — because the library
+  tokens, and the email rate-limit bucket — because Alexandrea
   now owns auth in-app via Spring Security (see ADR 0021). Each
   per-user row carries a foreign-key reference to the local
   `users.id`.
@@ -39,13 +39,13 @@ origins behind it:
 Two simpler architectures were considered and rejected:
 
 - **Split origin on separate hostnames** (`app.example.com` for
-  the SPA on S3+CloudFront, `api.example.com` for the library API
-  on EC2). Rejected because the library API benefits from sharing
+  the SPA on S3+CloudFront, `api.example.com` for the API
+  on EC2). Rejected because the API benefits from sharing
   an origin with its SPA: the session cookie and any app cookie
   (e.g. last-used media type) can be scoped tightly to one origin,
-  and the library SPA can call `/api/*` without CORS preflights.
-  With auth now in-app (ADR 0021) the session cookie is the
-  library's own and same-origin, which makes this cleaner still.
+  and the SPA can call `/api/*` without CORS preflights.
+  With auth now in-app (ADR 0021) the session cookie is
+  Alexandrea's own and same-origin, which makes this cleaner still.
 - **Spring Boot serves everything from EC2** (one Docker image
   with the React bundle embedded as static resources, a
   fall-through rule to `index.html`). Genuinely simpler v1 ops,
@@ -56,14 +56,14 @@ Two simpler architectures were considered and rejected:
   provides.
 
 The chosen shape — **CloudFront as a single virtual host with
-two behaviors** — keeps the library API and SPA on one origin
+two behaviors** — keeps the API and SPA on one origin
 while giving the SPA edge caching:
 
-- **The browser sees one origin for the library.** The library
-  SPA and the library API are same-origin; CORS does not enter
-  the picture for library-internal traffic. There is no separate
-  auth host to coordinate with — authentication is same-origin
-  and in-app (ADR 0021).
+- **The browser sees one origin for Alexandrea.** The SPA and
+  the API are same-origin; CORS does not enter the picture for
+  Alexandrea-internal traffic. There is no separate auth host
+  to coordinate with — authentication is same-origin and in-app
+  (ADR 0021).
 - **Edge caching for the SPA bundle is free.** CloudFront's
   always-free tier (1 TB egress, 10M requests/month) covers
   indie-scale traffic indefinitely; spike absorption is
@@ -100,7 +100,7 @@ reflexive default; we chose against it deliberately:
   scheduled `VACUUM INTO` dumps shipped to S3.
 - **Litestream-style streaming replication can be added later**
   if a hot standby ever becomes worth it. Today it isn't.
-- **All library state lives in one place.** Cache, preferences,
+- **All of Alexandrea's state lives in one place.** Cache, preferences,
   business data — same DB, same transactional boundary. No "I
   forgot to restart Redis" failure mode. Auth state (users,
   sessions, tokens) lives in the **same** SQLite database
@@ -140,9 +140,9 @@ library:
 ## Backups, observability, and security tokens
 
 - **Backup strategy is a daily SQLite dump to a versioned S3
-  bucket.** A cron on the EC2 instance runs `sqlite3 entlib.db
-  ".backup /tmp/entlib-<timestamp>.db"`, ships the file to
-  `s3://entlib-backups/YYYY/MM/DD/`, and removes the local
+  bucket.** A cron on the EC2 instance runs `sqlite3 alexandrea.db
+  ".backup /tmp/alexandrea-<timestamp>.db"`, ships the file to
+  `s3://alexandrea-backups/YYYY/MM/DD/`, and removes the local
   copy. The S3 bucket has versioning on and a lifecycle rule
   (transition to Glacier after 30 days, expire after a chosen
   retention). EBS snapshots are deliberately **not used** —
@@ -163,12 +163,12 @@ library:
   metrics pipeline, no distributed tracing in v1 — those are
   deferred in the deferred-items backlog (#9) and revisited if
   real ops needs emerge.
-- **Every unguessable token the library issues is 128-bit
+- **Every unguessable token Alexandrea issues is 128-bit
   URL-safe random**, generated from a CSPRNG and stored in
   SQLite. The token shapes are Share URL tokens (#1), session
   ids, and the email-verification, password-reset, and
   pending-email-change tokens introduced by ADR 0021 — all
-  issued by the library itself.
+  issued by Alexandrea itself.
 
 ## Consequences
 
@@ -181,8 +181,8 @@ library:
   columns and lazy expiry on read. No external cache
   dependency.
 - **Authentication is provided in-app by Spring Security**
-  (ADR 0021), superseding the earlier kiraauth integration. The
-  library holds password hashes (Argon2id), issues its own session
+  (ADR 0021), superseding the earlier kiraauth integration. Alexandrea
+  holds password hashes (Argon2id), issues its own session
   and email tokens, and sends its own verification / reset /
   email-change email via Amazon SES. Email verification gates
   access to protected surfaces. Self-service account deletion (and

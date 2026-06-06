@@ -1,4 +1,4 @@
-package dev.yzlaboratory.entlib.config;
+package dev.yzlaboratory.alexandrea.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

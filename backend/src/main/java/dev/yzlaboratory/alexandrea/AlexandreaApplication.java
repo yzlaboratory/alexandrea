@@ -1,12 +1,12 @@
-package dev.yzlaboratory.entlib;
+package dev.yzlaboratory.alexandrea;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * Entry point for the entertainment-library backend.
+ * Entry point for the Alexandrea backend.
  *
- * <p>The backend is the Spring Boot half of the stack pinned by ADR 0014.
+ * <p>Alexandrea is the Spring Boot half of the stack pinned by ADR 0014.
  * It serves the REST API behind CloudFront's {@code /api/*} behaviour, with
  * SQLite as the single datastore and Spring Security (ADR 0021) owning auth
  * state in-process. This class itself is intentionally bare — feature
@@ -14,9 +14,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * the feature tickets in the GitHub tracker.
  */
 @SpringBootApplication
-public class EntertainmentLibraryApplication {
+public class AlexandreaApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(EntertainmentLibraryApplication.class, args);
+        SpringApplication.run(AlexandreaApplication.class, args);
     }
 }

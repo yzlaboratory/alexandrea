@@ -1,6 +1,6 @@
-# Library hard-cascades on a kiraauth user-deleted notification; the Share resolver falls through to a single "no longer active" terminal message
+# Alexandrea hard-cascades on a kiraauth user-deleted notification; the Share resolver falls through to a single "no longer active" terminal message
 
-> **Status — superseded in part by ADR 0021.** kiraauth is gone; the library
+> **Status — superseded in part by ADR 0021.** kiraauth is gone; Alexandrea
 > now owns identity in-app (ADR 0021). v1 ships **no self-service account
 > deletion**, so the deletion **cascade** below does not fire in v1 and
 > right-to-erasure is deferred (see #8). The **Share-resolver terminal-message
@@ -9,15 +9,15 @@
 > which point the cascade re-activates — triggered locally, not by a kiraauth
 > notification. The text below is retained as the original record.
 
-The entertainment library does not own user identities — kiraauth
-does. The library only learns that a User has been deleted when
+Alexandrea does not own user identities — kiraauth
+does. Alexandrea only learns that a User has been deleted when
 kiraauth fires a **user-deleted notification** (see kiraauth ADR
 0004 for the integration shape; the mechanics are TBD but the
 contract that "kiraauth tells consuming apps about deletions" is
 fixed).
 
-When the library receives a user-deleted notification carrying a
-User ID, **every library row authored by that User is hard-deleted**
+When Alexandrea receives a user-deleted notification carrying a
+User ID, **every row authored by that User is hard-deleted**
 — watchlists, libraries, ratings, completion dates, per-(user,
 surface, media_type) preferences, **and every Share they ever
 created — active, revoked, and expired alike**. Nothing is

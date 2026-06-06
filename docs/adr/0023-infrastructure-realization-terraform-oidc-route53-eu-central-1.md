@@ -68,7 +68,7 @@ Considered and rejected:
   `token.actions.githubusercontent.com` is registered as a trusted
   identity provider in the AWS account. One project-scoped role:
   `alexandrea-prod-github-actions`. The role's trust policy is **scoped
-  to this specific repo** (`yzlaboratory/entertainment-library`) by
+  to this specific repo** (`yzlaboratory/alexandrea`) by
   `sub` claim and rejects token requests from any other source.
 - **No static IAM keys in GitHub Secrets.** The only long-lived secrets
   in GitHub are third-party tokens that AWS does not issue: the
@@ -160,9 +160,9 @@ be added *alongside* Parameter Store without removing it.
 
 This subsection makes concrete the backup posture ADR 0014 sketched.
 
-- **Daily SQLite dump** via `sqlite3 entlib.db ".backup
-  /tmp/entlib-<timestamp>.db"`, shipped to
-  `s3://alexandrea-prod-backups/YYYY/MM/DD/entlib-<timestamp>.db`.
+- **Daily SQLite dump** via `sqlite3 alexandrea.db ".backup
+  /tmp/alexandrea-<timestamp>.db"`, shipped to
+  `s3://alexandrea-prod-backups/YYYY/MM/DD/alexandrea-<timestamp>.db`.
   Cron on the EC2 host — ADR 0017's split puts this in host cron, not
   Spring `@Scheduled`.
 - **Bucket name — `alexandrea-prod-backups`.** Env-qualified for

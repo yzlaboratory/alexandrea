@@ -6,7 +6,7 @@ describe('App', () => {
   it('renders the scaffold heading', () => {
     render(<App />);
     expect(
-      screen.getByRole('heading', { name: /entertainment library/i }),
+      screen.getByRole('heading', { name: /alexandrea/i }),
     ).toBeInTheDocument();
   });
 

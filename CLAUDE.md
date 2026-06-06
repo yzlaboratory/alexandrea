@@ -4,7 +4,7 @@ This repo uses Kira's engineering skills. Specs, PRDs, and implementation issues
 
 ### Tracker — GitHub Issues
 
-Specs, PRDs, and issues live in GitHub Issues on `yzlaboratory/entertainment-library`.
+Specs, PRDs, and issues live in GitHub Issues on `yzlaboratory/alexandrea`.
 
 - **Feature ticket** — a GitHub issue. Its **body** holds, for one feature, three sections in order: `## PRD`, `## Spec` (strict Gherkin), and `## Out of scope`. Created by `/create-alignment-and-refine-docs` (or passed to it if one already exists).
 - **Issue** — a GitHub sub-issue of a feature ticket. One tracer-bullet vertical slice, produced by `/to-issues`.

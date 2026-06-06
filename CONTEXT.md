@@ -1,9 +1,14 @@
-# Entertainment Library
+# Alexandrea
 
-A personal, per-media-type tracker for things a user plans to consume
-(**watchlist**) and things they have consumed and rated (**library**).
-External catalogs (TMDB, OpenLibrary, IGDB) supply discovery; the
-user's own watchlist, library, ratings, and shares are local.
+Alexandrea is a personal, per-media-type tracker for things a user plans to
+consume (**watchlist**) and things they have consumed and rated (**library**).
+External catalogs (TMDB, OpenLibrary, IGDB) supply discovery; the user's own
+watchlist, library, ratings, and shares are local.
+
+> "Library" (capital L) is a **domain term** in Alexandrea — the user's
+> collection of completed entries. "Alexandrea" is the **product**. Anywhere
+> the prose says "Alexandrea owns X", read it as "the product owns X"; the
+> domain Library is still called Library.
 
 ## Language
 
@@ -80,8 +85,8 @@ specified.
 
 **User**:
 An identity that owns exactly one Watchlist and one Library per media
-type. The library **owns** identity: email, Argon2id password hash,
-email-verification state, and sessions live in the library's own
+type. Alexandrea **owns** identity: email, Argon2id password hash,
+email-verification state, and sessions live in Alexandrea's own
 database and are managed by Spring Security (see ADR 0021). A User is
 identified internally by a local `users.id`, carried as a foreign key
 on every per-user row. v1 authentication is **email + password with

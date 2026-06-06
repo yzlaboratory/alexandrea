@@ -1,6 +1,6 @@
 # Authentication is in-app, session-based, on Spring Security (supersedes the kiraauth integration)
 
-The entertainment library **owns** authentication. Identity (email, Argon2id
+Alexandrea **owns** authentication. Identity (email, Argon2id
 password hash, email-verification state), server-side sessions, and the
 verification / password-reset / email-change tokens all live in this app's own
 SQLite database (ADR 0014) and are managed by **Spring Security**. This
@@ -75,7 +75,7 @@ rather than by a kiraauth notification.
 
 ## Consequences
 
-- The library now stores password hashes and PII (email) and sends email — it
+- Alexandrea now stores password hashes and PII (email) and sends email — it
   inherits the obligations kiraauth used to carry: correct hashing params,
   single-use/expiring/enumeration-safe tokens, and rate limiting.
 - **No external auth dependency.** There is no kiraauth to be down, to

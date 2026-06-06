@@ -1,15 +1,15 @@
 # Defaults that hold across every profile. Per-profile overrides live below.
 spring:
   application:
-    name: entertainment-library
+    name: alexandrea
 
   # SQLite is the single datastore (ADR 0014). The path resolves to the
-  # working directory in dev (./data/entlib.db) and to a mounted volume in
-  # prod (/data/entlib.db on the EC2 host). WAL mode and a short busy
+  # working directory in dev (./data/alexandrea.db) and to a mounted volume
+  # in prod (/data/alexandrea.db on the EC2 host). WAL mode and a short busy
   # timeout are appended to the URL so writers don't block readers under
   # default journal mode.
   datasource:
-    url: jdbc:sqlite:${ENTLIB_DB_PATH:./data/entlib.db}?journal_mode=WAL&busy_timeout=5000&foreign_keys=on
+    url: jdbc:sqlite:${ALEXANDREA_DB_PATH:./data/alexandrea.db}?journal_mode=WAL&busy_timeout=5000&foreign_keys=on
     driver-class-name: org.sqlite.JDBC
     hikari:
       # SQLite is a single-writer file. A small pool with a generous
@@ -59,7 +59,7 @@ management:
 logging:
   level:
     root: INFO
-    dev.yzlaboratory.entlib: INFO
+    dev.yzlaboratory.alexandrea: INFO
 
 ---
 spring:
@@ -77,7 +77,7 @@ server:
 
 logging:
   level:
-    dev.yzlaboratory.entlib: DEBUG
+    dev.yzlaboratory.alexandrea: DEBUG
 
 ---
 spring:

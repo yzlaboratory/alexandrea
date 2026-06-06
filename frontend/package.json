@@ -1,9 +1,9 @@
 {
-  "name": "entertainment-library-frontend",
+  "name": "alexandrea-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "React 19 + MUI + Vite frontend for the entertainment library (per ADR 0014).",
+  "description": "React 19 + MUI + Vite frontend for Alexandrea (per ADR 0014).",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

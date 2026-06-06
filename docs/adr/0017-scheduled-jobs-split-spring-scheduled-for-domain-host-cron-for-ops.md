@@ -6,7 +6,7 @@ constraint into two homes, and pin which goes where.
 ## The split
 
 **Spring `@Scheduled` (in-JVM, transactional, Spring-bean-using)** owns
-**domain jobs** — work that reads or writes the library's data through
+**domain jobs** — work that reads or writes Alexandrea's data through
 normal Spring services and benefits from the same JDBC pool, the same
 `@Transactional` boundaries, and the same logging shape as the
 request-serving code:
@@ -15,14 +15,14 @@ request-serving code:
   ADR 0007 to drop rows past their 7-day TTL. Cache reads are already
   lazy-and-TTL-aware at the use site; this sweep is purely to keep
   the table small.
-- Any future library-state housekeeping (e.g. pruning expired Share
+- Any future Alexandrea-state housekeeping (e.g. pruning expired Share
   rows that revoke-or-expiry policy now wants reaped, deduplicating
   catalog-cache stragglers across providers) lands here by default.
 
 - **Auth-domain jobs.** Since auth is in-app (ADR 0021),
   unverified-account GC, expired auth-token cleanup (verification /
   reset / pending-email-change tokens), and email-rate-limit bucket
-  pruning run as `@Scheduled` jobs in the library's JVM too — through
+  pruning run as `@Scheduled` jobs in Alexandrea's JVM too — through
   the same Spring services and transactional boundaries as the rest of
   the domain work. (These were previously assigned to kiraauth's
   scheduler; kiraauth is retired.)
@@ -82,7 +82,7 @@ inherits the same "single-instance only" acceptance.
   state accumulated in the meantime — sweep jobs are by nature
   catch-up-friendly, so this is fine.
 - **Host cron jobs and `@Scheduled` jobs share the same SQLite
-  file** but never the same row class — backup reads `entlib.db`
+  file** but never the same row class — backup reads `alexandrea.db`
   consistently via `sqlite3 .backup`; GC writes through Spring.
   No cross-process coordination is needed beyond what SQLite's
   WAL gives.

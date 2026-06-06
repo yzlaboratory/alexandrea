@@ -9,7 +9,7 @@ function App(): JSX.Element {
   return (
     <Container maxWidth="sm" sx={{ py: 8 }}>
       <Typography variant="h3" component="h1" gutterBottom>
-        Entertainment Library
+        Alexandrea
       </Typography>
       <Typography variant="body1">Scaffold is alive.</Typography>
     </Container>

@@ -1,1 +1,1 @@
-rootProject.name = "entertainment-library-backend"
+rootProject.name = "alexandrea-backend"
