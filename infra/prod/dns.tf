@@ -5,24 +5,14 @@ resource "aws_route53_zone" "main" {
   name = var.domain
 }
 
-# Apex alias -> CloudFront (ADR 0023: CloudFront alias at the apex).
-resource "aws_route53_record" "apex" {
-  zone_id = aws_route53_zone.main.zone_id
-  name    = var.domain
-  type    = "A"
+# Apex and www both alias to CloudFront (ADR 0023: CloudFront alias at the apex;
+# www is served identically, not redirected — canonicalization is deferred to the
+# app/CDN-function layer if SEO ever needs it). One definition, two names.
+resource "aws_route53_record" "cloudfront_alias" {
+  for_each = toset([var.domain, "www.${var.domain}"])
 
-  alias {
-    name                   = aws_cloudfront_distribution.main.domain_name
-    zone_id                = aws_cloudfront_distribution.main.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
-
-# www -> same CloudFront distribution (served, not redirected; canonicalization
-# to apex is deferred to the app/CDN-function layer if SEO ever needs it).
-resource "aws_route53_record" "www" {
   zone_id = aws_route53_zone.main.zone_id
-  name    = "www.${var.domain}"
+  name    = each.value
   type    = "A"
 
   alias {
