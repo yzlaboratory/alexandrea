@@ -2,7 +2,7 @@
   "name": "entertainment-library",
   "private": true,
   "version": "0.0.0",
-  "description": "Repo-root tooling (Husky, commitlint, gitleaks). Frontend lives in frontend/; backend will live in backend/.",
+  "description": "Repo-root tooling (Husky, commitlint, gitleaks). Frontend lives in frontend/; backend lives in backend/ (Java 25 + Spring Boot 4 + Gradle).",
   "scripts": {
     "prepare": "husky"
   },

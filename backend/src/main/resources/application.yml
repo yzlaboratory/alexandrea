@@ -1,0 +1,88 @@
+# Defaults that hold across every profile. Per-profile overrides live below.
+spring:
+  application:
+    name: entertainment-library
+
+  # SQLite is the single datastore (ADR 0014). The path resolves to the
+  # working directory in dev (./data/entlib.db) and to a mounted volume in
+  # prod (/data/entlib.db on the EC2 host). WAL mode and a short busy
+  # timeout are appended to the URL so writers don't block readers under
+  # default journal mode.
+  datasource:
+    url: jdbc:sqlite:${ENTLIB_DB_PATH:./data/entlib.db}?journal_mode=WAL&busy_timeout=5000&foreign_keys=on
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      # SQLite is a single-writer file. A small pool with a generous
+      # acquisition timeout matches that without serialising every read.
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  # Flyway runs at boot from src/main/resources/db/migration. There are no
+  # migrations yet — the directory will be created by the auth feature.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # The Spring Session JDBC schema is initialised by the auth feature's
+  # Flyway migration, not by Spring Session's own bootstrapper, so the
+  # autoconfig stays out of the way until that schema exists.
+  session:
+    store-type: none
+    timeout: 30d
+
+server:
+  port: 8080
+  servlet:
+    session:
+      cookie:
+        # Session cookie posture per ADR 0021. Same-origin via CloudFront
+        # (ADR 0014) means SameSite=Lax is enough. Secure=true is enforced
+        # in prod (CloudFront terminates TLS); dev relaxes it so the app
+        # boots over http://localhost.
+        http-only: true
+        same-site: lax
+        secure: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only the health probe is exposed by default. Metrics endpoints will
+        # be added if/when an observability ADR opens them up.
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    dev.yzlaboratory.entlib: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+server:
+  servlet:
+    session:
+      cookie:
+        # Dev runs over plain http on localhost; keep Secure off so the
+        # cookie is actually issued.
+        secure: false
+
+logging:
+  level:
+    dev.yzlaboratory.entlib: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+# Prod inherits the defaults above. Logback-spring.xml flips to JSON output
+# under this profile so Alloy → Loki gets structured events (ADR 0014).

@@ -12,3 +12,7 @@ gitleaks protect --staged --redact --no-banner || exit 1
 if git diff --cached --name-only | grep -q '^frontend/'; then
   (cd frontend && npx --no -- lint-staged) || exit 1
 fi
+
+# 3. Backend — the JVM gate is too slow for pre-commit (Spring context boot
+# dominates), so we deliberately do not run ./gradlew check here. CI runs it
+# on every PR; developers run it locally with `cd backend && ./gradlew check`.

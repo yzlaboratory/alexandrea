@@ -1,0 +1,5 @@
+# Per-module ignores. Repo-root .gitignore already covers Gradle build
+# outputs, IDE clutter, and *.db; this file only adds backend-local extras.
+
+# Local-only runtime data — the SQLite file lives here in dev.
+/data/
