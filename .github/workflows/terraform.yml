@@ -1,0 +1,65 @@
+# Terraform CI for the prod stack (ADR 0023). Auth is GitHub OIDC into the
+# alexandrea-prod-github-actions role — no static AWS keys. PRs get a plan;
+# applies are manual (workflow_dispatch) because a first apply depends on
+# out-of-band steps (NS delegation, SSM secret values) — see infra/README.md.
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - infra/**
+      - .github/workflows/terraform.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write # mint the OIDC token
+  contents: read
+
+defaults:
+  run:
+    working-directory: infra/prod
+
+jobs:
+  plan:
+    name: plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      # fmt covers both layers (bootstrap + prod), so check from the repo root.
+      - name: fmt
+        working-directory: infra
+        run: terraform fmt -check -recursive
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - run: terraform init -input=false
+
+      - run: terraform validate
+
+      - name: plan
+        run: terraform plan -input=false -no-color
+
+  apply:
+    name: apply
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - run: terraform init -input=false
+
+      - run: terraform apply -input=false -auto-approve
