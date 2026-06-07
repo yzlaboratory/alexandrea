@@ -94,6 +94,15 @@ email verification** — an unverified account cannot reach protected
 surfaces.
 _Avoid_: account, member, customer.
 
+**Sticky media type**:
+The User's last-used media type, remembered server-side so login lands
+them on that media type's Catalog browse page — across devices.
+Switching media type updates it. A User who has never chosen one (a
+fresh account) has no sticky media type and defaults to **Movies**.
+Stored as a single nullable value on the User; null means "never
+chose". See #8.
+_Avoid_: default media type, preferred media type.
+
 **Owner**:
 A User in the role of having created a Share for one of their own
 Libraries. Not a separate identity — just a role-name used in the
