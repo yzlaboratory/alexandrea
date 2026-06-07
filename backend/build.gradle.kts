@@ -41,9 +41,12 @@ dependencies {
 
     // --- Persistence: SQLite + Flyway ----------------------------------------
     // SQLite is the single datastore (ADR 0014). Flyway runs at boot to apply
-    // schema migrations from src/main/resources/db/migration.
+    // schema migrations from src/main/resources/db/migration. Boot 4 modularised
+    // the Flyway autoconfiguration out of spring-boot-autoconfigure into
+    // spring-boot-flyway — depending on flyway-core alone would compile but
+    // never run migrations, so we pull the Boot module (it brings flyway-core).
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
-    implementation("org.flywaydb:flyway-core")
+    implementation("org.springframework.boot:spring-boot-flyway")
     runtimeOnly("org.xerial:sqlite-jdbc:3.53.2.0")
 
     // --- Structured JSON logs for Grafana Cloud Loki (ADR 0014) --------------
@@ -55,6 +58,9 @@ dependencies {
     // --- Tests ---------------------------------------------------------------
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
+    // Boot 4 split the web test slices out of spring-boot-test-autoconfigure;
+    // @AutoConfigureMockMvc and the MockMvc support now live in this module.
+    testImplementation("org.springframework.boot:spring-boot-webmvc-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
