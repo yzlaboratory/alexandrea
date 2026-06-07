@@ -1,4 +1,13 @@
 # Defaults that hold across every profile. Per-profile overrides live below.
+
+# Auth knobs (ADR 0021). Token lifetime is config-driven, not pinned in code;
+# the verification URL points at the SPA route that posts the token back to
+# /api/auth/verify. In prod this is the CloudFront host (ADR 0014).
+alexandrea:
+  auth:
+    verification-token-ttl: 24h
+    verification-url-template: http://localhost:5173/verify?token={token}
+
 spring:
   application:
     name: alexandrea

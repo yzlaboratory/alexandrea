@@ -31,6 +31,10 @@ public class SecurityConfig {
         http
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                // The signup/verify/resend endpoints are reached by callers who
+                // are not yet authenticated (ADR 0021, #19), so they are public.
+                // Login/session-gated surfaces land authenticated in later slices.
+                .requestMatchers("/api/auth/**").permitAll()
                 .anyRequest().authenticated()
             )
             .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()));
