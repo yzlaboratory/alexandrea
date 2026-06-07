@@ -116,6 +116,7 @@ data "aws_iam_policy_document" "ci_deploy" {
       "ssm:*",
       "ses:*",
       "sns:*", # SES bounce/complaint event topic + policy
+      "sqs:*", # SES events queue + DLQ the backend consumes
       "iam:*", # instance role + profile lifecycle
       "sts:GetCallerIdentity",
     ]
