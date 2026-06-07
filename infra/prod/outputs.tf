@@ -37,3 +37,13 @@ output "ses_events_topic_arn" {
   description = "SNS topic the backend subscribes to for bounce/complaint feedback."
   value       = aws_sns_topic.ses_events.arn
 }
+
+output "ses_events_queue_url" {
+  description = "SQS queue the backend long-polls for SES bounce/complaint events."
+  value       = aws_sqs_queue.ses_events.id
+}
+
+output "ses_events_queue_arn" {
+  description = "ARN of the SES events SQS queue."
+  value       = aws_sqs_queue.ses_events.arn
+}
