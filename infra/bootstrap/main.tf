@@ -115,6 +115,7 @@ data "aws_iam_policy_document" "ci_deploy" {
       "s3:*",
       "ssm:*",
       "ses:*",
+      "sns:*", # SES bounce/complaint event topic + policy
       "iam:*", # instance role + profile lifecycle
       "sts:GetCallerIdentity",
     ]
