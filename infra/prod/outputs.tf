@@ -27,3 +27,13 @@ output "backups_bucket" {
   description = "S3 bucket for daily SQLite dumps."
   value       = aws_s3_bucket.backups.id
 }
+
+output "ses_configuration_set" {
+  description = "Configuration set the backend must send with (carries suppression + reputation tracking)."
+  value       = aws_sesv2_configuration_set.mail.configuration_set_name
+}
+
+output "ses_events_topic_arn" {
+  description = "SNS topic the backend subscribes to for bounce/complaint feedback."
+  value       = aws_sns_topic.ses_events.arn
+}
