@@ -13,11 +13,6 @@ import {
 import { Link as RouterLink } from 'react-router-dom';
 import { resendVerification, verify, type VerifyOutcome } from './authApi';
 
-// The verify-result page. It opens at the link the user clicked, lifts the
-// token from the query string, and resolves it against /api/auth/verify on
-// display — a genuine "fetch because the page was shown" Effect (stack.md). The
-// four states are made impossible-to-confuse by a discriminated union rather
-// than a bag of booleans.
 function VerifyPage(): JSX.Element {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
@@ -25,8 +20,7 @@ function VerifyPage(): JSX.Element {
   return (
     <Container maxWidth="sm" sx={{ py: 8 }}>
       {token === null || token === '' ? (
-        // A link without a token can never verify — it is just a rejected link,
-        // decided during render so no Effect/setState dance is needed.
+        // A link without a token is just a rejected link, decided at render — no Effect needed.
         <RejectedPanel />
       ) : (
         <TokenVerification token={token} />
@@ -35,9 +29,7 @@ function VerifyPage(): JSX.Element {
   );
 }
 
-// Resolves a present token against the server on display — the one genuine
-// "fetch because the page was shown" case (stack.md). The outcome is the only
-// async-driven state; the loading and resolved views are derived from it.
+// Resolving a token on display is a genuine "fetch because shown" Effect (stack.md).
 function TokenVerification({ token }: { token: string }): JSX.Element {
   const [outcome, setOutcome] = useState<VerifyOutcome | null>(null);
 

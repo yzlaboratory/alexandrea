@@ -14,15 +14,11 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The auth HTTP surface under {@code /api/auth}. A thin controller: validate the
- * payload, call {@link AuthService}, translate the outcome to a status code. No
- * business logic lives here.
- *
- * <p>Signup and resend always answer the same way regardless of account state
- * (202 Accepted, "check your email"), so the response cannot be used to learn
- * whether an address is registered (ADR 0024). The single exception that does
- * leak — a password outside policy — is a property of the request the caller
- * already holds, not of stored state, so reporting it (400) reveals nothing.
+ * The auth HTTP surface under {@code /api/auth}. Signup and resend always answer
+ * the same way regardless of account state (202, "check your email"), so the
+ * response cannot reveal whether an address is registered (ADR 0024). The one
+ * leak — a password outside policy — describes the caller's own request, not
+ * stored state, so reporting it (400) reveals nothing.
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -83,6 +79,5 @@ public class AuthController {
         return problem;
     }
 
-    /** Success body for {@code POST /api/auth/verify}. */
     public record VerifyResponse(boolean verified) {}
 }

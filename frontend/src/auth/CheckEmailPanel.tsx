@@ -6,10 +6,7 @@ interface CheckEmailPanelProps {
   email: string;
 }
 
-// The post-signup "check your email to verify" state. It cannot reach any
-// protected surface — there is none here yet, and the account is unverified. A
-// resend button re-issues the link; resend always succeeds-shaped (ADR 0024),
-// so the only feedback is a neutral "sent again" acknowledgement.
+// Resend is always success-shaped (ADR 0024), so the only feedback is a neutral acknowledgement.
 function CheckEmailPanel({ email }: CheckEmailPanelProps): JSX.Element {
   const [resent, resendAction, isResending] = useActionState<boolean, FormData>(
     async () => {

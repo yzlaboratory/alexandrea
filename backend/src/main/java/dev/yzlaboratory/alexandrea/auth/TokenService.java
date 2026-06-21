@@ -42,10 +42,9 @@ public class TokenService {
     }
 
     /**
-     * Issues a fresh token of {@code kind} for {@code userId}, invalidating any
-     * outstanding live token of the same kind first (one active per user+kind).
-     * Returns the raw token — the only time it exists in plaintext; persist
-     * nothing of it beyond what the caller mails out.
+     * Invalidates any outstanding token of the same kind first (one active per
+     * user+kind). The returned raw token is the only time it exists in plaintext
+     * — persist nothing of it beyond what is mailed.
      */
     @Transactional
     public String issue(TokenKind kind, long userId) {

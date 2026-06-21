@@ -20,12 +20,10 @@ interface SignupFormProps {
 }
 
 // The form action returns an error message to render, or null on success. Using
-// useActionState keeps the pending flag, the result, and the dispatch in one
-// place (stack.md: actions over hand-rolled async state).
 type FormError = string | null;
 
-// FormData entries are string | File; our text inputs are always strings, so
-// coerce anything else (or absence) to an empty string the server then rejects.
+// FormData.get returns string | File | null; our inputs are always text, so
+// anything else becomes '' and the server rejects it.
 function textField(formData: FormData, name: string): string {
   const value = formData.get(name);
   return typeof value === 'string' ? value : '';

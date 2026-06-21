@@ -1,6 +1,5 @@
 package dev.yzlaboratory.alexandrea.auth;
 
-/** Raised when a submitted password is outside the {@link PasswordPolicy} length bounds. */
 public class PasswordPolicyViolationException extends RuntimeException {
 
     public PasswordPolicyViolationException() {

@@ -13,10 +13,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * Orchestrates the signup → verify flow, tying together the user store,
- * token service, password policy, and mail port.
- *
- * <p>This is the auth use-case layer: it owns the ordering rules the individual
+ * The signup → verify use-case layer: it owns the ordering rules the individual
  * collaborators must not know. Two of those rules are load-bearing:
  *
  * <ul>
@@ -60,13 +57,7 @@ public class AuthService {
         this.properties = properties;
     }
 
-    /**
-     * Registers a not-yet-registered email as an unverified account and mails it
-     * a verification link. The password is rejected before any write if it
-     * violates {@link PasswordPolicy}; a duplicate email surfaces as
-     * {@link EmailAlreadyRegisteredException}, which the web layer swallows into
-     * the generic signup response.
-     */
+    /** A duplicate email surfaces as {@link EmailAlreadyRegisteredException}, swallowed by the web layer. */
     @Transactional
     public void signup(String email, String rawPassword) {
         if (!PasswordPolicy.isAcceptable(rawPassword)) {
@@ -93,13 +84,7 @@ public class AuthService {
         dispatchAfterCommit(VerificationMail.build(email, verificationLink));
     }
 
-    /**
-     * Issues a fresh verification link to an existing unverified account and
-     * mails it — the "resend" action. Issuing invalidates any prior link
-     * (one-active-per-user-kind in {@link TokenService}). A request for an
-     * unknown or already-verified address is a silent no-op so the response
-     * cannot be used to probe account state (ADR 0024).
-     */
+    /** Unknown or already-verified addresses are a silent no-op, so the response cannot probe account state (ADR 0024). */
     @Transactional
     public void resendVerification(String email) {
         var user = userStore.findByEmail(email).orElse(null);
@@ -110,12 +95,6 @@ public class AuthService {
         dispatchAfterCommit(VerificationMail.build(email, verificationLink));
     }
 
-    /**
-     * Consumes a verification token and, on success, flips the account to
-     * verified. Expired and already-used/unknown links both fail and are
-     * reported to the caller, which collapses them into one resend-offering
-     * response (ADR 0024).
-     */
     @Transactional
     public TokenConsumption verify(String rawToken) {
         var outcome = tokenService.consume(TokenKind.VERIFICATION, rawToken);
