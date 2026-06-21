@@ -1,14 +1,13 @@
 package dev.yzlaboratory.alexandrea.auth.mail;
 
 /**
- * Renders the email-verification message (#19).
+ * Renders the email-verification message.
  *
- * <p>The one mail template the signup tracer bullet needs. It is a separate
- * builder rather than inline string-building in the auth service so the wording
- * and the link shape have a single home, and so the reset/email-change templates
- * (#23, #25) land as sibling builders without touching the {@link MailSender}
- * port. The clickable link is built from the configured SPA URL template with
- * the raw token substituted.
+ * <p>A separate builder rather than inline string-building in the auth service,
+ * so the wording and link shape have a single home and future mail kinds land as
+ * sibling builders without touching the {@link MailSender} port. The clickable
+ * link is built from the configured SPA URL template with the raw token
+ * substituted.
  */
 public final class VerificationMail {
 

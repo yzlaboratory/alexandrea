@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * pinned in code).
  *
  * @param verificationTokenTtl how long an email-verification link stays valid;
- *     defaults to 24h per #19 and is overridable per environment.
+ *     defaults to 24h and is overridable per environment.
  * @param verificationUrlTemplate the SPA URL the verification link points at;
  *     {@code {token}} is substituted with the raw token. The mail layer builds
  *     the clickable link from this so the API and SPA agree on one route.

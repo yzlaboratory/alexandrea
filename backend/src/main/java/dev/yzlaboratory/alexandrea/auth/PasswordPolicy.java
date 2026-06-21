@@ -1,7 +1,7 @@
 package dev.yzlaboratory.alexandrea.auth;
 
 /**
- * The password rules (ADR 0021, #19): length only — at least 12, at most 128
+ * The password rules (ADR 0021): length only — at least 12, at most 128
  * characters — with no composition requirements and every printable character
  * allowed, spaces and non-ASCII included.
  *

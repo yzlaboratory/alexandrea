@@ -14,9 +14,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The auth HTTP surface under {@code /api/auth} (#19). A thin controller:
- * validate the payload, call {@link AuthService}, translate the outcome to a
- * status code. No business logic lives here.
+ * The auth HTTP surface under {@code /api/auth}. A thin controller: validate the
+ * payload, call {@link AuthService}, translate the outcome to a status code. No
+ * business logic lives here.
  *
  * <p>Signup and resend always answer the same way regardless of account state
  * (202 Accepted, "check your email"), so the response cannot be used to learn
@@ -63,7 +63,7 @@ public class AuthController {
      * rejection it hit.
      */
     @PostMapping("/verify")
-    public ResponseEntity<Object> verify(@Valid @RequestBody VerifyRequest request) {
+    public ResponseEntity<?> verify(@Valid @RequestBody VerifyRequest request) {
         var outcome = authService.verify(request.token());
         return switch (outcome) {
             case TokenConsumption.Consumed consumed ->

@@ -1,9 +1,13 @@
 package dev.yzlaboratory.alexandrea.auth;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -49,7 +53,7 @@ public class UserStore {
      */
     public long createUnverified(String email, String passwordHash) {
         var now = clock.instant().toString();
-        var keyHolder = new org.springframework.jdbc.support.GeneratedKeyHolder();
+        var keyHolder = new GeneratedKeyHolder();
         jdbcClient
             .sql("""
                 INSERT INTO users (email, password_hash, verified, created_at, updated_at)
@@ -79,15 +83,15 @@ public class UserStore {
         return email.trim().toLowerCase(Locale.ROOT);
     }
 
-    private static User mapUser(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private static User mapUser(ResultSet rs, int rowNum) throws SQLException {
         return new User(
             rs.getLong("id"),
             rs.getString("email"),
             rs.getString("password_hash"),
             rs.getInt("verified") == 1,
             Optional.ofNullable(rs.getString("last_media_type")),
-            java.time.Instant.parse(rs.getString("created_at")),
-            java.time.Instant.parse(rs.getString("updated_at"))
+            Instant.parse(rs.getString("created_at")),
+            Instant.parse(rs.getString("updated_at"))
         );
     }
 }
