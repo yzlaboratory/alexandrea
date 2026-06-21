@@ -5,6 +5,7 @@ import dev.yzlaboratory.alexandrea.auth.mail.MailSender;
 import dev.yzlaboratory.alexandrea.auth.mail.VerificationMail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,7 +13,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * Orchestrates the signup → verify flow (#19), tying together the user store,
+ * Orchestrates the signup → verify flow, tying together the user store,
  * token service, password policy, and mail port.
  *
  * <p>This is the auth use-case layer: it owns the ordering rules the individual
@@ -28,9 +29,11 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *       persists the Argon2id hash; nothing else sees the raw value.</li>
  * </ul>
  *
- * <p>Enumeration-safe re-signup and the verified/unverified branch (ADR 0024)
- * are out of scope for this tracer bullet — they arrive in #22. This service
- * implements the plain happy-path: a not-registered email creates an account.
+ * <p>The verified/unverified re-signup branch of ADR 0024 (overwrite an
+ * unclaimed account and re-send) is out of scope for this tracer bullet; here a
+ * duplicate is simply rejected. What this slice does honour is the
+ * enumeration-safety invariant: signup costs the same and answers the same
+ * whether or not the address is already registered.
  */
 @Service
 public class AuthService {
@@ -61,19 +64,31 @@ public class AuthService {
      * Registers a not-yet-registered email as an unverified account and mails it
      * a verification link. The password is rejected before any write if it
      * violates {@link PasswordPolicy}; a duplicate email surfaces as
-     * {@link EmailAlreadyRegisteredException} (the enumeration-safe wrapping of
-     * that signal is #22's job, not this slice's).
+     * {@link EmailAlreadyRegisteredException}, which the web layer swallows into
+     * the generic signup response.
      */
     @Transactional
     public void signup(String email, String rawPassword) {
         if (!PasswordPolicy.isAcceptable(rawPassword)) {
             throw new PasswordPolicyViolationException();
         }
+        // Hash before the existence check so a duplicate signup and a fresh one
+        // both pay Argon2id's deliberately-slow cost — response time must not
+        // reveal whether the address is already registered (ADR 0024).
+        var passwordHash = passwordEncoder.encode(rawPassword);
         if (userStore.findByEmail(email).isPresent()) {
             throw new EmailAlreadyRegisteredException();
         }
 
-        var userId = userStore.createUnverified(email, passwordEncoder.encode(rawPassword));
+        long userId;
+        try {
+            userId = userStore.createUnverified(email, passwordHash);
+        } catch (DataIntegrityViolationException raced) {
+            // Two concurrent signups for the same new address: the unique-email
+            // index rejects the loser. It is the same duplicate the check above
+            // catches when not racing, so it answers identically (ADR 0024).
+            throw new EmailAlreadyRegisteredException();
+        }
         var verificationLink = issueVerificationLink(userId);
         dispatchAfterCommit(VerificationMail.build(email, verificationLink));
     }
