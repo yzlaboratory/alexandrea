@@ -2,9 +2,8 @@ import { type JSX } from 'react';
 import { Box, Button, Container, Link, Stack, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 
-// The public landing page: an app pitch, a "Sign up" CTA, and a "Log in"
-// link. Deliberately renders no catalog or user data — it is reachable without
-// a session and must not leak any.
+// Reachable without a session, so it deliberately renders no catalog or user
+// data — it must not leak any.
 function LandingPage(): JSX.Element {
   return (
     <Container maxWidth="sm" sx={{ py: 10 }}>
