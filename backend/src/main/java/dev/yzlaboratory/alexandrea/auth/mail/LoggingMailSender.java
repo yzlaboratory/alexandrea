@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * The dev/no-op {@link MailSender}: logs the message instead of sending it
  * (ADR 0021 — "dev impl logs it").
  *
- * <p>Active when the SES sender (#18) is absent, so a developer can read the
+ * <p>Active when the SES sender is absent, so a developer can read the
  * verification link straight from the application log and complete the flow
  * without an SES account. It is bound to the {@code dev} profile; prod wires the
  * real provider behind the same port.

@@ -13,7 +13,7 @@ import {
 import { Link as RouterLink } from 'react-router-dom';
 import { resendVerification, verify, type VerifyOutcome } from './authApi';
 
-// The verify-result page (#19). It opens at the link the user clicked, lifts the
+// The verify-result page. It opens at the link the user clicked, lifts the
 // token from the query string, and resolves it against /api/auth/verify on
 // display — a genuine "fetch because the page was shown" Effect (stack.md). The
 // four states are made impossible-to-confuse by a discriminated union rather

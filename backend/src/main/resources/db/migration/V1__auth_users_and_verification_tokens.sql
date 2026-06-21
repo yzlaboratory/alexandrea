@@ -1,11 +1,10 @@
 -- Identity store and email-verification tokens (ADR 0021).
 --
 -- Alexandrea owns auth in-app: this is the foundational schema every later
--- auth slice (login #20, sticky media type #21, reset #23, change-email #25)
--- reads and writes. The full users column set is created now even though the
--- signup/verify tracer bullet (#19) only exercises email, password_hash and
--- verified — the table is shared, so adding columns later would mean another
--- migration for state that is already known.
+-- auth slice (login, sticky media type, reset, change-email) reads and writes.
+-- The full users column set is created now even though the signup/verify tracer
+-- bullet only exercises email, password_hash and verified — the table is shared,
+-- so adding columns later would mean another migration for state already known.
 --
 -- DDL is kept SQLite-compatible (ADR 0014): no SERIAL/BOOLEAN/TIMESTAMPTZ.
 -- Timestamps are TEXT in ISO-8601 UTC; booleans are INTEGER 0/1.
@@ -28,7 +27,7 @@ CREATE TABLE users (
 
     -- Sticky media type (CONTEXT.md): the User's last-used media type, remem-
     -- bered server-side. NULL means "never chose" and defaults to Movies at
-    -- read time. Written by #21; #19 only creates it NULL.
+    -- read time. Signup only ever creates it NULL.
     last_media_type TEXT,
 
     created_at    TEXT    NOT NULL,
@@ -37,8 +36,8 @@ CREATE TABLE users (
 
 -- Single-use, expiring tokens issued to the real inbox owner (ADR 0014: every
 -- token is 128-bit URL-safe CSPRNG). Only the email-verification kind exists
--- for #19; the table is shaped to also carry reset / email-change kinds (#23,
--- #25) via the `kind` discriminator so those slices add rows, not tables.
+-- today; the table is shaped to also carry reset / email-change kinds via the
+-- `kind` discriminator so those slices add rows, not tables.
 CREATE TABLE auth_tokens (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
 

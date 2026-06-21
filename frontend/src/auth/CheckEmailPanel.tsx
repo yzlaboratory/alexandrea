@@ -6,7 +6,7 @@ interface CheckEmailPanelProps {
   email: string;
 }
 
-// The post-signup "check your email to verify" state (#19). It cannot reach any
+// The post-signup "check your email to verify" state. It cannot reach any
 // protected surface — there is none here yet, and the account is unverified. A
 // resend button re-issues the link; resend always succeeds-shaped (ADR 0024),
 // so the only feedback is a neutral "sent again" acknowledgement.

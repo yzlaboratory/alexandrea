@@ -1,7 +1,7 @@
-// Calls the /api/auth endpoints (#19). The backend enables Spring Security's
-// CSRF filter (ADR 0021) with a cookie the SPA can read; every state-changing
-// request must echo that token back in a header or it is rejected. Reading the
-// cookie and setting the header lives here so no caller forgets it.
+// Calls the /api/auth endpoints. The backend enables Spring Security's CSRF
+// filter (ADR 0021) with a cookie the SPA can read; every state-changing request
+// must echo that token back in a header or it is rejected. Reading the cookie and
+// setting the header lives here so no caller forgets it.
 
 const CSRF_COOKIE = 'XSRF-TOKEN';
 const CSRF_HEADER = 'X-XSRF-TOKEN';
@@ -44,8 +44,8 @@ export async function signup(
 ): Promise<SignupOutcome> {
   const response = await postJson('/api/auth/signup', { email, password });
   if (response.ok) return { status: 'accepted' };
-  // 400 is Bean Validation rejecting the password length — the one signal the
-  // form may show, since it is about the request, not stored account state.
+  // 400 is the server rejecting the password length — the one signal the form
+  // may show, since it is about the request, not stored account state.
   if (response.status === 400) return { status: 'invalid-password' };
   return { status: 'error' };
 }

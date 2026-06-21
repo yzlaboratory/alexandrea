@@ -73,8 +73,8 @@ function SignupForm({ onAccepted, submit }: SignupFormProps): JSX.Element {
         label="Password"
         autoComplete="new-password"
         required
-        // Client-side hint mirrors the server policy (#19); the server is the
-        // source of truth and re-validates.
+        // Client-side hint mirrors the server policy; the server is the source
+        // of truth and re-validates.
         slotProps={{
           htmlInput: {
             minLength: MIN_PASSWORD_LENGTH,
