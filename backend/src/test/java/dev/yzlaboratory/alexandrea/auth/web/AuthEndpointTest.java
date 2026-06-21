@@ -34,7 +34,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 
 /**
- * The observable HTTP contract of the signup → verify slice (#19), end-to-end
+ * The observable HTTP contract of the signup → verify slice, end-to-end
  * through the real wiring: controller, service, token service, store, and the
  * mail port. Flyway runs against a temp-file SQLite so the production dialect
  * and migrations are exercised — unlike the Flyway-disabled smoke test.
@@ -176,6 +176,41 @@ class AuthEndpointTest {
 
         assertThat(mailSender.sent).isEmpty();
     }
+
+    @Test
+    void passwordLengthIsMeasuredInCodePointsAndRejectionStays400() throws Exception {
+        // Seven game-controller emoji are 14 UTF-16 chars but only 7 code points:
+        // a UTF-16 length check would wave them through, the code-point policy
+        // must reject them — cleanly as 400, never an unhandled 500.
+        var emoji = "🎮";
+        mockMvc.perform(post("/api/auth/signup")
+                .with(csrf())
+                .contentType("application/json")
+                .content("{\"email\":\"emoji@example.com\",\"password\":\"" + emoji.repeat(7) + "\"}"))
+            .andExpect(status().isBadRequest());
+        assertThat(mailSender.sent).isEmpty();
+
+        // Twelve of the same emoji are 12 code points (24 UTF-16 chars) — within
+        // policy, so they are accepted rather than wrongly rejected by a char cap.
+        signup("emoji@example.com", emoji.repeat(12));
+        assertThat(mailSender.sent).hasSize(1);
+    }
+
+    @Test
+    void resendToAVerifiedAccountSendsNoMail() throws Exception {
+        signup("verified@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+
+        mockMvc.perform(post("/api/auth/resend")
+                .with(csrf())
+                .contentType("application/json")
+                .content("{\"email\":\"verified@example.com\"}"))
+            .andExpect(status().isAccepted());
+
+        assertThat(mailSender.sent).isEmpty();
+    }
+
 
     private void signup(String email, String password) throws Exception {
         mockMvc.perform(post("/api/auth/signup")
