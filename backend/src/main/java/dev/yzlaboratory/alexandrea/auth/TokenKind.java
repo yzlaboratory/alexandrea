@@ -1,34 +1,25 @@
 package dev.yzlaboratory.alexandrea.auth;
 
-import java.time.Duration;
-
 /**
  * The kinds of single-use, expiring token Alexandrea issues (ADR 0021).
  *
- * <p>Only {@link #VERIFICATION} is wired for the signup tracer bullet (#19);
- * {@code PASSWORD_RESET} (#23) and {@code EMAIL_CHANGE} (#25) are deliberately
- * absent until those slices land. Each kind carries its own time-to-live so the
- * {@link TokenService} stays kind-agnostic. The {@code storageValue} is the
- * literal written to {@code auth_tokens.kind} and must stay stable once a
- * migration depends on it.
+ * <p>Only {@link #VERIFICATION} exists today; password-reset and email-change
+ * kinds are added as new constants when those flows land, and each gets its TTL
+ * from config via {@code TokenService}. The {@code storageValue} is the literal
+ * written to {@code auth_tokens.kind} and must stay stable once persisted rows
+ * depend on it.
  */
 public enum TokenKind {
 
-    VERIFICATION("verification", Duration.ofHours(24));
+    VERIFICATION("verification");
 
     private final String storageValue;
-    private final Duration timeToLive;
 
-    TokenKind(String storageValue, Duration timeToLive) {
+    TokenKind(String storageValue) {
         this.storageValue = storageValue;
-        this.timeToLive = timeToLive;
     }
 
     public String storageValue() {
         return storageValue;
-    }
-
-    public Duration timeToLive() {
-        return timeToLive;
     }
 }

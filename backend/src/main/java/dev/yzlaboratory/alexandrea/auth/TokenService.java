@@ -1,7 +1,11 @@
 package dev.yzlaboratory.alexandrea.auth;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -15,11 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>One deep module owns the whole token lifecycle so callers learn two verbs —
  * {@link #issue} and {@link #consume} — and get the security guarantees for
  * free: 128-bit URL-safe CSPRNG tokens (ADR 0014), single use, one active token
- * per {@code (user, kind)} (issuing invalidates the prior), and kind-specific
- * expiry. The raw token is returned to the caller exactly once and is never
- * stored; only its SHA-256 hash is persisted, so a database leak yields no
- * usable links. Adding the reset/email-change kinds (#23, #25) is a matter of
- * extending {@link TokenKind} and passing a TTL — no change here.
+ * per {@code (user, kind)} (issuing invalidates the prior), and per-kind expiry.
+ * The raw token is returned to the caller exactly once and is never stored; only
+ * its SHA-256 hash is persisted, so a database leak yields no usable links.
  */
 @Service
 public class TokenService {
@@ -66,11 +68,12 @@ public class TokenService {
     }
 
     /**
-     * Atomically validates and burns a presented token. A live match is marked
-     * consumed in the same transaction so a token cannot be redeemed twice even
-     * under concurrent requests. Expiry and "no live match" are reported as
-     * distinct {@link TokenConsumption} variants; a match whose window has
-     * passed is left for the cleanup job (#27), never silently honoured.
+     * Validates and burns a presented token. The burn is a conditional update
+     * guarded on {@code consumed_at IS NULL}, so two requests racing on the same
+     * token cannot both redeem it — only the update that flips the row wins.
+     * Expiry and "no live match" are reported as distinct {@link TokenConsumption}
+     * variants; an expired-but-unconsumed row is left for the cleanup job, never
+     * silently honoured.
      */
     @Transactional
     public TokenConsumption consume(TokenKind kind, String rawToken) {
@@ -95,11 +98,14 @@ public class TokenService {
             return new TokenConsumption.Expired();
         }
 
-        jdbcClient
-            .sql("UPDATE auth_tokens SET consumed_at = :now WHERE id = :id")
+        var burned = jdbcClient
+            .sql("UPDATE auth_tokens SET consumed_at = :now WHERE id = :id AND consumed_at IS NULL")
             .param("now", clock.instant().toString())
             .param("id", token.id())
             .update();
+        if (burned == 0) {
+            return new TokenConsumption.Rejected();
+        }
         return new TokenConsumption.Consumed(token.userId());
     }
 
@@ -117,12 +123,10 @@ public class TokenService {
             .update();
     }
 
-    private java.time.Duration ttlFor(TokenKind kind) {
-        // The verification TTL is externalised (ADR 0021); other kinds fall back
-        // to the TTL declared on the enum until a slice externalises theirs too.
-        return kind == TokenKind.VERIFICATION
-            ? properties.verificationTokenTtl()
-            : kind.timeToLive();
+    private Duration ttlFor(TokenKind kind) {
+        return switch (kind) {
+            case VERIFICATION -> properties.verificationTokenTtl();
+        };
     }
 
     private String generateRawToken() {
@@ -133,10 +137,10 @@ public class TokenService {
 
     private static String hash(String rawToken) {
         try {
-            var digest = java.security.MessageDigest.getInstance("SHA-256");
-            var hashed = digest.digest(rawToken.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            var digest = MessageDigest.getInstance("SHA-256");
+            var hashed = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(hashed);
-        } catch (java.security.NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException e) {
             // SHA-256 is mandated on every JVM; its absence is unrecoverable.
             throw new IllegalStateException("SHA-256 is unavailable", e);
         }
