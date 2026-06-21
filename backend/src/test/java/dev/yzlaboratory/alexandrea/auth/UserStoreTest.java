@@ -39,7 +39,7 @@ class UserStoreTest {
         var user = userStore.findById(id).orElseThrow();
         assertThat(user.verified()).isFalse();
         assertThat(user.passwordHash()).isEqualTo("{argon2}hash");
-        assertThat(user.lastMediaType()).isEmpty();
+        assertThat(user.lastMediaType()).isNull();
     }
 
     @Test

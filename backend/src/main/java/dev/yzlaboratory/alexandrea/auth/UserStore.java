@@ -46,11 +46,7 @@ public class UserStore {
             .optional();
     }
 
-    /**
-     * Inserts a fresh, unverified account and returns its generated id. The
-     * caller supplies an already-Argon2id-hashed password — the store never
-     * sees plaintext.
-     */
+    /** The caller supplies an already-Argon2id-hashed password — the store never sees plaintext. */
     public long createUnverified(String email, String passwordHash) {
         var now = clock.instant().toString();
         var keyHolder = new GeneratedKeyHolder();
@@ -70,7 +66,6 @@ public class UserStore {
         return key.longValue();
     }
 
-    /** Flips an account to verified. Idempotent: re-verifying is a no-op match. */
     public void markVerified(long userId) {
         jdbcClient
             .sql("UPDATE users SET verified = 1, updated_at = :now WHERE id = :id")
@@ -89,7 +84,7 @@ public class UserStore {
             rs.getString("email"),
             rs.getString("password_hash"),
             rs.getInt("verified") == 1,
-            Optional.ofNullable(rs.getString("last_media_type")),
+            rs.getString("last_media_type"),
             Instant.parse(rs.getString("created_at")),
             Instant.parse(rs.getString("updated_at"))
         );
