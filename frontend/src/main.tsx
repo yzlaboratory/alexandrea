@@ -10,7 +10,7 @@ const rootEl = document.getElementById('root');
 if (!rootEl) throw new Error('Root element #root was not found in index.html');
 
 // BrowserRouter wraps the app from day one because ADR 0008 makes the URL the
-// source of truth for the detail overlay; App owns the route table.
+// source of truth for the detail overlay.
 createRoot(rootEl).render(
   <StrictMode>
     <ThemeProvider theme={theme}>

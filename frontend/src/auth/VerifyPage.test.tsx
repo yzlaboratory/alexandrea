@@ -74,9 +74,6 @@ describe('VerifyPage', () => {
   });
 
   it('spends a single-use token once under StrictMode and shows the result', async () => {
-    // StrictMode double-invokes the verify Effect; without the dedupe the second
-    // call would 410 against the just-consumed token and wrongly show a rejected
-    // link. The first (and only) call must win.
     mockedVerify
       .mockResolvedValueOnce('verified')
       .mockResolvedValue('rejected');

@@ -27,10 +27,9 @@ async function postJson(path: string, body: unknown): Promise<Response> {
 }
 
 /**
- * The reasons a signup submission can fail in a way the form must surface.
- * A duplicate email is deliberately absent: the backend answers signup
- * identically whether the address is new or taken (ADR 0024), so the SPA cannot
- * and must not distinguish it.
+ * A duplicate email is deliberately absent from these outcomes: the backend
+ * answers signup identically whether the address is new or taken (ADR 0024), so
+ * the SPA cannot and must not distinguish it.
  */
 export type SignupOutcome =
   | { status: 'accepted' }

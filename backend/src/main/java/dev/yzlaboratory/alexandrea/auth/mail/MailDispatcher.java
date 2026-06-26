@@ -9,20 +9,12 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * Sends mail after the surrounding transaction commits and off the request
- * thread. Three properties are load-bearing:
- *
- * <ul>
- *   <li><b>After commit</b> — the recipient never gets a link for an account that
- *       was rolled back.</li>
- *   <li><b>Off the request thread</b> — response latency cannot reveal whether
- *       mail was sent, so a slow provider does not turn the response time into an
- *       account-enumeration oracle (ADR 0024). This is the reason the send is not
- *       inlined into the request.</li>
- *   <li><b>Best-effort</b> — a send failure is logged and swallowed: the account
- *       exists and the user can resend, so a mail outage must not fail the
- *       request.</li>
- * </ul>
+ * Sends mail after the surrounding transaction commits, off the request thread,
+ * and best-effort. After commit: the recipient never gets a link for an account
+ * that was rolled back. Off the request thread: response latency cannot reveal
+ * whether mail was sent, so a slow provider is not an account-enumeration oracle
+ * (ADR 0024). Best-effort: a send failure is logged and swallowed — the account
+ * exists and the user can resend, so a mail outage must not fail the request.
  */
 @Component
 public class MailDispatcher {
