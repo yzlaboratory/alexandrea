@@ -100,7 +100,7 @@ them on that media type's Catalog browse page — across devices.
 Switching media type updates it. A User who has never chosen one (a
 fresh account) has no sticky media type and defaults to **Movies**.
 Stored as a single nullable value on the User; null means "never
-chose". See #8.
+chose".
 _Avoid_: default media type, preferred media type.
 
 **Owner**:
