@@ -5,9 +5,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Smoke test for the scaffold. Boots the Spring application context against
- * an isolated, in-memory SQLite URL so the test does not depend on a file on
- * disk. If wiring regresses — a bean fails to resolve, a config conflict,
+ * Boots the Spring application context against an isolated, in-memory SQLite
+ * URL so the test does not depend on a file on disk. If wiring regresses — a
+ * bean fails to resolve, a config conflict,
  * autoconfig misbehaviour — this is what catches it before any real feature
  * test runs.
  */
