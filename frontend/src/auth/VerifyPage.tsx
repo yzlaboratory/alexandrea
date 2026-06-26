@@ -83,9 +83,8 @@ function VerifiedPanel(): JSX.Element {
   );
 }
 
-// An expired, already-used, or unknown link all land here with the same offer to
-// resend (ADR 0024) — the page never reveals which rejection occurred. Resend
-// needs the address, which a clicked link does not carry, so it is collected.
+// Resend needs the address, which a clicked verification link does not carry, so
+// it is collected here.
 function RejectedPanel(): JSX.Element {
   const [resend, resendAction, isResending] = useActionState<
     ResendState,

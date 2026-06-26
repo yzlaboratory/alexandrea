@@ -13,11 +13,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The auth HTTP surface under {@code /api/auth}. Signup and resend always answer
- * the same way regardless of account state (202, "check your email"), so the
- * response cannot reveal whether an address is registered (ADR 0024). The one
- * leak — a password outside policy — describes the caller's own request, not
- * stored state, so reporting it (400) reveals nothing.
+ * Signup and resend always answer the same way regardless of account state (202,
+ * "check your email"), so the response cannot reveal whether an address is
+ * registered (ADR 0024).
  */
 @RestController
 @RequestMapping("/api/auth")
