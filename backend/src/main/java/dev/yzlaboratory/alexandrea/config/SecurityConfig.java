@@ -10,12 +10,6 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
-/**
- * Web-security wiring for the posture ADR 0021 commits to: session-based auth,
- * CSRF on for state-changing requests, the actuator health probe open so
- * CloudFront / the load balancer can hit it without a credential, and the
- * unauthenticated auth endpoints (signup / verify / resend) public.
- */
 @Configuration
 public class SecurityConfig {
 

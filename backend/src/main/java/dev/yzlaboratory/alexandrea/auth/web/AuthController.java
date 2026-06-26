@@ -29,11 +29,6 @@ public class AuthController {
         this.authService = authService;
     }
 
-    /**
-     * The duplicate-email swallow lives here, not in the service, so the
-     * enumeration-safe shape is a property of the HTTP boundary while the service
-     * stays free to signal the real conflict.
-     */
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void signup(@Valid @RequestBody SignupRequest request) {
@@ -50,12 +45,6 @@ public class AuthController {
         authService.resendVerification(request.email());
     }
 
-    /**
-     * 200 when the link activates the account; every rejection (expired, already
-     * used, unknown) is thrown as one {@link VerificationLinkRejectedException}
-     * that {@link AuthExceptionHandler} maps to a 410, so the SPA offers a resend
-     * without learning which rejection it hit.
-     */
     @PostMapping("/verify")
     public VerifyResponse verify(@Valid @RequestBody VerifyRequest request) {
         var outcome = authService.verify(request.token());

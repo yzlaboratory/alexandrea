@@ -8,10 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The signup → verify use-case layer. Its load-bearing obligation is
- * enumeration-safety (ADR 0024): signup answers and costs the same whether or
- * not the address is already registered. Re-signup over an unverified account
- * (ADR 0024) is out of scope for this slice; a duplicate is simply rejected.
+ * Its load-bearing obligation is enumeration-safety (ADR 0024): signup answers
+ * and costs the same whether or not the address is already registered.
  */
 @Service
 public class AuthService {

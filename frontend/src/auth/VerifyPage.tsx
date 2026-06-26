@@ -22,7 +22,6 @@ function VerifyPage(): JSX.Element {
   return (
     <Container maxWidth="sm" sx={{ py: 8 }}>
       {token === null || token === '' ? (
-        // A link without a token is just a rejected link, decided at render — no Effect needed.
         <RejectedPanel />
       ) : (
         <TokenVerification token={token} />

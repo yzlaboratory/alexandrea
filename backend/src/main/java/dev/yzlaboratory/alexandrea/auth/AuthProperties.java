@@ -4,8 +4,7 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Externalised auth knobs (ADR 0021: token lifetimes are config-driven). In
- * {@code verificationUrlTemplate}, {@code {token}} is substituted with the raw
+ * In {@code verificationUrlTemplate}, {@code {token}} is substituted with the raw
  * token so the API and SPA agree on one verification route.
  */
 @ConfigurationProperties(prefix = "alexandrea.auth")
