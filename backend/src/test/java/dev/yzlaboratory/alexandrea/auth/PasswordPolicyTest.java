@@ -5,10 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * The password rules are length-only: 12–128 code points, no composition,
- * every printable character allowed. These exercise the boundaries and the
- * "all characters allowed" promise that distinguishes this policy from a
- * composition-rule one.
+ * These exercise the length boundaries and the "all characters allowed"
+ * promise that distinguishes this policy from a composition-rule one.
  */
 class PasswordPolicyTest {
 
