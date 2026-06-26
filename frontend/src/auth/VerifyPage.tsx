@@ -1,5 +1,5 @@
-import { type JSX, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { type JSX, useActionState, useEffect, useRef, useState } from 'react';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -10,8 +10,10 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Link as RouterLink } from 'react-router-dom';
 import { resendVerification, verify, type VerifyOutcome } from './authApi';
+import { textField } from './forms';
+
+type ResendState = 'idle' | 'sent' | 'error';
 
 function VerifyPage(): JSX.Element {
   const [searchParams] = useSearchParams();
@@ -32,15 +34,18 @@ function VerifyPage(): JSX.Element {
 // Resolving a token on display is a genuine "fetch because shown" Effect (stack.md).
 function TokenVerification({ token }: { token: string }): JSX.Element {
   const [outcome, setOutcome] = useState<VerifyOutcome | null>(null);
+  const requestedToken = useRef<string | null>(null);
 
+  // verify() spends a single-use token, so the POST must fire exactly once. A
+  // ref dedupes StrictMode's double-invoke (the second call would 410 against
+  // the just-consumed token and wrongly show a rejected link); the in-closure
+  // token also guards against a stale result if the token ever changed.
   useEffect(() => {
-    let active = true;
+    if (requestedToken.current === token) return;
+    requestedToken.current = token;
     void verify(token).then((result) => {
-      if (active) setOutcome(result);
+      if (requestedToken.current === token) setOutcome(result);
     });
-    return () => {
-      active = false;
-    };
   }, [token]);
 
   if (outcome === null) {
@@ -83,13 +88,17 @@ function VerifiedPanel(): JSX.Element {
 // resend (ADR 0024) — the page never reveals which rejection occurred. Resend
 // needs the address, which a clicked link does not carry, so it is collected.
 function RejectedPanel(): JSX.Element {
-  const [email, setEmail] = useState('');
-  const [resent, setResent] = useState(false);
-
-  async function handleResend(): Promise<void> {
-    await resendVerification(email);
-    setResent(true);
-  }
+  const [resend, resendAction, isResending] = useActionState<
+    ResendState,
+    FormData
+  >(async (_previous, formData) => {
+    try {
+      await resendVerification(textField(formData, 'email'));
+      return 'sent';
+    } catch {
+      return 'error';
+    }
+  }, 'idle');
 
   return (
     <Stack spacing={3} sx={{ alignItems: 'flex-start' }}>
@@ -101,33 +110,25 @@ function RejectedPanel(): JSX.Element {
         email to get a fresh one.
       </Typography>
 
-      {resent && (
+      {resend === 'sent' && (
         <Alert severity="success">
           If that address has a pending account, we sent a new link.
         </Alert>
       )}
+      {resend === 'error' && (
+        <Alert severity="error">Something went wrong. Please try again.</Alert>
+      )}
 
-      <Stack
-        direction="row"
-        spacing={2}
-        component="form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void handleResend();
-        }}
-      >
+      <Stack direction="row" spacing={2} component="form" action={resendAction}>
         <TextField
+          name="email"
           label="Email"
           type="email"
           size="small"
           required
-          value={email}
-          onChange={(event) => {
-            setEmail(event.target.value);
-          }}
         />
-        <Button type="submit" variant="outlined">
-          Resend link
+        <Button type="submit" variant="outlined" disabled={isResending}>
+          {isResending ? 'Resending…' : 'Resend link'}
         </Button>
       </Stack>
     </Stack>

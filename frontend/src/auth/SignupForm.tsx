@@ -8,6 +8,7 @@ import {
   Typography,
 } from '@mui/material';
 import { type SignupOutcome } from './authApi';
+import { textField } from './forms';
 
 const MIN_PASSWORD_LENGTH = 12;
 const MAX_PASSWORD_LENGTH = 128;
@@ -19,15 +20,8 @@ interface SignupFormProps {
   submit: (email: string, password: string) => Promise<SignupOutcome>;
 }
 
-// The form action returns an error message to render, or null on success. Using
+// The action returns the error to display, or null once signup is accepted.
 type FormError = string | null;
-
-// FormData.get returns string | File | null; our inputs are always text, so
-// anything else becomes '' and the server rejects it.
-function textField(formData: FormData, name: string): string {
-  const value = formData.get(name);
-  return typeof value === 'string' ? value : '';
-}
 
 function SignupForm({ onAccepted, submit }: SignupFormProps): JSX.Element {
   const [error, formAction, isPending] = useActionState<FormError, FormData>(

@@ -49,4 +49,22 @@ describe('SignupPage', () => {
     expect(mockedResend).toHaveBeenCalledWith('newcomer@example.com');
     expect(await screen.findByText(/sent another link/i)).toBeInTheDocument();
   });
+
+  it('shows an error on the check-email state when the resend fails', async () => {
+    mockedSignup.mockResolvedValue({ status: 'accepted' });
+    mockedResend.mockRejectedValue(new Error('network'));
+    const user = userEvent.setup();
+    render(<SignupPage />);
+
+    await user.type(screen.getByLabelText(/email/i), 'newcomer@example.com');
+    await user.type(screen.getByLabelText(/password/i), 'a-good-long-password');
+    await user.click(screen.getByRole('button', { name: /sign up/i }));
+
+    await screen.findByRole('heading', { name: /check your email/i });
+    await user.click(screen.getByRole('button', { name: /resend/i }));
+
+    expect(
+      await screen.findByText(/something went wrong/i),
+    ).toBeInTheDocument();
+  });
 });
