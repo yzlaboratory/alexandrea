@@ -12,10 +12,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Only the SHA-256 hash of a token is persisted — the raw value is returned to
- * the caller once and never stored — so a database leak yields no usable links.
- */
+/** Only a token's hash is stored, never the raw value — so a database leak yields no usable links. */
 @Service
 public class TokenService {
 
