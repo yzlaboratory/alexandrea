@@ -9,12 +9,11 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * Sends mail after the surrounding transaction commits, off the request thread,
- * and best-effort. After commit: the recipient never gets a link for an account
- * that was rolled back. Off the request thread: response latency cannot reveal
- * whether mail was sent, so a slow provider is not an account-enumeration oracle
- * (ADR 0024). Best-effort: a send failure is logged and swallowed — the account
- * exists and the user can resend, so a mail outage must not fail the request.
+ * After commit: the recipient never gets a link for an account that was rolled
+ * back. Off the request thread: response latency cannot reveal whether mail was
+ * sent, so a slow provider is not an account-enumeration oracle (ADR 0024).
+ * Best-effort: a mail outage must not fail the request — the account exists and
+ * the user can resend.
  */
 @Component
 public class MailDispatcher {
