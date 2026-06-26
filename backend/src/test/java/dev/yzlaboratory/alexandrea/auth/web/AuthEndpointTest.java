@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import dev.yzlaboratory.alexandrea.auth.AuthProperties;
 import dev.yzlaboratory.alexandrea.auth.MutableClock;
+import dev.yzlaboratory.alexandrea.auth.mail.MailDispatcher;
 import dev.yzlaboratory.alexandrea.auth.mail.MailMessage;
 import dev.yzlaboratory.alexandrea.auth.mail.MailSender;
 import java.io.IOException;
@@ -160,7 +161,8 @@ class AuthEndpointTest {
                 .with(csrf())
                 .contentType("application/json")
                 .content("{\"email\":\"short@example.com\",\"password\":\"tooshort\"}"))
-            .andExpect(status().isBadRequest());
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.type").value("urn:alexandrea:auth:password-policy"));
 
         assertThat(mailSender.sent).isEmpty();
     }
@@ -253,6 +255,18 @@ class AuthEndpointTest {
         @Primary
         CapturingMailSender capturingMailSender() {
             return new CapturingMailSender();
+        }
+
+        /**
+         * A synchronous dispatcher so a sent mail is captured before the request
+         * returns. Production dispatches off the request thread (MailDispatcher),
+         * which is what keeps response latency from leaking account state — but
+         * that would race these assertions.
+         */
+        @Bean
+        @Primary
+        MailDispatcher synchronousMailDispatcher(MailSender mailSender) {
+            return new MailDispatcher(mailSender, Runnable::run);
         }
 
         /** A clock the expiry test can fast-forward, replacing the system clock. */

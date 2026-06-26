@@ -3,10 +3,9 @@ package dev.yzlaboratory.alexandrea.auth.web;
 import dev.yzlaboratory.alexandrea.auth.AuthService;
 import dev.yzlaboratory.alexandrea.auth.EmailAlreadyRegisteredException;
 import dev.yzlaboratory.alexandrea.auth.TokenConsumption;
+import dev.yzlaboratory.alexandrea.auth.VerificationLinkRejectedException;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ProblemDetail;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,30 +52,19 @@ public class AuthController {
     }
 
     /**
-     * 200 when the link activates the account; 410 Gone when it is expired,
-     * already used, or unknown — all collapsed to one body carrying
-     * {@code canResend: true} so the SPA offers a resend without learning which
-     * rejection it hit.
+     * 200 when the link activates the account; every rejection (expired, already
+     * used, unknown) is thrown as one {@link VerificationLinkRejectedException}
+     * that {@link AuthExceptionHandler} maps to a 410, so the SPA offers a resend
+     * without learning which rejection it hit.
      */
     @PostMapping("/verify")
-    public ResponseEntity<?> verify(@Valid @RequestBody VerifyRequest request) {
+    public VerifyResponse verify(@Valid @RequestBody VerifyRequest request) {
         var outcome = authService.verify(request.token());
         return switch (outcome) {
-            case TokenConsumption.Consumed consumed ->
-                ResponseEntity.ok(new VerifyResponse(true));
-            case TokenConsumption.Expired expired ->
-                ResponseEntity.status(HttpStatus.GONE).body(rejectedLink());
-            case TokenConsumption.Rejected rejected ->
-                ResponseEntity.status(HttpStatus.GONE).body(rejectedLink());
+            case TokenConsumption.Consumed consumed -> new VerifyResponse(true);
+            case TokenConsumption.Expired expired -> throw new VerificationLinkRejectedException();
+            case TokenConsumption.Rejected rejected -> throw new VerificationLinkRejectedException();
         };
-    }
-
-    private ProblemDetail rejectedLink() {
-        var problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.GONE, "This verification link is no longer valid.");
-        problem.setTitle("Verification link expired or already used");
-        problem.setProperty("canResend", true);
-        return problem;
     }
 
     public record VerifyResponse(boolean verified) {}
