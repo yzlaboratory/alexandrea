@@ -12,8 +12,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 /**
  * The Token service's lifecycle guarantees, exercised against a real
  * Flyway-migrated SQLite so the partial-unique-index and SQL behaviour are the
- * production ones. Covers issue/consume happy path, expiry, single use, and the
- * one-active-token-per-(user,kind) invalidation rule.
+ * production ones.
  */
 class TokenServiceTest {
 

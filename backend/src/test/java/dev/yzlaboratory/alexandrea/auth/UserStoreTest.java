@@ -10,9 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The identity store's persistence contract against the real schema:
- * accounts start unverified, email lookup is case-insensitive, and marking
- * verified flips the flag.
+ * The identity store's persistence contract, exercised against the real schema.
  */
 class UserStoreTest {
 
