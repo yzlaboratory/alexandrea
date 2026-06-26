@@ -11,7 +11,6 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
 /**
- * JDBC repository over the {@code users} table (ADR 0014: plain JDBC, not JPA).
  * Email is normalised to lower case here so uniqueness and look-ups are
  * case-insensitive without a SQLite collation — every caller goes through this
  * store, so the normalisation has a single home.

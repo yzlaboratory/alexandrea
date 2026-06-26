@@ -14,7 +14,6 @@ const MIN_PASSWORD_LENGTH = 12;
 const MAX_PASSWORD_LENGTH = 128;
 
 interface SignupFormProps {
-  /** Called with the address once signup is accepted, to advance to the check-email state. */
   onAccepted: (email: string) => void;
   /** The signup call, injected so the form is testable without the network. */
   submit: (email: string, password: string) => Promise<SignupOutcome>;

@@ -24,8 +24,7 @@ public class AuthConfig {
     /**
      * Backs {@link dev.yzlaboratory.alexandrea.auth.mail.MailDispatcher}: a small
      * pool that drains on shutdown so a verification email already handed off is
-     * not dropped on a graceful stop. Kept off the request thread is the point —
-     * see MailDispatcher for why.
+     * not dropped on a graceful stop.
      */
     @Bean
     public Executor verificationMailExecutor() {

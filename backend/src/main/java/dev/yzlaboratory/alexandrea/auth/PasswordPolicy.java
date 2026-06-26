@@ -1,11 +1,7 @@
 package dev.yzlaboratory.alexandrea.auth;
 
 /**
- * The password rules (ADR 0021): length only — at least 12, at most 128
- * characters — with no composition requirements and every printable character
- * allowed, spaces and non-ASCII included.
- *
- * <p>Length is counted in Unicode code points, not UTF-16 chars, so a passphrase
+ * Length is counted in Unicode code points, not UTF-16 chars, so a passphrase
  * made of astral-plane characters (emoji) is measured as a human would count it.
  * The upper bound is a denial-of-service guard, not a strength rule: Argon2id is
  * deliberately slow, so an unbounded password length is a free way to make the

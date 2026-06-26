@@ -7,8 +7,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Logs the verification link instead of sending it, so a developer can complete
- * the flow without an SES account. Bound to every profile but prod, where the
- * real provider takes over behind the same port.
+ * the flow without an SES account.
  */
 @Component
 @Profile("!prod")
