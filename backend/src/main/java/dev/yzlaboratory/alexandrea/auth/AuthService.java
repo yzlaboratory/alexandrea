@@ -84,14 +84,8 @@ public class AuthService {
         if (user == null || user.verified()) {
             return;
         }
-        try {
-            var verificationLink = issueVerificationLink(user.id());
-            mailDispatcher.dispatch(VerificationMail.build(email, verificationLink));
-        } catch (DataIntegrityViolationException raced) {
-            // A concurrent resend already took the single active-token slot and is
-            // mailing its link; converge on the same 202 (ADR 0024) rather than
-            // surfacing the collision as a 500.
-        }
+        var verificationLink = issueVerificationLink(user.id());
+        mailDispatcher.dispatch(VerificationMail.build(email, verificationLink));
     }
 
     @Transactional
