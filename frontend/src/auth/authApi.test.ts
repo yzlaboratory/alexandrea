@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resendVerification, signup, verify } from './authApi';
 
-function response(status: number): Response {
-  return { ok: status >= 200 && status < 300, status } as Response;
+function response(status: number, body?: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
 }
 
 describe('authApi', () => {
@@ -41,13 +45,24 @@ describe('authApi', () => {
     fetchMock.mockResolvedValueOnce(response(202));
     expect(await signup('a@example.com', 'pw')).toEqual({ status: 'accepted' });
 
-    fetchMock.mockResolvedValueOnce(response(400));
+    fetchMock.mockResolvedValueOnce(
+      response(400, { type: 'urn:alexandrea:auth:password-policy' }),
+    );
     expect(await signup('a@example.com', 'pw')).toEqual({
       status: 'invalid-password',
     });
 
     fetchMock.mockResolvedValueOnce(response(500));
     expect(await signup('a@example.com', 'pw')).toEqual({ status: 'error' });
+  });
+
+  it('does not mislabel a generic validation 400 as a password problem', async () => {
+    // A malformed-email 400 carries no password-policy marker, so the form must
+    // fall back to the generic error rather than blaming the password length.
+    fetchMock.mockResolvedValueOnce(response(400, { type: 'about:blank' }));
+    expect(await signup('bad-email', 'a-good-long-password')).toEqual({
+      status: 'error',
+    });
   });
 
   it('maps verify responses to outcomes, collapsing 410 to one rejection', async () => {

@@ -38,16 +38,32 @@ export type SignupOutcome =
   | { status: 'invalid-password' }
   | { status: 'error' };
 
+// Stable discriminator the backend stamps on the password-policy 400 (matches
+// AuthExceptionHandler.PASSWORD_POLICY_PROBLEM_TYPE).
+const PASSWORD_POLICY_PROBLEM_TYPE = 'urn:alexandrea:auth:password-policy';
+
 export async function signup(
   email: string,
   password: string,
 ): Promise<SignupOutcome> {
   const response = await postJson('/api/auth/signup', { email, password });
   if (response.ok) return { status: 'accepted' };
-  // 400 is the server rejecting the password length — the one signal the form
-  // may show, since it is about the request, not stored account state.
-  if (response.status === 400) return { status: 'invalid-password' };
+  // Only the password-policy 400 may be shown — it is about the request, not
+  // stored account state. A generic validation 400 (e.g. a malformed email)
+  // lacks the marker and falls through to the generic error rather than being
+  // mislabelled a password-length problem.
+  if (await isPasswordPolicyRejection(response)) {
+    return { status: 'invalid-password' };
+  }
   return { status: 'error' };
+}
+
+async function isPasswordPolicyRejection(response: Response): Promise<boolean> {
+  if (response.status !== 400) return false;
+  const problem = (await response.json().catch(() => null)) as {
+    type?: string;
+  } | null;
+  return problem?.type === PASSWORD_POLICY_PROBLEM_TYPE;
 }
 
 export async function resendVerification(email: string): Promise<void> {

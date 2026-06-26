@@ -6,15 +6,22 @@ interface CheckEmailPanelProps {
   email: string;
 }
 
-// Resend is always success-shaped (ADR 0024), so the only feedback is a neutral acknowledgement.
+type ResendState = 'idle' | 'sent' | 'error';
+
+// Resend is always success-shaped server-side (ADR 0024); the only feedback is a
+// neutral acknowledgement, or a generic error if the request itself fails.
 function CheckEmailPanel({ email }: CheckEmailPanelProps): JSX.Element {
-  const [resent, resendAction, isResending] = useActionState<boolean, FormData>(
-    async () => {
+  const [resend, resendAction, isResending] = useActionState<
+    ResendState,
+    FormData
+  >(async () => {
+    try {
       await resendVerification(email);
-      return true;
-    },
-    false,
-  );
+      return 'sent';
+    } catch {
+      return 'error';
+    }
+  }, 'idle');
 
   return (
     <Stack spacing={3} sx={{ alignItems: 'flex-start' }}>
@@ -26,10 +33,13 @@ function CheckEmailPanel({ email }: CheckEmailPanelProps): JSX.Element {
         activate your account. The link is single-use and expires in 24 hours.
       </Typography>
 
-      {resent && (
+      {resend === 'sent' && (
         <Alert severity="success">
           If that address has a pending account, we sent another link.
         </Alert>
+      )}
+      {resend === 'error' && (
+        <Alert severity="error">Something went wrong. Please try again.</Alert>
       )}
 
       <form action={resendAction}>
