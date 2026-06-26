@@ -61,9 +61,9 @@ public class AuthController {
     public VerifyResponse verify(@Valid @RequestBody VerifyRequest request) {
         var outcome = authService.verify(request.token());
         return switch (outcome) {
-            case TokenConsumption.Consumed consumed -> new VerifyResponse(true);
-            case TokenConsumption.Expired expired -> throw new VerificationLinkRejectedException();
-            case TokenConsumption.Rejected rejected -> throw new VerificationLinkRejectedException();
+            case TokenConsumption.Consumed _ -> new VerifyResponse(true);
+            case TokenConsumption.Expired _, TokenConsumption.Rejected _ ->
+                throw new VerificationLinkRejectedException();
         };
     }
 
