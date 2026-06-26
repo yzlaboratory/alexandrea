@@ -13,10 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Issues and consumes the single-use, expiring tokens behind every email link
- * (ADR 0021). Only the SHA-256 hash of a token is persisted — the raw value is
- * returned to the caller once and never stored — so a database leak yields no
- * usable links.
+ * Only the SHA-256 hash of a token is persisted — the raw value is returned to
+ * the caller once and never stored — so a database leak yields no usable links.
  */
 @Service
 public class TokenService {
