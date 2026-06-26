@@ -20,7 +20,6 @@ interface SignupFormProps {
   submit: (email: string, password: string) => Promise<SignupOutcome>;
 }
 
-// The action returns the error to display, or null once signup is accepted.
 type FormError = string | null;
 
 function SignupForm({ onAccepted, submit }: SignupFormProps): JSX.Element {

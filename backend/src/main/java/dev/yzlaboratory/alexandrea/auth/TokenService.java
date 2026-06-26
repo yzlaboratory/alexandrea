@@ -14,19 +14,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Issues and consumes the single-use, expiring tokens behind every email link
- * (ADR 0021).
- *
- * <p>One deep module owns the whole token lifecycle so callers learn two verbs —
- * {@link #issue} and {@link #consume} — and get the security guarantees for
- * free: 128-bit URL-safe CSPRNG tokens (ADR 0014), single use, one active token
- * per {@code (user, kind)} (issuing invalidates the prior), and per-kind expiry.
- * The raw token is returned to the caller exactly once and is never stored; only
- * its SHA-256 hash is persisted, so a database leak yields no usable links.
+ * (ADR 0021). Only the SHA-256 hash of a token is persisted — the raw value is
+ * returned to the caller once and never stored — so a database leak yields no
+ * usable links.
  */
 @Service
 public class TokenService {
 
-    /** 128 bits per ADR 0014. URL-safe Base64 of 16 random bytes. */
+    /** 128 bits (ADR 0014). */
     private static final int TOKEN_BYTES = 16;
 
     private final JdbcClient jdbcClient;
@@ -41,11 +36,7 @@ public class TokenService {
         this.properties = properties;
     }
 
-    /**
-     * Invalidates any outstanding token of the same kind first (one active per
-     * user+kind). The returned raw token is the only time it exists in plaintext
-     * — persist nothing of it beyond what is mailed.
-     */
+    /** The returned raw token is the only time it exists in plaintext — persist nothing of it beyond what is mailed. */
     @Transactional
     public String issue(TokenKind kind, long userId) {
         invalidateActive(kind, userId);
@@ -67,12 +58,10 @@ public class TokenService {
     }
 
     /**
-     * Validates and burns a presented token. The burn is a conditional update
-     * guarded on {@code consumed_at IS NULL}, so two requests racing on the same
-     * token cannot both redeem it — only the update that flips the row wins.
-     * Expiry and "no live match" are reported as distinct {@link TokenConsumption}
-     * variants; an expired-but-unconsumed row is left for the cleanup job, never
-     * silently honoured.
+     * The burn is a conditional update guarded on {@code consumed_at IS NULL}, so
+     * two requests racing the same token cannot both redeem it — only the update
+     * that flips the row wins. An expired-but-unconsumed row is left for the
+     * cleanup job, never silently honoured.
      */
     @Transactional
     public TokenConsumption consume(TokenKind kind, String rawToken) {
@@ -145,6 +134,5 @@ public class TokenService {
         }
     }
 
-    /** A still-redeemable token row, narrowed to what {@link #consume} needs. */
     private record LiveToken(long id, long userId, Instant expiresAt) {}
 }

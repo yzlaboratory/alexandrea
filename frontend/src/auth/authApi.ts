@@ -1,7 +1,6 @@
-// Calls the /api/auth endpoints. The backend enables Spring Security's CSRF
-// filter (ADR 0021) with a cookie the SPA can read; every state-changing request
-// must echo that token back in a header or it is rejected. Reading the cookie and
-// setting the header lives here so no caller forgets it.
+// The backend enables Spring Security's CSRF filter (ADR 0021) with a cookie the
+// SPA can read; every state-changing request must echo that token in a header or
+// it is rejected. Centralised here so no caller forgets it.
 
 const CSRF_COOKIE = 'XSRF-TOKEN';
 const CSRF_HEADER = 'X-XSRF-TOKEN';
@@ -67,7 +66,6 @@ async function isPasswordPolicyRejection(response: Response): Promise<boolean> {
 }
 
 export async function resendVerification(email: string): Promise<void> {
-  // Always 202 regardless of account state; nothing to branch on.
   await postJson('/api/auth/resend', { email });
 }
 
