@@ -21,13 +21,12 @@ CREATE TABLE users (
     -- inside this value.
     password_hash TEXT    NOT NULL,
 
-    -- 0 = unverified (cannot reach protected surfaces), 1 = verified. A fresh
-    -- signup starts unverified and flips to verified when its link is opened.
+    -- 0 = unverified (cannot reach protected surfaces), 1 = verified.
     verified      INTEGER NOT NULL DEFAULT 0,
 
     -- Sticky media type (CONTEXT.md): the User's last-used media type, remem-
     -- bered server-side. NULL means "never chose" and defaults to Movies at
-    -- read time. Signup only ever creates it NULL.
+    -- read time.
     last_media_type TEXT,
 
     created_at    TEXT    NOT NULL,

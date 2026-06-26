@@ -8,24 +8,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The signup → verify use-case layer: it owns the ordering rules the individual
- * collaborators must not know. Two of those rules are load-bearing:
- *
- * <ul>
- *   <li><b>Mail is handed to {@link MailDispatcher} after the state commits.</b>
- *       The account and its verification token are committed first; the link is
- *       then dispatched off the request thread, so a send failure leaves a usable
- *       account on the resend state and response latency never reveals whether
- *       mail was sent (ADR 0024).</li>
- *   <li><b>The plaintext password reaches only the encoder.</b> The store
- *       persists the Argon2id hash; nothing else sees the raw value.</li>
- * </ul>
- *
- * <p>The verified/unverified re-signup branch of ADR 0024 (overwrite an
- * unclaimed account and re-send) is out of scope for this tracer bullet; here a
- * duplicate is simply rejected. What this slice does honour is the
- * enumeration-safety invariant: signup costs the same and answers the same
- * whether or not the address is already registered.
+ * The signup → verify use-case layer. Its load-bearing obligation is
+ * enumeration-safety (ADR 0024): signup answers and costs the same whether or
+ * not the address is already registered. Re-signup over an unverified account
+ * (ADR 0024) is out of scope for this slice; a duplicate is simply rejected.
  */
 @Service
 public class AuthService {
@@ -50,7 +36,6 @@ public class AuthService {
         this.properties = properties;
     }
 
-    /** A duplicate email surfaces as {@link EmailAlreadyRegisteredException}, swallowed by the web layer. */
     @Transactional
     public void signup(String email, String rawPassword) {
         if (!PasswordPolicy.isAcceptable(rawPassword)) {

@@ -23,9 +23,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *       exists and the user can resend, so a mail outage must not fail the
  *       request.</li>
  * </ul>
- *
- * <p>Outside a transaction (a direct call with no synchronization active) it
- * dispatches immediately, still off-thread.
  */
 @Component
 public class MailDispatcher {

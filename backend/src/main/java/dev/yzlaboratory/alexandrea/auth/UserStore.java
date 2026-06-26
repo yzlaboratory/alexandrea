@@ -11,13 +11,10 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
 /**
- * Thin JDBC repository over the {@code users} table (ADR 0014: plain JDBC via
- * {@link JdbcClient}, not JPA).
- *
- * <p>Email is the natural key and is normalised to lower case here so that
- * uniqueness and look-ups are case-insensitive without a SQLite collation —
- * every caller goes through this store, so the normalisation has a single home.
- * The store knows nothing about hashing or tokens; it persists what it is given.
+ * JDBC repository over the {@code users} table (ADR 0014: plain JDBC, not JPA).
+ * Email is normalised to lower case here so uniqueness and look-ups are
+ * case-insensitive without a SQLite collation — every caller goes through this
+ * store, so the normalisation has a single home.
  */
 @Repository
 public class UserStore {

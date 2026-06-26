@@ -30,9 +30,9 @@ public class AuthController {
     }
 
     /**
-     * Always 202. A duplicate email is swallowed into the generic response here
-     * rather than in the service, so the enumeration-safe shape is a property of
-     * the HTTP boundary and the service stays free to signal the real conflict.
+     * The duplicate-email swallow lives here, not in the service, so the
+     * enumeration-safe shape is a property of the HTTP boundary while the service
+     * stays free to signal the real conflict.
      */
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.ACCEPTED)
@@ -44,7 +44,6 @@ public class AuthController {
         }
     }
 
-    /** Always 202 — never reveals whether the address exists or is verified. */
     @PostMapping("/resend")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void resend(@Valid @RequestBody ResendRequest request) {
