@@ -9,10 +9,7 @@ import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Forces the CSRF token to resolve on every request so its cookie is always
- * written to the response.
- *
- * <p>Spring Security loads the CSRF token lazily: without this, the
+ * Spring Security loads the CSRF token lazily: without this, the
  * {@code XSRF-TOKEN} cookie is only set once something reads the token. The SPA
  * is served as static files, so on a cold load it would make its first
  * state-changing POST with no token and be rejected. Reading

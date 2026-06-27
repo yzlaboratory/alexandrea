@@ -11,9 +11,8 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
 /**
- * Email is normalised to lower case here so uniqueness and look-ups are
- * case-insensitive without a SQLite collation — every caller goes through this
- * store, so the normalisation has a single home.
+ * Email is normalised to lower case here, so the normalisation has a single home
+ * every caller passes through.
  */
 @Repository
 public class UserStore {
