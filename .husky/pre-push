@@ -1,0 +1,33 @@
+#!/usr/bin/env sh
+
+# react-doctor (ADR 0022) runs at push time, not commit time: it audits the
+# whole React tree and fetches react-doctor@latest over the network, both of
+# which are too heavy for the per-commit gate. Push is infrequent enough to
+# absorb the cost, and it still catches anti-patterns before they reach a PR,
+# where CI runs the same audit (`npm run doctor`) as a required check.
+
+zero="0000000000000000000000000000000000000000"
+touches_frontend=""
+
+# git feeds pre-push one line per ref being pushed:
+#   <local ref> <local sha> <remote ref> <remote sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Branch deletion — nothing to audit.
+  [ "$local_sha" = "$zero" ] && continue
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # New branch on the remote: diff every commit since it forked from main.
+    base=$(git merge-base "$local_sha" origin/main 2>/dev/null)
+    range="${base:+$base }$local_sha"
+  else
+    range="$remote_sha $local_sha"
+  fi
+
+  if git diff --name-only $range 2>/dev/null | grep -q '^frontend/'; then
+    touches_frontend=1
+  fi
+done
+
+if [ -n "$touches_frontend" ]; then
+  (cd frontend && npm run doctor) || exit 1
+fi
