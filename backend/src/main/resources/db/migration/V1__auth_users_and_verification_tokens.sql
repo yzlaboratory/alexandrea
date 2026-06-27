@@ -1,13 +1,11 @@
--- Identity store and email-verification tokens (ADR 0021).
+-- The foundational auth schema every later slice (login, sticky media type,
+-- reset, change-email) reads and writes. The full users column set is created
+-- now even though the signup/verify tracer bullet only exercises email,
+-- password_hash and verified — the table is shared, so adding columns later
+-- would mean another migration for state already known.
 --
--- Alexandrea owns auth in-app: this is the foundational schema every later
--- auth slice (login, sticky media type, reset, change-email) reads and writes.
--- The full users column set is created now even though the signup/verify tracer
--- bullet only exercises email, password_hash and verified — the table is shared,
--- so adding columns later would mean another migration for state already known.
---
--- DDL is kept SQLite-compatible (ADR 0014): no SERIAL/BOOLEAN/TIMESTAMPTZ.
--- Timestamps are TEXT in ISO-8601 UTC; booleans are INTEGER 0/1.
+-- DDL is kept SQLite-compatible: no SERIAL/BOOLEAN/TIMESTAMPTZ. Timestamps are
+-- TEXT in ISO-8601 UTC; booleans are INTEGER 0/1.
 
 CREATE TABLE users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,27 +13,24 @@ CREATE TABLE users (
     -- The login identifier: unique, and stored lower-cased by the application.
     email         TEXT    NOT NULL UNIQUE,
 
-    -- Argon2id hash only — the plaintext password is never stored (ADR 0021).
-    -- The {argon2} prefix written by Spring's DelegatingPasswordEncoder lives
-    -- inside this value.
+    -- Stores the Argon2id hash; the {argon2} prefix written by Spring's
+    -- DelegatingPasswordEncoder is part of the value.
     password_hash TEXT    NOT NULL,
 
-    -- 0 = unverified (cannot reach protected surfaces), 1 = verified.
+    -- 0 = unverified, 1 = verified.
     verified      INTEGER NOT NULL DEFAULT 0,
 
-    -- Sticky media type (CONTEXT.md): the User's last-used media type, remem-
-    -- bered server-side. NULL means "never chose" and defaults to Movies at
-    -- read time.
+    -- Sticky media type (CONTEXT.md). NULL means "never chose" and defaults to
+    -- Movies at read time.
     last_media_type TEXT,
 
     created_at    TEXT    NOT NULL,
     updated_at    TEXT    NOT NULL
 );
 
--- Single-use, expiring tokens issued to the real inbox owner (ADR 0014: every
--- token is 128-bit URL-safe CSPRNG). Only the email-verification kind exists
--- today; the table is shaped to also carry reset / email-change kinds via the
--- `kind` discriminator so those slices add rows, not tables.
+-- Only the email-verification kind exists today; the table is shaped to also
+-- carry reset / email-change kinds via the `kind` discriminator, so those
+-- slices add rows, not tables.
 CREATE TABLE auth_tokens (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
 
