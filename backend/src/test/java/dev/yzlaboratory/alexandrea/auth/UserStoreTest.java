@@ -9,9 +9,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/**
- * The identity store's persistence contract, exercised against the real schema.
- */
 class UserStoreTest {
 
     private static final Clock FIXED = Clock.fixed(Instant.parse("2026-06-07T12:00:00Z"), ZoneOffset.UTC);

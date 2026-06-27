@@ -32,10 +32,6 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /**
-     * {@link PasswordEncoderFactories#createDelegatingPasswordEncoder()} returns
-     * a delegating encoder whose default is Argon2id, matching ADR 0021.
-     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();

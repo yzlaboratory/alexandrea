@@ -12,8 +12,7 @@
 CREATE TABLE users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    -- Email is the login identifier and is unique. Stored lower-cased by the
-    -- application so uniqueness is case-insensitive without a SQLite collation.
+    -- The login identifier: unique, and stored lower-cased by the application.
     email         TEXT    NOT NULL UNIQUE,
 
     -- Argon2id hash only — the plaintext password is never stored (ADR 0021).
@@ -46,9 +45,8 @@ CREATE TABLE auth_tokens (
     -- issuing a new one invalidates the prior (see the partial unique index).
     kind        TEXT    NOT NULL,
 
-    -- The raw token is never stored — only its SHA-256 hash, so a database
-    -- leak does not hand out usable links. The lookup hashes the presented
-    -- token and matches on this column.
+    -- The token's SHA-256 hash, not the raw value; the lookup hashes the
+    -- presented token and matches on this column.
     token_hash  TEXT    NOT NULL UNIQUE,
 
     expires_at  TEXT    NOT NULL,

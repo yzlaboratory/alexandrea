@@ -34,9 +34,14 @@ Rejected alternatives:
   `verified` flag, timestamps) plus token tables (email-verification,
   password-reset, pending-email-change) and an email rate-limit bucket — all in
   SQLite. Every per-user row foreign-keys `users.id` with `ON DELETE CASCADE`
-  (the schema shape ADR 0016 already assumed).
+  (the schema shape ADR 0016 already assumed). Email is stored lower-cased by
+  the application, so identity is case-insensitive without relying on a SQLite
+  collation.
 - **Password hashing.** Argon2id via Spring Security's
   `DelegatingPasswordEncoder`.
+- **Token storage.** Verification / reset / email-change tokens are persisted as
+  a SHA-256 hash only, never the raw value, so a database leak yields no usable
+  links — the raw token exists only in the email sent to the inbox owner.
 - **Sessions.** Server-side, persisted via **Spring Session JDBC** into SQLite,
   so a container redeploy does not log everyone out. The session cookie is
   `HttpOnly`, `Secure`, `SameSite=Lax`.
