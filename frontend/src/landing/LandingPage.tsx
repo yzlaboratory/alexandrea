@@ -1,10 +1,10 @@
-import { type JSX } from 'react';
+import { type ReactNode } from 'react';
 import { Box, Button, Container, Link, Stack, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 
 // Reachable without a session, so it deliberately renders no catalog or user
 // data — it must not leak any.
-function LandingPage(): JSX.Element {
+function LandingPage(): ReactNode {
   return (
     <Container maxWidth="sm" sx={{ py: 10 }}>
       <Stack spacing={4} sx={{ alignItems: 'flex-start' }}>

@@ -1,4 +1,10 @@
-import { type JSX, useActionState, useEffect, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import {
   Alert,
@@ -15,7 +21,7 @@ import { textField } from './forms';
 
 type ResendState = 'idle' | 'sent' | 'error';
 
-function VerifyPage(): JSX.Element {
+function VerifyPage(): ReactNode {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
@@ -31,7 +37,7 @@ function VerifyPage(): JSX.Element {
 }
 
 // Resolving a token on display is a genuine "fetch because shown" Effect (stack.md).
-function TokenVerification({ token }: { token: string }): JSX.Element {
+function TokenVerification({ token }: { token: string }): ReactNode {
   const [outcome, setOutcome] = useState<VerifyOutcome | null>(null);
   const requestedToken = useRef<string | null>(null);
 
@@ -69,7 +75,7 @@ function TokenVerification({ token }: { token: string }): JSX.Element {
   }
 }
 
-function VerifiedPanel(): JSX.Element {
+function VerifiedPanel(): ReactNode {
   return (
     <Stack spacing={3} sx={{ alignItems: 'flex-start' }}>
       <Typography variant="h4" component="h1">
@@ -85,7 +91,7 @@ function VerifiedPanel(): JSX.Element {
 
 // Resend needs the address, which a clicked verification link does not carry, so
 // it is collected here.
-function RejectedPanel(): JSX.Element {
+function RejectedPanel(): ReactNode {
   const [resend, resendAction, isResending] = useActionState<
     ResendState,
     FormData
