@@ -15,6 +15,14 @@ Specs, PRDs, and issues live in GitHub Issues on `yzlaboratory/alexandrea`.
 
 A feature branch names the ticket it implements: `<issue-number>-<slug>` (e.g. `42-checkout-flow`). All commits for that feature — including every sub-issue's work — land on this single branch. Sub-issues do not get their own named branches; subagents implement them in worktrees that branch off the feature branch and merge back into it. Skills derive the current ticket from the feature branch name; worktrees inherit it.
 
+### Commit messages
+
+Commit messages follow the cbeams / Tim Pope **prose** convention (see <https://cbea.ms/git-commit/>), enforced by commitlint (`commitlint.config.cjs`) via the `commit-msg` hook. There is **no** Conventional Commits `type(scope):` prefix:
+
+- Subject: imperative mood, capitalised, ≤ 50 characters, no trailing period (e.g. `Add email verification to signup`).
+- Blank line, then a body wrapped at 72 characters explaining **why**, not how. The body is optional for small, self-evident changes.
+- Keep substantive rationale in `docs/adr/`; the body points at the ADR rather than restating it.
+
 ### Domain docs (in-repo)
 
 Before exploring the codebase, read `CONTEXT.md` (domain glossary) and the ADRs under `docs/adr/` that touch the area you're working in. These are the only planning docs committed to the repo. If they don't exist yet, proceed silently — they're created lazily by `/create-alignment-and-refine-docs`. Use the glossary's vocabulary in all output; flag any output that contradicts an ADR.
