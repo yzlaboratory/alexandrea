@@ -14,10 +14,8 @@ import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 /**
- * The filter exists so a cold SPA load receives a CSRF cookie it can echo on its
- * first state-changing request — Spring Security otherwise resolves the token
- * lazily and would not write the cookie until something reads it. Driven through
- * the real {@link CsrfFilter} so the deferred-token wiring is the production one.
+ * Driven through the real {@link CsrfFilter} so the deferred-token wiring is the
+ * production one.
  */
 class CsrfCookieFilterTest {
 

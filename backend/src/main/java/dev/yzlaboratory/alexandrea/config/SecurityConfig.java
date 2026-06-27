@@ -17,11 +17,8 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         // The CSRF cookie is readable by the SPA (HttpOnly=false on the cookie
         // that carries the token) so the SPA can echo it on state-changing
-        // requests; the session cookie itself stays HttpOnly via the
-        // server.servlet.session.cookie defaults in application.yml. The plain
-        // request handler (not the XOR default) expects the raw cookie value in
-        // the header — the value the SPA reads back — and CsrfCookieFilter primes
-        // the cookie so the first POST after a cold load already carries it.
+        // requests. The plain request handler (not the XOR default) expects the
+        // raw cookie value in the header — the value the SPA reads back.
         http
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
