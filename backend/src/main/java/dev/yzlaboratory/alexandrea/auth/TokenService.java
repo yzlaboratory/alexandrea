@@ -15,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class TokenService {
 
-    /** 128 bits (ADR 0014). */
     private static final int TOKEN_BYTES = 16;
 
     private final JdbcClient jdbcClient;

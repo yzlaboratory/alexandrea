@@ -1,6 +1,5 @@
-// The backend enables Spring Security's CSRF filter (ADR 0021) with a cookie the
-// SPA can read; every state-changing request must echo that token in a header or
-// it is rejected. Centralised here so no caller forgets it.
+// Every state-changing request must echo the readable CSRF cookie back as a
+// header, or the backend rejects it. Centralised here so no caller forgets.
 
 const CSRF_COOKIE = 'XSRF-TOKEN';
 const CSRF_HEADER = 'X-XSRF-TOKEN';
@@ -19,18 +18,12 @@ async function postJson(path: string, body: unknown): Promise<Response> {
       'Content-Type': 'application/json',
       [CSRF_HEADER]: csrfToken(),
     },
-    // Same-origin behind one CloudFront host (ADR 0014); credentials carry the
-    // session and CSRF cookies.
+    // credentials carry the session and CSRF cookies back to the API.
     credentials: 'same-origin',
     body: JSON.stringify(body),
   });
 }
 
-/**
- * A duplicate email is deliberately absent from these outcomes: the backend
- * answers signup identically whether the address is new or taken (ADR 0024), so
- * the SPA cannot and must not distinguish it.
- */
 export type SignupOutcome =
   | { status: 'accepted' }
   | { status: 'invalid-password' }
@@ -46,10 +39,9 @@ export async function signup(
 ): Promise<SignupOutcome> {
   const response = await postJson('/api/auth/signup', { email, password });
   if (response.ok) return { status: 'accepted' };
-  // Only the password-policy 400 may be shown — it is about the request, not
-  // stored account state. A generic validation 400 (e.g. a malformed email)
-  // lacks the marker and falls through to the generic error rather than being
-  // mislabelled a password-length problem.
+  // A generic validation 400 (e.g. a malformed email) lacks the marker, so it
+  // falls through to the generic error rather than being mislabelled a password
+  // problem.
   if (await isPasswordPolicyRejection(response)) {
     return { status: 'invalid-password' };
   }
@@ -68,7 +60,6 @@ export async function resendVerification(email: string): Promise<void> {
   await postJson('/api/auth/resend', { email });
 }
 
-/** The verify endpoint's three observable outcomes (ADR 0024 collapses the rejections). */
 export type VerifyOutcome = 'verified' | 'rejected' | 'error';
 
 export async function verify(token: string): Promise<VerifyOutcome> {
