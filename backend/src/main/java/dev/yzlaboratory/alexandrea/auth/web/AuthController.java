@@ -12,11 +12,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Signup and resend always answer the same way regardless of account state (202,
- * "check your email"), so the response cannot reveal whether an address is
- * registered (ADR 0024).
- */
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -33,7 +28,7 @@ public class AuthController {
         try {
             authService.signup(request.email(), request.password());
         } catch (EmailAlreadyRegisteredException alreadyRegistered) {
-            // Intentionally indistinguishable from a fresh signup (ADR 0024).
+            // Swallowed deliberately: the 202 must look identical to a fresh signup.
         }
     }
 

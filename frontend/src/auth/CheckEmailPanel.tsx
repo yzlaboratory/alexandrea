@@ -8,8 +8,6 @@ interface CheckEmailPanelProps {
 
 type ResendState = 'idle' | 'sent' | 'error';
 
-// Resend is always success-shaped server-side (ADR 0024); the only feedback is a
-// neutral acknowledgement, or a generic error if the request itself fails.
 function CheckEmailPanel({ email }: CheckEmailPanelProps): JSX.Element {
   const [resend, resendAction, isResending] = useActionState<
     ResendState,

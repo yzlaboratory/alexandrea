@@ -7,10 +7,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Its load-bearing obligation is enumeration-safety (ADR 0024): signup answers
- * and costs the same whether or not the address is already registered.
- */
 @Service
 public class AuthService {
 
@@ -40,8 +36,8 @@ public class AuthService {
             throw new PasswordPolicyViolationException();
         }
         // Hash before the existence check so a duplicate signup and a fresh one
-        // both pay Argon2id's deliberately-slow cost — response time must not
-        // reveal whether the address is already registered (ADR 0024).
+        // both pay Argon2id's deliberately-slow cost; otherwise response time
+        // reveals whether the address is already registered.
         var passwordHash = passwordEncoder.encode(rawPassword);
         if (userStore.findByEmail(email).isPresent()) {
             throw new EmailAlreadyRegisteredException();
@@ -53,14 +49,13 @@ public class AuthService {
         } catch (DataIntegrityViolationException raced) {
             // Two concurrent signups for the same new address: the unique-email
             // index rejects the loser. It is the same duplicate the check above
-            // catches when not racing, so it answers identically (ADR 0024).
+            // catches when not racing, so it answers identically.
             throw new EmailAlreadyRegisteredException();
         }
         var verificationLink = issueVerificationLink(userId);
         mailDispatcher.dispatch(VerificationMail.build(email, verificationLink));
     }
 
-    /** Unknown or already-verified addresses are a silent no-op, so the response cannot probe account state (ADR 0024). */
     @Transactional
     public void resendVerification(String email) {
         var user = userStore.findByEmail(email).orElse(null);
