@@ -1,4 +1,4 @@
-import { type JSX, useActionState } from 'react';
+import { type ReactNode, useActionState } from 'react';
 import {
   Alert,
   Box,
@@ -21,7 +21,7 @@ interface SignupFormProps {
 
 type FormError = string | null;
 
-function SignupForm({ onAccepted, submit }: SignupFormProps): JSX.Element {
+function SignupForm({ onAccepted, submit }: SignupFormProps): ReactNode {
   const [error, formAction, isPending] = useActionState<FormError, FormData>(
     async (_previous, formData) => {
       const email = textField(formData, 'email');

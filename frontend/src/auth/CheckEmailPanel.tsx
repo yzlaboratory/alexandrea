@@ -1,4 +1,4 @@
-import { type JSX, useActionState } from 'react';
+import { type ReactNode, useActionState } from 'react';
 import { Alert, Button, Stack, Typography } from '@mui/material';
 import { resendVerification } from './authApi';
 
@@ -8,7 +8,7 @@ interface CheckEmailPanelProps {
 
 type ResendState = 'idle' | 'sent' | 'error';
 
-function CheckEmailPanel({ email }: CheckEmailPanelProps): JSX.Element {
+function CheckEmailPanel({ email }: CheckEmailPanelProps): ReactNode {
   const [resend, resendAction, isResending] = useActionState<
     ResendState,
     FormData

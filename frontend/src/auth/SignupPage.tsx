@@ -1,10 +1,10 @@
-import { type JSX, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Container } from '@mui/material';
 import { signup } from './authApi';
 import SignupForm from './SignupForm';
 import CheckEmailPanel from './CheckEmailPanel';
 
-function SignupPage(): JSX.Element {
+function SignupPage(): ReactNode {
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
 
   return (
