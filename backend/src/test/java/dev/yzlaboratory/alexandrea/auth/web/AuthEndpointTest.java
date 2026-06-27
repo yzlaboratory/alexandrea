@@ -35,15 +35,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 
 /**
- * The observable HTTP contract of the signup → verify slice, end-to-end
- * through the real wiring: controller, service, token service, store, and the
- * mail port. Flyway runs against a temp-file SQLite so the production dialect
- * and migrations are exercised — unlike the Flyway-disabled smoke test.
- *
- * <p>Mail is asserted through a capturing {@link MailSender} (never SES), and a
- * {@link MutableClock} lets the expiry test fast-forward past the 24h TTL. These
- * are the highest-value tests in the slice: they assert what a client actually
- * sees and the side effects an attacker must not be able to observe.
+ * The observable HTTP contract of the signup → verify slice, end-to-end through
+ * the real wiring. Flyway runs against a temp-file SQLite so the production
+ * dialect and migrations are exercised — unlike the Flyway-disabled smoke test.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

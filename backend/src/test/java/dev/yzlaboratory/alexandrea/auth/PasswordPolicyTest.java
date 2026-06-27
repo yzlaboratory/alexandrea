@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * These exercise the length boundaries and the "all characters allowed"
- * promise that distinguishes this policy from a composition-rule one.
+ * Unlike a composition-rule policy, every character is allowed; only length is
+ * judged — and in code points, not UTF-16 chars.
  */
 class PasswordPolicyTest {
 
@@ -42,7 +42,6 @@ class PasswordPolicyTest {
 
     @Test
     void allowsNonAsciiUnicode() {
-        // Twelve accented letters — no ASCII, still acceptable.
         assertThat(PasswordPolicy.isAcceptable("ëëëëëëëëëëëë")).isTrue();
     }
 
