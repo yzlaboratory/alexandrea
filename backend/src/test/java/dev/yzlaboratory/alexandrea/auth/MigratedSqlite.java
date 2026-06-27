@@ -15,10 +15,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
  * <p>A temp file (not {@code :memory:}) is used deliberately: a pure in-memory
  * SQLite URL gives each JDBC connection its own empty database, so Flyway's
  * migration and the test's queries would land in different DBs. The temp file
- * shares one database across connections and is deleted on JVM exit. The real
- * SQLite dialect — the same one prod runs (ADR 0014) — is therefore exercised,
- * which the Flyway-disabled smoke test (AlexandreaApplicationTests) is not
- * meant to cover.
+ * shares one database across connections and is deleted on JVM exit, exercising
+ * the real SQLite dialect prod runs (ADR 0014).
  */
 final class MigratedSqlite implements AutoCloseable {
 
