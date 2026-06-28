@@ -59,6 +59,14 @@ data "aws_iam_policy_document" "instance" {
     actions   = ["s3:PutObject"]
     resources = ["${aws_s3_bucket.backups.arn}/*"]
   }
+
+  # Long-poll SES bounce/complaint events from SQS and remove handled messages.
+  statement {
+    sid       = "ConsumeSesEvents"
+    effect    = "Allow"
+    actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+    resources = [aws_sqs_queue.ses_events.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "instance" {
