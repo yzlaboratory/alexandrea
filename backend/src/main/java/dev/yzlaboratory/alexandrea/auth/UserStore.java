@@ -17,6 +17,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class UserStore {
 
+    private static final String EMAIL_COLUMN = "email";
+
     private final JdbcClient jdbcClient;
     private final Clock clock;
 
@@ -28,7 +30,7 @@ public class UserStore {
     public Optional<User> findByEmail(String email) {
         return jdbcClient
             .sql("SELECT * FROM users WHERE email = :email")
-            .param("email", normalise(email))
+            .param(EMAIL_COLUMN, normalise(email))
             .query(UserStore::mapUser)
             .optional();
     }
@@ -50,7 +52,7 @@ public class UserStore {
                 INSERT INTO users (email, password_hash, verified, created_at, updated_at)
                 VALUES (:email, :passwordHash, 0, :now, :now)
                 """)
-            .param("email", normalise(email))
+            .param(EMAIL_COLUMN, normalise(email))
             .param("passwordHash", passwordHash)
             .param("now", now)
             .update(keyHolder);
@@ -76,7 +78,7 @@ public class UserStore {
     private static User mapUser(ResultSet rs, int rowNum) throws SQLException {
         return new User(
             rs.getLong("id"),
-            rs.getString("email"),
+            rs.getString(EMAIL_COLUMN),
             rs.getString("password_hash"),
             rs.getInt("verified") == 1,
             rs.getString("last_media_type"),
