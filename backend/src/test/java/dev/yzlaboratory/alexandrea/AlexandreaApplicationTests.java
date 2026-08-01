@@ -17,5 +17,7 @@ class AlexandreaApplicationTests {
 
     @Test
     void contextLoads() {
+        // Intentionally empty: the test's only assertion is that the
+        // @SpringBootTest context above builds without throwing.
     }
 }
