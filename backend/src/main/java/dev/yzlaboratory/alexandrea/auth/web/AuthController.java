@@ -6,7 +6,6 @@ import dev.yzlaboratory.alexandrea.auth.EmailAlreadyRegisteredException;
 import dev.yzlaboratory.alexandrea.auth.InvalidCredentialsException;
 import dev.yzlaboratory.alexandrea.auth.LoginOutcome;
 import dev.yzlaboratory.alexandrea.auth.TokenConsumption;
-import dev.yzlaboratory.alexandrea.auth.UserStore;
 import dev.yzlaboratory.alexandrea.auth.VerificationLinkRejectedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -31,16 +30,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
-    private final UserStore userStore;
     private final SecurityContextRepository securityContextRepository;
 
     public AuthController(
         AuthService authService,
-        UserStore userStore,
         SecurityContextRepository securityContextRepository
     ) {
         this.authService = authService;
-        this.userStore = userStore;
         this.securityContextRepository = securityContextRepository;
     }
 
@@ -92,11 +88,8 @@ public class AuthController {
     }
 
     /**
-     * There is no {@code AuthenticationManager} in this flow (ADR 0024's login
-     * ordering doesn't fit the default provider chain — see AuthService.login),
-     * so the session is built by hand: a fresh session id guards against
-     * fixation, then the context is persisted the same way the filter chain
-     * would for a standard login.
+     * {@code request.changeSessionId()} swaps the id post-authentication so a
+     * session id issued before login can't be reused (fixation).
      */
     private void establishSession(
         AuthenticatedUser user, HttpServletRequest request, HttpServletResponse response
@@ -123,9 +116,7 @@ public class AuthController {
 
     @GetMapping("/session")
     public SessionResponse session(@AuthenticationPrincipal AuthenticatedUser principal) {
-        var user = userStore.findById(principal.userId())
-            .orElseThrow(() -> new IllegalStateException(
-                "Session principal has no matching user row: " + principal.userId()));
+        var user = authService.requireUser(principal.userId());
         return new SessionResponse(user.email(), user.lastMediaType());
     }
 

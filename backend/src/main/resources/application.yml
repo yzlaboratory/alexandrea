@@ -28,8 +28,8 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-  # JDBC-backed so a redeploy doesn't log everyone out. Schema init is off
-  # because Flyway (V2) owns that table, same as every other table here.
+  # Schema init is off because Flyway (V2) owns that table, same as every
+  # other table here.
   session:
     store-type: jdbc
     timeout: 30d
