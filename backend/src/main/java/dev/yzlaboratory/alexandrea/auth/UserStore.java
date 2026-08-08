@@ -81,6 +81,15 @@ public class UserStore {
             .update();
     }
 
+    public void updateLastMediaType(long userId, String mediaType) {
+        jdbcClient
+            .sql("UPDATE users SET last_media_type = :mediaType, updated_at = :now WHERE id = :id")
+            .param("mediaType", mediaType)
+            .param("now", clock.instant().toString())
+            .param("id", userId)
+            .update();
+    }
+
     private static String normalise(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
     }
