@@ -31,6 +31,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -230,6 +231,30 @@ class AuthEndpointTest {
         mockMvc.perform(get("/api/auth/session").cookie(sessionCookie))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.email").value("login@example.com"));
+    }
+
+    /**
+     * {@code @DirtiesContext} forces a fresh Spring context for just this test:
+     * MockMvc's {@code .with(csrf())} (used by every other test's helpers) seeds
+     * a *session-based* test-only CSRF repository, and that — combined with
+     * {@link dev.yzlaboratory.alexandrea.config.CsrfCookieFilter} eagerly reading
+     * the token on every request — leaves a real JDBC session row behind for
+     * later requests in the same shared context. A live server hit with curl
+     * (no MockMvc, no {@code .with(csrf())}) confirms zero session rows are
+     * created here even after real prior signup/login activity, so this is a
+     * MockMvc test-double artifact, not a production behaviour; the isolated
+     * context is what makes that provable in-suite.
+     */
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.BEFORE_METHOD)
+    void anAnonymousSessionCheckLeavesNoSessionRowBehind() throws Exception {
+        // The default HttpSessionRequestCache creates a session on every
+        // rejected request just to remember it for a server-side redirect
+        // replay — a pattern this REST API doesn't use. Left enabled, the
+        // SPA's own session check on every page load would leak a row here.
+        mockMvc.perform(get("/api/auth/session")).andExpect(status().isUnauthorized());
+
+        assertThat(sessionRowCount()).isZero();
     }
 
     @Test
