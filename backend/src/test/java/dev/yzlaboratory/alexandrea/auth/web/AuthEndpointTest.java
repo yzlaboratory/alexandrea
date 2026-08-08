@@ -521,11 +521,13 @@ class AuthEndpointTest {
             return new MutableClock(Instant.parse("2026-06-07T12:00:00Z"));
         }
 
-        /** Bind a deterministic verification URL so token extraction is stable. */
+        /** Bind deterministic verification/reset URLs so token extraction is stable. */
         @Bean
         @Primary
         AuthProperties testAuthProperties() {
-            return new AuthProperties(Duration.ofHours(24), "http://localhost/verify?token={token}");
+            return new AuthProperties(
+                Duration.ofHours(24), "http://localhost/verify?token={token}",
+                Duration.ofHours(1), "http://localhost/reset-password?token={token}");
         }
     }
 
