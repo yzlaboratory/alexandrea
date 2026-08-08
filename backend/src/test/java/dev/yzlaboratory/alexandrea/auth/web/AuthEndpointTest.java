@@ -25,16 +25,19 @@ import java.util.List;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
@@ -74,6 +77,9 @@ class AuthEndpointTest {
 
     @Autowired
     private JdbcClient jdbcClient;
+
+    @MockitoSpyBean
+    private PasswordEncoder passwordEncoder;
 
     @BeforeEach
     void resetState() {
@@ -259,14 +265,18 @@ class AuthEndpointTest {
 
     @Test
     void anOverlongLoginPasswordIsRejectedWithoutHashingIt() throws Exception {
-        // A registered password always satisfies PasswordPolicy, so this is
-        // already a guaranteed mismatch — the point of the test is that it's
-        // rejected before Argon2id runs on it, not just that it's rejected.
         signup("known@example.com", "a-good-long-password");
         verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
         var overlongPassword = "a".repeat(129);
 
         login("known@example.com", overlongPassword).andExpect(status().isUnauthorized());
+
+        // A 129-char password is already a guaranteed mismatch against any real
+        // hash, so a bare 401 alone wouldn't distinguish "guard skipped hashing"
+        // from "guard does nothing and the hash comparison just failed anyway" —
+        // this asserts the encoder was never actually invoked.
+        Mockito.verify(passwordEncoder, Mockito.never())
+            .matches(Mockito.eq(overlongPassword), Mockito.any());
     }
 
     @Test
