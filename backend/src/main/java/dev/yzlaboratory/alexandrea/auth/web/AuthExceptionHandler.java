@@ -1,5 +1,6 @@
 package dev.yzlaboratory.alexandrea.auth.web;
 
+import dev.yzlaboratory.alexandrea.auth.InvalidCredentialsException;
 import dev.yzlaboratory.alexandrea.auth.PasswordPolicyViolationException;
 import dev.yzlaboratory.alexandrea.auth.VerificationLinkRejectedException;
 import java.net.URI;
@@ -23,6 +24,13 @@ class AuthExceptionHandler {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, violation.getMessage());
         problem.setType(URI.create(PASSWORD_POLICY_PROBLEM_TYPE));
         return problem;
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    ProblemDetail handleInvalidCredentials(InvalidCredentialsException invalid) {
+        // Same status and detail whether the email is unknown or the password
+        // is wrong — telling them apart would be a login-based enumeration oracle.
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, invalid.getMessage());
     }
 
     @ExceptionHandler(VerificationLinkRejectedException.class)
