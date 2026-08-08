@@ -9,9 +9,13 @@ import {
   Tab,
   Tabs,
   Toolbar,
-  Typography,
 } from '@mui/material';
-import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
+import {
+  Link as RouterLink,
+  Outlet,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import { logout } from '../auth/authApi';
 import { useSession } from '../auth/SessionContext';
 
@@ -41,10 +45,10 @@ function isSurface(value: string | undefined): value is Surface {
   return SURFACES.includes(value as Surface);
 }
 
-// The route params are always present here — this only renders behind
-// /:mediaType/:surface — but useParams types them as possibly undefined, and
-// an unknown segment (a stale bookmark, a typo) shouldn't crash the shell, so
-// each dimension falls back to a sane default for the *other* tab row's links.
+// This shell also wraps /account (no :mediaType/:surface in that URL at all),
+// plus a stale bookmark or typo could put an unrecognized segment in either
+// param — neither should crash the tabs, so each dimension falls back to a
+// sane default for the *other* tab row's links.
 function AppShell(): ReactNode {
   const params = useParams<{ mediaType: string; surface: string }>();
   const mediaType = params.mediaType;
@@ -118,9 +122,7 @@ function AppShell(): ReactNode {
       </AppBar>
 
       <Container maxWidth="md" sx={{ py: 6 }}>
-        <Typography color="text.secondary">
-          Browsing arrives in a later slice.
-        </Typography>
+        <Outlet />
       </Container>
     </Box>
   );

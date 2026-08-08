@@ -8,6 +8,7 @@ import RequireAuth from './auth/RequireAuth';
 import { SessionProvider } from './auth/SessionContext';
 import AppShell from './shell/AppShell';
 import AccountPage from './shell/AccountPage';
+import CatalogPlaceholder from './shell/CatalogPlaceholder';
 
 // SessionProvider lives here, not in main.tsx: LoginPage reads it directly
 // (to refresh after a successful login) even though it sits outside
@@ -21,8 +22,13 @@ function App(): ReactNode {
         <Route path="/verify" element={<VerifyPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route element={<RequireAuth />}>
-          <Route path="/:mediaType/:surface" element={<AppShell />} />
-          <Route path="/account" element={<AccountPage />} />
+          <Route element={<AppShell />}>
+            <Route
+              path="/:mediaType/:surface"
+              element={<CatalogPlaceholder />}
+            />
+            <Route path="/account" element={<AccountPage />} />
+          </Route>
         </Route>
         <Route path="*" element={<LandingPage />} />
       </Routes>
