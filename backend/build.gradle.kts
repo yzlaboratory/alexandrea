@@ -29,6 +29,11 @@ dependencies {
 
     // --- Security + Spring Session JDBC --------------------------------------
     implementation("org.springframework.boot:spring-boot-starter-security")
+    // Boot 4 modularised session autoconfiguration out of spring-boot-autoconfigure
+    // the same way it did Flyway (see below) — spring-session-jdbc alone supplies
+    // the repository classes but nothing wires spring.session.store-type=jdbc to
+    // them without this Boot module.
+    implementation("org.springframework.boot:spring-boot-session-jdbc")
     implementation("org.springframework.session:spring-session-jdbc")
     // Argon2id (spring-security-crypto) needs a Bouncy Castle provider.
     implementation("org.bouncycastle:bcprov-jdk18on:1.79")

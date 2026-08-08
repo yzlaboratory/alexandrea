@@ -28,11 +28,13 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-  # Sessions are in-memory for the signup/verify slice; JDBC-backed sessions
-  # arrive with login, when their schema is added.
+  # JDBC-backed so a redeploy doesn't log everyone out. Schema init is off
+  # because Flyway (V2) owns that table, same as every other table here.
   session:
-    store-type: none
+    store-type: jdbc
     timeout: 30d
+    jdbc:
+      initialize-schema: never
 
 server:
   port: 8080
