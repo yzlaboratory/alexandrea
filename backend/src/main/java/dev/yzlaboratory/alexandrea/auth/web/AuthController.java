@@ -4,6 +4,7 @@ import dev.yzlaboratory.alexandrea.auth.AuthService;
 import dev.yzlaboratory.alexandrea.auth.AuthenticatedUser;
 import dev.yzlaboratory.alexandrea.auth.InvalidCredentialsException;
 import dev.yzlaboratory.alexandrea.auth.LoginOutcome;
+import dev.yzlaboratory.alexandrea.auth.ResetLinkRejectedException;
 import dev.yzlaboratory.alexandrea.auth.TokenConsumption;
 import dev.yzlaboratory.alexandrea.auth.VerificationLinkRejectedException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -125,4 +126,22 @@ public class AuthController {
     ) {
         authService.switchMediaType(principal.userId(), request.mediaType());
     }
+
+    @PostMapping("/forgot-password")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.requestPasswordReset(request.email());
+    }
+
+    @PostMapping("/reset-password")
+    public ResetPasswordResponse resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        var outcome = authService.resetPassword(request.token(), request.newPassword());
+        return switch (outcome) {
+            case TokenConsumption.Consumed _ -> new ResetPasswordResponse(true);
+            case TokenConsumption.Expired _, TokenConsumption.Rejected _ ->
+                throw new ResetLinkRejectedException();
+        };
+    }
+
+    public record ResetPasswordResponse(boolean reset) {}
 }
