@@ -97,9 +97,9 @@ public class AuthService {
     }
 
     /**
-     * A session can only resolve to a row created by {@link #login}, and v1 has
-     * no account-deletion path (ADR 0021) to remove one afterward — a miss here
-     * is an invariant violation, not a routine user-facing error.
+     * A session can only resolve to a row created by {@link #login}, and
+     * nothing removes that row afterward — a miss here is an invariant
+     * violation, not a routine user-facing error.
      */
     public User requireUser(long userId) {
         return userStore.findById(userId)
