@@ -28,8 +28,6 @@ class AuthExceptionHandler {
 
     @ExceptionHandler(InvalidCredentialsException.class)
     ProblemDetail handleInvalidCredentials(InvalidCredentialsException invalid) {
-        // Same status and detail whether the email is unknown or the password
-        // is wrong — telling them apart would be a login-based enumeration oracle.
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, invalid.getMessage());
     }
 
