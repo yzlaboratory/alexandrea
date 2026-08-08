@@ -23,7 +23,7 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(
         HttpSecurity http,
         SecurityContextRepository securityContextRepository
-    ) throws Exception {
+    ) {
         // The CSRF cookie is readable by the SPA (HttpOnly=false on the cookie
         // that carries the token) so the SPA can echo it on state-changing
         // requests. The plain request handler (not the XOR default) expects the
