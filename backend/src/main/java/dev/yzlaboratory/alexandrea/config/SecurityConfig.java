@@ -4,6 +4,7 @@ import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.RequestCacheConfigurer;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
@@ -42,6 +43,14 @@ public class SecurityConfig {
                 .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
             .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
             .securityContext(context -> context.securityContextRepository(securityContextRepository))
+            // The default HttpSessionRequestCache creates a session on every
+            // rejected request purely to remember it for a server-side
+            // redirect replay after login — a pattern this REST API doesn't
+            // use (the SPA's own RequireAuth already tracks where to return
+            // to). Left enabled, every anonymous hit to a protected endpoint
+            // (e.g. the SPA's own session check on load) would leak a
+            // throwaway row into SPRING_SESSION.
+            .requestCache(RequestCacheConfigurer::disable)
             // No formLogin/httpBasic is configured (login is a custom REST
             // endpoint), so without this an unauthenticated API request would
             // fall through to Spring Security's 403 default instead of 401.
