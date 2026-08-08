@@ -10,10 +10,12 @@ import * as authApi from '../auth/authApi';
 vi.mock('../auth/authApi', () => ({
   logout: vi.fn(),
   fetchSession: vi.fn(),
+  switchMediaType: vi.fn(),
 }));
 
 const mockedLogout = vi.mocked(authApi.logout);
 const mockedFetchSession = vi.mocked(authApi.fetchSession);
+const mockedSwitchMediaType = vi.mocked(authApi.switchMediaType);
 
 function renderShell(initialPath: string): void {
   render(
@@ -37,6 +39,7 @@ function renderShell(initialPath: string): void {
 describe('AppShell', () => {
   beforeEach(() => {
     mockedLogout.mockReset().mockResolvedValue();
+    mockedSwitchMediaType.mockReset().mockResolvedValue();
     mockedFetchSession.mockReset().mockResolvedValue({
       email: 'reader@example.com',
       lastMediaType: 'movies',
@@ -58,6 +61,24 @@ describe('AppShell', () => {
     expect(
       screen.getByRole('tab', { name: 'Watchlist', selected: false }),
     ).toBeInTheDocument();
+  });
+
+  it('persists the sticky media type and refreshes the session on a tab switch', async () => {
+    renderShell('/movies/watchlist');
+    const user = userEvent.setup();
+    await screen.findByRole('tab', { name: 'TV' });
+    const fetchSessionCallsBeforeSwitch = mockedFetchSession.mock.calls.length;
+
+    await user.click(screen.getByRole('tab', { name: 'TV' }));
+
+    await waitFor(() => {
+      expect(mockedSwitchMediaType).toHaveBeenCalledWith('tv');
+    });
+    await waitFor(() => {
+      expect(mockedFetchSession.mock.calls.length).toBeGreaterThan(
+        fetchSessionCallsBeforeSwitch,
+      );
+    });
   });
 
   it('shows a placeholder body since browsing is not built yet', async () => {
