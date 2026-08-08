@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -48,10 +49,13 @@ export function SessionProvider({ children }: SessionProviderProps): ReactNode {
     };
   }, []);
 
+  const value = useMemo(
+    () => ({ user, status, refresh }),
+    [user, status, refresh],
+  );
+
   return (
-    <SessionContext.Provider value={{ user, status, refresh }}>
-      {children}
-    </SessionContext.Provider>
+    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
   );
 }
 
