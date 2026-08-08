@@ -16,7 +16,7 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import { logout } from '../auth/authApi';
+import { logout, switchMediaType } from '../auth/authApi';
 import { useSession } from '../auth/SessionContext';
 
 const MEDIA_TYPES = ['movies', 'tv', 'books', 'games'] as const;
@@ -64,6 +64,11 @@ function AppShell(): ReactNode {
     void navigate('/');
   }
 
+  async function handleMediaTypeChange(type: MediaType): Promise<void> {
+    await switchMediaType(type);
+    await refresh();
+  }
+
   return (
     <Box>
       <AppBar position="static" color="default" elevation={0}>
@@ -76,6 +81,7 @@ function AppShell(): ReactNode {
                 value={type}
                 component={RouterLink}
                 to={`/${type}/${isSurface(surface) ? surface : 'watchlist'}`}
+                onClick={() => void handleMediaTypeChange(type)}
               />
             ))}
           </Tabs>

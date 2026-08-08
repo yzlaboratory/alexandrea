@@ -116,4 +116,13 @@ public class AuthController {
     }
 
     public record SessionResponse(String email, String lastMediaType) {}
+
+    @PostMapping("/media-type")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void switchMediaType(
+        @Valid @RequestBody MediaTypeRequest request,
+        @AuthenticationPrincipal AuthenticatedUser principal
+    ) {
+        authService.switchMediaType(principal.userId(), request.mediaType());
+    }
 }

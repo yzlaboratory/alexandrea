@@ -32,9 +32,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 // Ahead of the broad /api/auth/** permitAll below: matchers are
-                // evaluated in order, so /session must claim authenticated
-                // first or the broader rule would swallow it.
-                .requestMatchers("/api/auth/session").authenticated()
+                // evaluated in order, so these must claim authenticated first
+                // or the broader rule would swallow them.
+                .requestMatchers("/api/auth/session", "/api/auth/media-type").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
                 .anyRequest().authenticated()
             )
