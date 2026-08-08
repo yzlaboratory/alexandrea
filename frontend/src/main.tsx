@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import App from './App';
-import { SessionProvider } from './auth/SessionContext';
 
 const theme = createTheme();
 
@@ -15,9 +14,7 @@ createRoot(rootEl).render(
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
-        <SessionProvider>
-          <App />
-        </SessionProvider>
+        <App />
       </BrowserRouter>
     </ThemeProvider>
   </StrictMode>,
