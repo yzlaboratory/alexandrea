@@ -375,6 +375,64 @@ class AuthEndpointTest {
         assertThat(sessionRowCount()).isOne();
     }
 
+    @Test
+    void switchingMediaTypeUpdatesTheStickyPreferenceForTheNextLoginFromAnyDevice() throws Exception {
+        signup("switcher@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("switcher@example.com", "a-good-long-password").andReturn());
+
+        switchMediaType(sessionCookie, "tv").andExpect(status().isNoContent());
+
+        // A second, independent login sharing no cookie stands in for a
+        // different device picking up the same server-side preference.
+        login("switcher@example.com", "a-good-long-password")
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.lastMediaType").value("tv"));
+    }
+
+    @Test
+    void aUserWhoHasNeverSwitchedStillHasNoStickyMediaTypeOnLogin() throws Exception {
+        signup("fresh@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+
+        login("fresh@example.com", "a-good-long-password")
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.lastMediaType").doesNotExist());
+    }
+
+    @Test
+    void switchingMediaTypeWithoutASessionIsRejected() throws Exception {
+        mockMvc.perform(post("/api/auth/media-type")
+                .with(csrf())
+                .contentType("application/json")
+                .content("{\"mediaType\":\"tv\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void anUnrecognisedMediaTypeIsRejectedAndDoesNotChangeTheStoredValue() throws Exception {
+        signup("picky@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("picky@example.com", "a-good-long-password").andReturn());
+        switchMediaType(sessionCookie, "tv").andExpect(status().isNoContent());
+
+        switchMediaType(sessionCookie, "podcasts").andExpect(status().isBadRequest());
+
+        login("picky@example.com", "a-good-long-password")
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.lastMediaType").value("tv"));
+    }
+
+    private ResultActions switchMediaType(Cookie sessionCookie, String mediaType) throws Exception {
+        return mockMvc.perform(post("/api/auth/media-type")
+            .with(csrf())
+            .cookie(sessionCookie)
+            .contentType("application/json")
+            .content("{\"mediaType\":\"" + mediaType + "\"}"));
+    }
+
     private ResultActions login(String email, String password) throws Exception {
         return mockMvc.perform(post("/api/auth/login")
             .with(csrf())

@@ -122,6 +122,11 @@ public class AuthService {
     }
 
     @Transactional
+    public void switchMediaType(long userId, String mediaType) {
+        userStore.updateLastMediaType(userId, mediaType);
+    }
+
+    @Transactional
     public TokenConsumption verify(String rawToken) {
         var outcome = tokenService.consume(TokenKind.VERIFICATION, rawToken);
         if (outcome instanceof TokenConsumption.Consumed consumed) {
