@@ -66,4 +66,23 @@ class UserStoreTest {
 
         assertThat(userStore.findById(id).orElseThrow().passwordHash()).isEqualTo("{argon2}new-hash");
     }
+
+    @Test
+    void updateLastMediaTypeStoresTheChosenType() {
+        var id = userStore.createUnverified("reader@example.com", "{argon2}hash");
+
+        userStore.updateLastMediaType(id, "tv");
+
+        assertThat(userStore.findById(id).orElseThrow().lastMediaType()).isEqualTo("tv");
+    }
+
+    @Test
+    void updateLastMediaTypeCanReplaceAPreviousChoice() {
+        var id = userStore.createUnverified("reader@example.com", "{argon2}hash");
+        userStore.updateLastMediaType(id, "tv");
+
+        userStore.updateLastMediaType(id, "books");
+
+        assertThat(userStore.findById(id).orElseThrow().lastMediaType()).isEqualTo("books");
+    }
 }

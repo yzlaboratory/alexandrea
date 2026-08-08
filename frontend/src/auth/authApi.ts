@@ -104,6 +104,10 @@ export async function logout(): Promise<void> {
   await postJson('/api/auth/logout', {});
 }
 
+export async function switchMediaType(mediaType: string): Promise<void> {
+  await postJson('/api/auth/media-type', { mediaType });
+}
+
 export interface SessionUser {
   email: string;
   lastMediaType: string | null;
