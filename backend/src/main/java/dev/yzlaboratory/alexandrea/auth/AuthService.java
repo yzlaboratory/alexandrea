@@ -75,10 +75,11 @@ public class AuthService {
 
     public LoginOutcome login(String email, String rawPassword) {
         // A registered password always satisfies PasswordPolicy (signup enforces
-        // it), so an out-of-policy submission is already a guaranteed mismatch —
-        // rejecting it here skips a full-cost Argon2id hash the same DoS guard
-        // PasswordPolicy exists for (see its Javadoc) would otherwise be paying
-        // on every anonymous request, known email or not.
+        // it), so an out-of-policy submission is already a guaranteed mismatch.
+        // Rejecting it here, rather than falling through to the hash below,
+        // skips the full-cost Argon2id run — the same denial-of-service cost
+        // PasswordPolicy's own Javadoc explains it guards against — on every
+        // anonymous request, known email or not.
         if (!PasswordPolicy.isAcceptable(rawPassword)) {
             return new LoginOutcome.InvalidCredentials();
         }
