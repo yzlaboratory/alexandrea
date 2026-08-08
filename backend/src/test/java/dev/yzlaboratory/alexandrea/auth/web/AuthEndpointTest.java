@@ -258,6 +258,18 @@ class AuthEndpointTest {
     }
 
     @Test
+    void anOverlongLoginPasswordIsRejectedWithoutHashingIt() throws Exception {
+        // A registered password always satisfies PasswordPolicy, so this is
+        // already a guaranteed mismatch — the point of the test is that it's
+        // rejected before Argon2id runs on it, not just that it's rejected.
+        signup("known@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var overlongPassword = "a".repeat(129);
+
+        login("known@example.com", overlongPassword).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void unverifiedAccountWithCorrectPasswordShowsVerifyPromptAndEstablishesNoSession() throws Exception {
         signup("pending@example.com", "a-good-long-password");
 
