@@ -5,6 +5,7 @@ import {
   logout,
   resendVerification,
   signup,
+  switchMediaType,
   verify,
 } from './authApi';
 
@@ -141,6 +142,16 @@ describe('authApi', () => {
     const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(path).toBe('/api/auth/logout');
     expect(init.method).toBe('POST');
+  });
+
+  it('posts the chosen type to the media-type endpoint', async () => {
+    fetchMock.mockResolvedValueOnce(response(204));
+    await switchMediaType('tv');
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/auth/media-type');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(JSON.stringify({ mediaType: 'tv' }));
   });
 
   it('fetches the current session when authenticated', async () => {
