@@ -18,7 +18,8 @@ function RequireAuth(): ReactNode {
   }
 
   if (status === 'anonymous') {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    const from = location.pathname + location.search;
+    return <Navigate to="/login" state={{ from }} replace />;
   }
 
   return <Outlet />;
