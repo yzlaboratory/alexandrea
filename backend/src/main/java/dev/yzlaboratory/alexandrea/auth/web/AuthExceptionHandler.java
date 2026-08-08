@@ -2,6 +2,7 @@ package dev.yzlaboratory.alexandrea.auth.web;
 
 import dev.yzlaboratory.alexandrea.auth.InvalidCredentialsException;
 import dev.yzlaboratory.alexandrea.auth.PasswordPolicyViolationException;
+import dev.yzlaboratory.alexandrea.auth.ResetLinkRejectedException;
 import dev.yzlaboratory.alexandrea.auth.VerificationLinkRejectedException;
 import java.net.URI;
 import org.springframework.http.HttpStatus;
@@ -37,6 +38,14 @@ class AuthExceptionHandler {
             HttpStatus.GONE, "This verification link is no longer valid.");
         problem.setTitle("Verification link expired or already used");
         problem.setProperty("canResend", true);
+        return problem;
+    }
+
+    @ExceptionHandler(ResetLinkRejectedException.class)
+    ProblemDetail handleResetLinkRejected(ResetLinkRejectedException rejected) {
+        var problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.GONE, "This password reset link is no longer valid.");
+        problem.setTitle("Password reset link expired or already used");
         return problem;
     }
 }
