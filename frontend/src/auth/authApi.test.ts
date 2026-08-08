@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resendVerification, signup, verify } from './authApi';
+import {
+  fetchSession,
+  login,
+  logout,
+  resendVerification,
+  signup,
+  verify,
+} from './authApi';
 
 function response(status: number, body?: unknown): Response {
   return {
@@ -82,5 +89,76 @@ describe('authApi', () => {
     const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(path).toBe('/api/auth/resend');
     expect(init.body).toBe(JSON.stringify({ email: 'reader@example.com' }));
+  });
+
+  it('maps a verified login to authenticated, carrying the sticky media type', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { verified: true, lastMediaType: 'games' }),
+    );
+    expect(await login('reader@example.com', 'pw')).toEqual({
+      status: 'authenticated',
+      lastMediaType: 'games',
+    });
+  });
+
+  it('defaults lastMediaType to null when the account has never chosen one', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { verified: true, lastMediaType: null }),
+    );
+    expect(await login('reader@example.com', 'pw')).toEqual({
+      status: 'authenticated',
+      lastMediaType: null,
+    });
+  });
+
+  it('maps correct-password-but-unverified to the unverified outcome', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { verified: false, lastMediaType: null }),
+    );
+    expect(await login('reader@example.com', 'pw')).toEqual({
+      status: 'unverified',
+    });
+  });
+
+  it('maps a 401 to invalid-credentials regardless of body', async () => {
+    fetchMock.mockResolvedValueOnce(response(401));
+    expect(await login('nobody@example.com', 'pw')).toEqual({
+      status: 'invalid-credentials',
+    });
+  });
+
+  it('maps an unexpected server error to the generic error outcome', async () => {
+    fetchMock.mockResolvedValueOnce(response(500));
+    expect(await login('reader@example.com', 'pw')).toEqual({
+      status: 'error',
+    });
+  });
+
+  it('posts to the logout endpoint', async () => {
+    fetchMock.mockResolvedValueOnce(response(204));
+    await logout();
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/auth/logout');
+    expect(init.method).toBe('POST');
+  });
+
+  it('fetches the current session when authenticated', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { email: 'reader@example.com', lastMediaType: 'books' }),
+    );
+    expect(await fetchSession()).toEqual({
+      email: 'reader@example.com',
+      lastMediaType: 'books',
+    });
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/auth/session');
+    expect(init.headers).toBeUndefined();
+  });
+
+  it('resolves to null when there is no session', async () => {
+    fetchMock.mockResolvedValueOnce(response(401));
+    expect(await fetchSession()).toBeNull();
   });
 });
