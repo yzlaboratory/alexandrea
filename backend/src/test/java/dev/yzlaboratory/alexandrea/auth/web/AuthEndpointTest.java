@@ -154,13 +154,34 @@ class AuthEndpointTest {
     }
 
     @Test
-    void aDuplicateSignupIsIndistinguishableFromAFreshOne() throws Exception {
-        signup("dup@example.com", "a-good-long-password");
-        // Same address again: still 202, and the existing account is untouched
-        // (no enumeration signal). This slice does not re-send for duplicates.
-        signup("dup@example.com", "another-long-password");
+    void signupOverAnUnverifiedAccountOverwritesThePasswordAndResendsVerification() throws Exception {
+        signup("dup@example.com", "the-first-password");
+        var firstToken = extractToken(mailSender.sent.getFirst());
+
+        signup("dup@example.com", "a-different-password");
+
+        assertThat(mailSender.sent).hasSize(2);
+        assertThat(userCountFor("dup@example.com")).isOne();
+        verify(firstToken).andExpect(status().isGone());
+        var secondToken = extractToken(mailSender.sent.getLast());
+        verify(secondToken).andExpect(status().isOk());
+        login("dup@example.com", "the-first-password").andExpect(status().isUnauthorized());
+        login("dup@example.com", "a-different-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void signupOverAVerifiedAccountSendsAnAlreadyRegisteredNoticeInsteadOfAVerificationLink() throws Exception {
+        signup("verified@example.com", "the-original-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+
+        signup("verified@example.com", "an-attackers-password");
 
         assertThat(mailSender.sent).hasSize(1);
+        assertThat(mailSender.sent.getFirst().subject()).isEqualTo("You already have an Alexandrea account");
+        assertThat(userCountFor("verified@example.com")).isOne();
+        login("verified@example.com", "the-original-password").andExpect(status().isOk());
+        login("verified@example.com", "an-attackers-password").andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -390,6 +411,14 @@ class AuthEndpointTest {
     private int verifiedFlagFor(String email) {
         return jdbcClient
             .sql("SELECT verified FROM users WHERE email = :email")
+            .param("email", email)
+            .query(Integer.class)
+            .single();
+    }
+
+    private int userCountFor(String email) {
+        return jdbcClient
+            .sql("SELECT COUNT(*) FROM users WHERE email = :email")
             .param("email", email)
             .query(Integer.class)
             .single();

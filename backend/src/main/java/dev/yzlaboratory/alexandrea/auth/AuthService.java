@@ -1,5 +1,6 @@
 package dev.yzlaboratory.alexandrea.auth;
 
+import dev.yzlaboratory.alexandrea.auth.mail.AlreadyRegisteredMail;
 import dev.yzlaboratory.alexandrea.auth.mail.MailDispatcher;
 import dev.yzlaboratory.alexandrea.auth.mail.VerificationMail;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -42,25 +43,34 @@ public class AuthService {
         if (!PasswordPolicy.isAcceptable(rawPassword)) {
             throw new PasswordPolicyViolationException();
         }
-        // Hash before the existence check so a duplicate signup and a fresh one
-        // both pay Argon2id's deliberately-slow cost; otherwise response time
-        // reveals whether the address is already registered.
+        // Hash before branching on existence so every branch below pays
+        // Argon2id's deliberately-slow cost equally; otherwise response time
+        // reveals which branch a given email took.
         var passwordHash = passwordEncoder.encode(rawPassword);
-        if (userStore.findByEmail(email).isPresent()) {
-            throw new EmailAlreadyRegisteredException();
-        }
 
-        long userId;
-        try {
-            userId = userStore.createUnverified(email, passwordHash);
-        } catch (DataIntegrityViolationException raced) {
-            // Two concurrent signups for the same new address: the unique-email
-            // index rejects the loser. It is the same duplicate the check above
-            // catches when not racing, so it answers identically.
-            throw new EmailAlreadyRegisteredException();
+        var existingUser = userStore.findByEmail(email);
+        if (existingUser.isPresent()) {
+            signupOverExistingAccount(existingUser.get(), passwordHash);
+            return;
         }
-        var verificationLink = issueVerificationLink(userId);
-        mailDispatcher.dispatch(VerificationMail.build(email, verificationLink));
+        try {
+            var userId = userStore.createUnverified(email, passwordHash);
+            sendVerificationLink(userId, email);
+        } catch (DataIntegrityViolationException raced) {
+            // Two concurrent signups for the same new address: the loser's
+            // insert is rejected by the unique-email index. The winner already
+            // sent that address a verification link, so there is nothing left
+            // for the loser to do.
+        }
+    }
+
+    private void signupOverExistingAccount(User existingUser, String passwordHash) {
+        if (existingUser.verified()) {
+            mailDispatcher.dispatch(AlreadyRegisteredMail.build(existingUser.email()));
+            return;
+        }
+        userStore.updatePasswordHash(existingUser.id(), passwordHash);
+        sendVerificationLink(existingUser.id(), existingUser.email());
     }
 
     @Transactional
@@ -69,7 +79,11 @@ public class AuthService {
         if (user == null || user.verified()) {
             return;
         }
-        var verificationLink = issueVerificationLink(user.id());
+        sendVerificationLink(user.id(), user.email());
+    }
+
+    private void sendVerificationLink(long userId, String email) {
+        var verificationLink = issueVerificationLink(userId);
         mailDispatcher.dispatch(VerificationMail.build(email, verificationLink));
     }
 

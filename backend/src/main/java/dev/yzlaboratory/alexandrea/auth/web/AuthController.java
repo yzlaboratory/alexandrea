@@ -2,7 +2,6 @@ package dev.yzlaboratory.alexandrea.auth.web;
 
 import dev.yzlaboratory.alexandrea.auth.AuthService;
 import dev.yzlaboratory.alexandrea.auth.AuthenticatedUser;
-import dev.yzlaboratory.alexandrea.auth.EmailAlreadyRegisteredException;
 import dev.yzlaboratory.alexandrea.auth.InvalidCredentialsException;
 import dev.yzlaboratory.alexandrea.auth.LoginOutcome;
 import dev.yzlaboratory.alexandrea.auth.TokenConsumption;
@@ -43,11 +42,7 @@ public class AuthController {
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void signup(@Valid @RequestBody SignupRequest request) {
-        try {
-            authService.signup(request.email(), request.password());
-        } catch (EmailAlreadyRegisteredException alreadyRegistered) {
-            // Swallowed deliberately: the 202 must look identical to a fresh signup.
-        }
+        authService.signup(request.email(), request.password());
     }
 
     @PostMapping("/resend")
