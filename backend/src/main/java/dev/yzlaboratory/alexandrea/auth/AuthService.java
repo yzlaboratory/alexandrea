@@ -73,23 +73,37 @@ public class AuthService {
         mailDispatcher.dispatch(VerificationMail.build(email, verificationLink));
     }
 
-    /**
-     * Validates the password before consulting {@code verified} (ADR 0024): an
-     * unverified account is only revealed to a caller who already proved they
-     * hold the password, so checking verification first would turn login into
-     * a registration oracle.
-     */
     public LoginOutcome login(String email, String rawPassword) {
+        // A registered password always satisfies PasswordPolicy (signup enforces
+        // it), so an out-of-policy submission is already a guaranteed mismatch —
+        // rejecting it here skips a full-cost Argon2id hash the same DoS guard
+        // PasswordPolicy exists for (see its Javadoc) would otherwise be paying
+        // on every anonymous request, known email or not.
+        if (!PasswordPolicy.isAcceptable(rawPassword)) {
+            return new LoginOutcome.InvalidCredentials();
+        }
         var user = userStore.findByEmail(email);
         var hashToCheck = user.map(User::passwordHash).orElse(DUMMY_HASH);
         var passwordMatches = passwordEncoder.matches(rawPassword, hashToCheck);
         if (user.isEmpty() || !passwordMatches) {
             return new LoginOutcome.InvalidCredentials();
         }
-        if (!user.get().verified()) {
+        var authenticatedUser = user.get();
+        if (!authenticatedUser.verified()) {
             return new LoginOutcome.UnverifiedAccount();
         }
-        return new LoginOutcome.Authenticated(user.get());
+        return new LoginOutcome.Authenticated(authenticatedUser);
+    }
+
+    /**
+     * A session can only resolve to a row created by {@link #login}, and v1 has
+     * no account-deletion path (ADR 0021) to remove one afterward — a miss here
+     * is an invariant violation, not a routine user-facing error.
+     */
+    public User requireUser(long userId) {
+        return userStore.findById(userId)
+            .orElseThrow(() -> new IllegalStateException(
+                "Session principal has no matching user row: " + userId));
     }
 
     @Transactional
