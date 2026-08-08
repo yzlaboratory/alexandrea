@@ -69,3 +69,52 @@ export async function verify(token: string): Promise<VerifyOutcome> {
   if (response.status === 410) return 'rejected';
   return 'error';
 }
+
+export type LoginOutcome =
+  | { status: 'authenticated'; lastMediaType: string | null }
+  | { status: 'unverified' }
+  | { status: 'invalid-credentials' }
+  | { status: 'error' };
+
+export async function login(
+  email: string,
+  password: string,
+): Promise<LoginOutcome> {
+  const response = await postJson('/api/auth/login', { email, password });
+  // 401: the backend's generic rejection, deliberately identical whether the
+  // email is unknown or the password is wrong (ADR 0024).
+  if (response.status === 401) return { status: 'invalid-credentials' };
+  if (!response.ok) return { status: 'error' };
+
+  const body = (await response.json().catch(() => null)) as {
+    verified?: boolean;
+    lastMediaType?: string | null;
+  } | null;
+  if (body?.verified === true) {
+    return {
+      status: 'authenticated',
+      lastMediaType: body.lastMediaType ?? null,
+    };
+  }
+  if (body?.verified === false) return { status: 'unverified' };
+  return { status: 'error' };
+}
+
+export async function logout(): Promise<void> {
+  await postJson('/api/auth/logout', {});
+}
+
+export interface SessionUser {
+  email: string;
+  lastMediaType: string | null;
+}
+
+// GET is CSRF-exempt (Spring only guards state-changing methods), so this
+// skips the token header the other calls need.
+export async function fetchSession(): Promise<SessionUser | null> {
+  const response = await fetch('/api/auth/session', {
+    credentials: 'same-origin',
+  });
+  if (!response.ok) return null;
+  return (await response.json()) as SessionUser;
+}
