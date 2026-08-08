@@ -71,6 +71,16 @@ public class UserStore {
             .update();
     }
 
+    /** The caller supplies an already-Argon2id-hashed password — the store never sees plaintext. */
+    public void updatePasswordHash(long userId, String passwordHash) {
+        jdbcClient
+            .sql("UPDATE users SET password_hash = :passwordHash, updated_at = :now WHERE id = :id")
+            .param("passwordHash", passwordHash)
+            .param("now", clock.instant().toString())
+            .param("id", userId)
+            .update();
+    }
+
     private static String normalise(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
     }

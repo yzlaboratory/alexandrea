@@ -57,4 +57,13 @@ class UserStoreTest {
     void absentEmailReturnsEmpty() {
         assertThat(userStore.findByEmail("nobody@example.com")).isEmpty();
     }
+
+    @Test
+    void updatePasswordHashReplacesTheStoredHash() {
+        var id = userStore.createUnverified("reader@example.com", "{argon2}old-hash");
+
+        userStore.updatePasswordHash(id, "{argon2}new-hash");
+
+        assertThat(userStore.findById(id).orElseThrow().passwordHash()).isEqualTo("{argon2}new-hash");
+    }
 }
