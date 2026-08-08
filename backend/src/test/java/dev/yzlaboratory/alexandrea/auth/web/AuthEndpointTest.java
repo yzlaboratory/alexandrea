@@ -2,6 +2,7 @@ package dev.yzlaboratory.alexandrea.auth.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -11,6 +12,7 @@ import dev.yzlaboratory.alexandrea.auth.MutableClock;
 import dev.yzlaboratory.alexandrea.auth.mail.MailDispatcher;
 import dev.yzlaboratory.alexandrea.auth.mail.MailMessage;
 import dev.yzlaboratory.alexandrea.auth.mail.MailSender;
+import jakarta.servlet.http.Cookie;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,6 +20,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,12 +35,15 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 
 /**
- * The observable HTTP contract of the signup → verify slice, end-to-end through
- * the real wiring. Flyway runs against a temp-file SQLite so the production
- * dialect and migrations are exercised — unlike the Flyway-disabled smoke test.
+ * The observable HTTP contract of the auth flows — signup, verify, login,
+ * logout, session — end-to-end through the real wiring. Flyway runs against a
+ * temp-file SQLite so the production dialect and migrations are exercised —
+ * unlike the Flyway-disabled smoke test.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -74,6 +80,7 @@ class AuthEndpointTest {
         clock.resetTo(Instant.parse("2026-06-07T12:00:00Z"));
         jdbcClient.sql("DELETE FROM auth_tokens").update();
         jdbcClient.sql("DELETE FROM users").update();
+        jdbcClient.sql("DELETE FROM SPRING_SESSION").update();
     }
 
     @Test
@@ -207,6 +214,116 @@ class AuthEndpointTest {
         assertThat(mailSender.sent).isEmpty();
     }
 
+
+    @Test
+    void verifiedLoginEstablishesASessionThatResolvesToTheUser() throws Exception {
+        signup("login@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+
+        var result = login("login@example.com", "a-good-long-password")
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.verified").value(true))
+            .andReturn();
+
+        var sessionCookie = sessionCookieFrom(result);
+        assertThat(sessionCookie).isNotNull();
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.email").value("login@example.com"));
+    }
+
+    @Test
+    void unverifiedAccountWithCorrectPasswordShowsVerifyPromptAndEstablishesNoSession() throws Exception {
+        signup("pending@example.com", "a-good-long-password");
+
+        login("pending@example.com", "a-good-long-password")
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.verified").value(false))
+            .andExpect(jsonPath("$.lastMediaType").doesNotExist());
+
+        assertThat(sessionRowCount()).isZero();
+    }
+
+    @Test
+    void wrongPasswordAndUnknownEmailGetTheIdenticalGenericRejection() throws Exception {
+        signup("known@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+
+        var wrongPassword = login("known@example.com", "totally-wrong-password")
+            .andExpect(status().isUnauthorized())
+            .andReturn();
+        var unknownEmail = login("nobody-here@example.com", "totally-wrong-password")
+            .andExpect(status().isUnauthorized())
+            .andReturn();
+
+        assertThat(unknownEmail.getResponse().getContentAsString())
+            .isEqualTo(wrongPassword.getResponse().getContentAsString());
+    }
+
+    @Test
+    void logoutInvalidatesTheSessionServerSide() throws Exception {
+        signup("logout@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("logout@example.com", "a-good-long-password").andReturn());
+
+        mockMvc.perform(post("/api/auth/logout").with(csrf()).cookie(sessionCookie))
+            .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void anIdleSessionPastTheThirtyDayRollingWindowIsInvalid() throws Exception {
+        signup("idle@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("idle@example.com", "a-good-long-password").andReturn());
+
+        // Spring Session tracks LAST_ACCESS_TIME/EXPIRY_TIME in real wall-clock
+        // millis, not the injected Clock, so backdating both directly in the
+        // JDBC store is the only way to fast-forward past the rolling window.
+        var pastWindow = Duration.ofDays(31).toMillis();
+        jdbcClient.sql("""
+                UPDATE SPRING_SESSION
+                SET LAST_ACCESS_TIME = LAST_ACCESS_TIME - :pastWindow,
+                    EXPIRY_TIME = EXPIRY_TIME - :pastWindow
+                """)
+            .param("pastWindow", pastWindow)
+            .update();
+
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void sessionsArePersistedToTheJdbcStoreSoARedeploySurvivesThem() throws Exception {
+        signup("persist@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+
+        login("persist@example.com", "a-good-long-password").andExpect(status().isOk());
+
+        assertThat(sessionRowCount()).isOne();
+    }
+
+    private ResultActions login(String email, String password) throws Exception {
+        return mockMvc.perform(post("/api/auth/login")
+            .with(csrf())
+            .contentType("application/json")
+            .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"));
+    }
+
+    private static Cookie sessionCookieFrom(MvcResult result) {
+        return Arrays.stream(result.getResponse().getCookies())
+            .filter(cookie -> !cookie.getName().equals("XSRF-TOKEN"))
+            .findFirst()
+            .orElse(null);
+    }
+
+    private int sessionRowCount() {
+        return jdbcClient.sql("SELECT COUNT(*) FROM SPRING_SESSION").query(Integer.class).single();
+    }
 
     private void signup(String email, String password) throws Exception {
         mockMvc.perform(post("/api/auth/signup")

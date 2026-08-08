@@ -10,6 +10,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthService {
 
+    // A real {argon2} hash of an address no account will ever have, so
+    // passwordEncoder.matches() runs its full cost on an unknown email too —
+    // otherwise a fast "no such user" short-circuit would let response timing
+    // reveal whether the address is registered, the same oracle signup closes.
+    private static final String DUMMY_HASH =
+        "{argon2}$argon2id$v=19$m=16384,t=2,p=1$RV/b40k462pPnnpoFcGzTw$i5PUH969l9692gVwVdgZkUStX0cjzfUtuZepeJ/l50U";
+
     private final UserStore userStore;
     private final TokenService tokenService;
     private final PasswordEncoder passwordEncoder;
@@ -64,6 +71,25 @@ public class AuthService {
         }
         var verificationLink = issueVerificationLink(user.id());
         mailDispatcher.dispatch(VerificationMail.build(email, verificationLink));
+    }
+
+    /**
+     * Validates the password before consulting {@code verified} (ADR 0024): an
+     * unverified account is only revealed to a caller who already proved they
+     * hold the password, so checking verification first would turn login into
+     * a registration oracle.
+     */
+    public LoginOutcome login(String email, String rawPassword) {
+        var user = userStore.findByEmail(email);
+        var hashToCheck = user.map(User::passwordHash).orElse(DUMMY_HASH);
+        var passwordMatches = passwordEncoder.matches(rawPassword, hashToCheck);
+        if (user.isEmpty() || !passwordMatches) {
+            return new LoginOutcome.InvalidCredentials();
+        }
+        if (!user.get().verified()) {
+            return new LoginOutcome.UnverifiedAccount();
+        }
+        return new LoginOutcome.Authenticated(user.get());
     }
 
     @Transactional
