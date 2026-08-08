@@ -11,10 +11,10 @@ import { type LoginOutcome } from './authApi';
 import { textField } from './forms';
 
 interface LoginFormProps {
-  onAuthenticated: (lastMediaType: string | null) => void;
-  onUnverified: (email: string) => void;
+  readonly onAuthenticated: (lastMediaType: string | null) => void;
+  readonly onUnverified: (email: string) => void;
   /** The login call, injected so the form is testable without the network. */
-  submit: (email: string, password: string) => Promise<LoginOutcome>;
+  readonly submit: (email: string, password: string) => Promise<LoginOutcome>;
 }
 
 type FormError = string | null;
