@@ -104,6 +104,36 @@ export async function logout(): Promise<void> {
   await postJson('/api/auth/logout', {});
 }
 
+// Always fire-and-forget: the response is generic regardless of account state
+// (ADR 0024), so there is nothing for the caller to branch on beyond a
+// network failure, which the caller catches.
+export async function requestPasswordReset(email: string): Promise<void> {
+  await postJson('/api/auth/forgot-password', { email });
+}
+
+export type ResetPasswordOutcome =
+  | { status: 'reset' }
+  | { status: 'rejected' }
+  | { status: 'invalid-password' }
+  | { status: 'error' };
+
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<ResetPasswordOutcome> {
+  const response = await postJson('/api/auth/reset-password', {
+    token,
+    newPassword,
+  });
+  if (response.ok) return { status: 'reset' };
+  // 410 Gone: expired, already used, or unknown — all one "rejected" link.
+  if (response.status === 410) return { status: 'rejected' };
+  if (await isPasswordPolicyRejection(response)) {
+    return { status: 'invalid-password' };
+  }
+  return { status: 'error' };
+}
+
 export async function switchMediaType(mediaType: string): Promise<void> {
   await postJson('/api/auth/media-type', { mediaType });
 }
