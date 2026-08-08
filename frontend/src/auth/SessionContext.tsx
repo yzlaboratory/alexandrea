@@ -21,7 +21,7 @@ interface SessionState {
 const SessionContext = createContext<SessionState | null>(null);
 
 interface SessionProviderProps {
-  children: ReactNode;
+  readonly children: ReactNode;
 }
 
 export function SessionProvider({ children }: SessionProviderProps): ReactNode {
