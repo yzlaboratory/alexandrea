@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import App from './App';
@@ -23,9 +24,13 @@ describe('App routing', () => {
   // App owns SessionProvider internally (LoginPage needs it outside
   // RequireAuth too), so every render here triggers a real session lookup —
   // stubbed anonymous by default, which is the right starting state for all
-  // of these routes.
+  // of these routes. Individual tests can queue further mockResolvedValueOnce
+  // responses on top of this default for subsequent requests.
+  let fetchMock: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(401)));
+    fetchMock = vi.fn().mockResolvedValue(response(401));
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   afterEach(() => {
@@ -85,5 +90,34 @@ describe('App routing', () => {
     expect(
       await screen.findByRole('heading', { name: /log in/i }),
     ).toBeInTheDocument();
+  });
+
+  it('returns an anonymous visitor to their originally requested URL after logging in', async () => {
+    document.cookie = 'XSRF-TOKEN=test-token';
+    renderAt('/books/library');
+
+    // RequireAuth's own redirect — not a fabricated location.state — is what
+    // carries the destination through to here.
+    await screen.findByRole('heading', { name: /log in/i });
+
+    fetchMock.mockResolvedValueOnce(
+      response(200, { verified: true, lastMediaType: 'movies' }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      response(200, { email: 'reader@example.com', lastMediaType: 'movies' }),
+    );
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/email/i), 'reader@example.com');
+    await user.type(screen.getByLabelText(/password/i), 'a-good-long-password');
+    await user.click(screen.getByRole('button', { name: /log in/i }));
+
+    expect(
+      await screen.findByRole('tab', { name: 'Books', selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('tab', { name: 'Library', selected: true }),
+    ).toBeInTheDocument();
+
+    document.cookie = 'XSRF-TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
   });
 });
