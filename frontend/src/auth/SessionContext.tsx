@@ -28,26 +28,27 @@ export function SessionProvider({ children }: SessionProviderProps): ReactNode {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [status, setStatus] = useState<SessionStatus>('loading');
 
-  const refresh = useCallback(async () => {
-    const session = await fetchSession();
+  const applySession = useCallback((session: SessionUser | null) => {
     setUser(session);
     setStatus(session === null ? 'anonymous' : 'authenticated');
   }, []);
 
+  const refresh = useCallback(async () => {
+    applySession(await fetchSession());
+  }, [applySession]);
+
   // Fetch-on-display: resolve who's logged in as soon as the app mounts.
-  // Written inline (not via `refresh`) so the state updates live inside the
-  // promise continuation rather than the effect's synchronous body.
+  // Guards against a late-resolving fetch (e.g. Strict Mode's dev-only
+  // double-invoke) clobbering state from a fetch that started more recently.
   useEffect(() => {
     let cancelled = false;
     void fetchSession().then((session) => {
-      if (cancelled) return;
-      setUser(session);
-      setStatus(session === null ? 'anonymous' : 'authenticated');
+      if (!cancelled) applySession(session);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applySession]);
 
   const value = useMemo(
     () => ({ user, status, refresh }),
