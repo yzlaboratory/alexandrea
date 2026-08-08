@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AppShell from './AppShell';
+import CatalogPlaceholder from './CatalogPlaceholder';
 import { SessionProvider } from '../auth/SessionContext';
 import * as authApi from '../auth/authApi';
 
@@ -20,7 +21,13 @@ function renderShell(initialPath: string): void {
       <SessionProvider>
         <Routes>
           <Route path="/" element={<div>Landing page</div>} />
-          <Route path="/:mediaType/:surface" element={<AppShell />} />
+          <Route element={<AppShell />}>
+            <Route
+              path="/:mediaType/:surface"
+              element={<CatalogPlaceholder />}
+            />
+            <Route path="/account" element={<div>Account page</div>} />
+          </Route>
         </Routes>
       </SessionProvider>
     </MemoryRouter>,
@@ -57,6 +64,24 @@ describe('AppShell', () => {
     renderShell('/movies/watchlist');
 
     expect(await screen.findByText(/later slice/i)).toBeInTheDocument();
+  });
+
+  it('does not crash and selects no tab for an unrecognized route segment', async () => {
+    renderShell('/bogus/whatever');
+
+    expect(await screen.findByText(/later slice/i)).toBeInTheDocument();
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab).toHaveAttribute('aria-selected', 'false');
+    }
+  });
+
+  it('keeps the shell chrome visible on /account', async () => {
+    renderShell('/account');
+
+    expect(await screen.findByText('Account page')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /reader@example.com/i }),
+    ).toBeInTheDocument();
   });
 
   it('shows the account menu with settings and log out', async () => {
