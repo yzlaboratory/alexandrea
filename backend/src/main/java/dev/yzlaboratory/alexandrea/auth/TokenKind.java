@@ -6,7 +6,8 @@ package dev.yzlaboratory.alexandrea.auth;
  */
 public enum TokenKind {
 
-    VERIFICATION("verification");
+    VERIFICATION("verification"),
+    RESET("reset");
 
     private final String storageValue;
 

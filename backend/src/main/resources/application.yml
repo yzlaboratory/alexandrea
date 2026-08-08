@@ -1,11 +1,14 @@
 # Defaults that hold across every profile. Per-profile overrides live below.
 
-# Token lifetime is config-driven, not pinned in code. The verification URL
-# points at the SPA route that posts the token back to /api/auth/verify.
+# Token lifetimes are config-driven, not pinned in code. Each URL template
+# points at the SPA route that posts the token back to the matching /api/auth
+# endpoint.
 alexandrea:
   auth:
     verification-token-ttl: 24h
     verification-url-template: http://localhost:5173/verify?token={token}
+    reset-token-ttl: 1h
+    reset-url-template: http://localhost:5173/reset-password?token={token}
 
 spring:
   application:

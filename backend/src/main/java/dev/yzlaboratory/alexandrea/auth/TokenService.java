@@ -107,6 +107,7 @@ public class TokenService {
     private Duration ttlFor(TokenKind kind) {
         return switch (kind) {
             case VERIFICATION -> properties.verificationTokenTtl();
+            case RESET -> properties.resetTokenTtl();
         };
     }
 

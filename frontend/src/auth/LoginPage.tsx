@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
-import { Container } from '@mui/material';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Container, Link, Stack } from '@mui/material';
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { login } from './authApi';
 import { useSession } from './SessionContext';
 import LoginForm from './LoginForm';
@@ -27,11 +27,16 @@ function LoginPage(): ReactNode {
   return (
     <Container maxWidth="sm" sx={{ py: 8 }}>
       {unverifiedEmail === null ? (
-        <LoginForm
-          submit={login}
-          onAuthenticated={(lastMediaType) => void goToApp(lastMediaType)}
-          onUnverified={setUnverifiedEmail}
-        />
+        <Stack spacing={2}>
+          <LoginForm
+            submit={login}
+            onAuthenticated={(lastMediaType) => void goToApp(lastMediaType)}
+            onUnverified={setUnverifiedEmail}
+          />
+          <Link component={RouterLink} to="/forgot-password" variant="body2">
+            Forgot your password?
+          </Link>
+        </Stack>
       ) : (
         <CheckEmailPanel email={unverifiedEmail} />
       )}

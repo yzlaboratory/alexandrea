@@ -2,6 +2,7 @@ package dev.yzlaboratory.alexandrea.auth;
 
 import dev.yzlaboratory.alexandrea.auth.mail.AlreadyRegisteredMail;
 import dev.yzlaboratory.alexandrea.auth.mail.MailDispatcher;
+import dev.yzlaboratory.alexandrea.auth.mail.PasswordResetMail;
 import dev.yzlaboratory.alexandrea.auth.mail.VerificationMail;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,6 +21,7 @@ public class AuthService {
 
     private final UserStore userStore;
     private final TokenService tokenService;
+    private final SessionStore sessionStore;
     private final PasswordEncoder passwordEncoder;
     private final MailDispatcher mailDispatcher;
     private final AuthProperties properties;
@@ -27,12 +29,14 @@ public class AuthService {
     public AuthService(
         UserStore userStore,
         TokenService tokenService,
+        SessionStore sessionStore,
         PasswordEncoder passwordEncoder,
         MailDispatcher mailDispatcher,
         AuthProperties properties
     ) {
         this.userStore = userStore;
         this.tokenService = tokenService;
+        this.sessionStore = sessionStore;
         this.passwordEncoder = passwordEncoder;
         this.mailDispatcher = mailDispatcher;
         this.properties = properties;
@@ -138,5 +142,33 @@ public class AuthService {
     private String issueVerificationLink(long userId) {
         var rawToken = tokenService.issue(TokenKind.VERIFICATION, userId);
         return properties.verificationUrlTemplate().replace("{token}", rawToken);
+    }
+
+    @Transactional
+    public void requestPasswordReset(String email) {
+        var user = userStore.findByEmail(email).orElse(null);
+        if (user == null || !user.verified()) {
+            return;
+        }
+        var resetLink = issueResetLink(user.id());
+        mailDispatcher.dispatch(PasswordResetMail.build(user.email(), resetLink));
+    }
+
+    private String issueResetLink(long userId) {
+        var rawToken = tokenService.issue(TokenKind.RESET, userId);
+        return properties.resetUrlTemplate().replace("{token}", rawToken);
+    }
+
+    @Transactional
+    public TokenConsumption resetPassword(String rawToken, String newRawPassword) {
+        if (!PasswordPolicy.isAcceptable(newRawPassword)) {
+            throw new PasswordPolicyViolationException();
+        }
+        var outcome = tokenService.consume(TokenKind.RESET, rawToken);
+        if (outcome instanceof TokenConsumption.Consumed consumed) {
+            userStore.updatePasswordHash(consumed.userId(), passwordEncoder.encode(newRawPassword));
+            sessionStore.invalidateAllAfterCommit(consumed.userId());
+        }
+        return outcome;
     }
 }

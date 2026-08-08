@@ -110,4 +110,12 @@ describe('LoginPage', () => {
       await screen.findByText(/email or password is incorrect/i),
     ).toBeInTheDocument();
   });
+
+  it('links to the forgot-password page', () => {
+    renderLoginPage('/login');
+
+    expect(
+      screen.getByRole('link', { name: /forgot your password/i }),
+    ).toHaveAttribute('href', '/forgot-password');
+  });
 });

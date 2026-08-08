@@ -425,6 +425,149 @@ class AuthEndpointTest {
             .andExpect(jsonPath("$.lastMediaType").value("tv"));
     }
 
+    @Test
+    void requestingAResetForAVerifiedAccountSendsAGenericResponseAndMailsALink() throws Exception {
+        signup("resetme@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+
+        resetRequest("resetme@example.com").andExpect(status().isAccepted());
+
+        assertThat(mailSender.sent).hasSize(1);
+        assertThat(mailSender.sent.getFirst().to()).isEqualTo("resetme@example.com");
+        assertThat(extractToken(mailSender.sent.getFirst())).isNotBlank();
+    }
+
+    @Test
+    void requestingAResetForAnUnknownEmailGetsTheIdenticalGenericResponseAndSendsNoMail() throws Exception {
+        resetRequest("nobody-here@example.com").andExpect(status().isAccepted());
+
+        assertThat(mailSender.sent).isEmpty();
+    }
+
+    @Test
+    void requestingAResetForAnUnverifiedAccountGetsTheIdenticalGenericResponseAndSendsNoMail() throws Exception {
+        signup("neververified@example.com", "a-good-long-password");
+        mailSender.sent.clear();
+
+        resetRequest("neververified@example.com").andExpect(status().isAccepted());
+
+        assertThat(mailSender.sent).isEmpty();
+    }
+
+    @Test
+    void aSecondResetRequestInvalidatesThePriorOutstandingResetLink() throws Exception {
+        signup("tworesets@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+        resetRequest("tworesets@example.com").andExpect(status().isAccepted());
+        var firstToken = extractToken(mailSender.sent.getFirst());
+
+        resetRequest("tworesets@example.com").andExpect(status().isAccepted());
+        var secondToken = extractToken(mailSender.sent.getLast());
+
+        resetSubmit(firstToken, "a-brand-new-password").andExpect(status().isGone());
+        resetSubmit(secondToken, "a-brand-new-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void aValidResetReplacesThePasswordAndAllowsLoginWithTheNewOneOnly() throws Exception {
+        signup("changeme@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+        resetRequest("changeme@example.com").andExpect(status().isAccepted());
+        var token = extractToken(mailSender.sent.getFirst());
+
+        resetSubmit(token, "a-brand-new-password")
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.reset").value(true));
+
+        login("changeme@example.com", "the-old-password").andExpect(status().isUnauthorized());
+        login("changeme@example.com", "a-brand-new-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void aValidResetInvalidatesTheUsersOtherSessionsButNotAnotherUsersSession() throws Exception {
+        signup("multisession@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionOne = sessionCookieFrom(
+            login("multisession@example.com", "the-old-password").andReturn());
+        var sessionTwo = sessionCookieFrom(
+            login("multisession@example.com", "the-old-password").andReturn());
+        mailSender.sent.clear();
+
+        signup("bystander@example.com", "a-good-long-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var bystanderSession = sessionCookieFrom(
+            login("bystander@example.com", "a-good-long-password").andReturn());
+        mailSender.sent.clear();
+
+        resetRequest("multisession@example.com").andExpect(status().isAccepted());
+        var token = extractToken(mailSender.sent.getFirst());
+        resetSubmit(token, "a-brand-new-password").andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/auth/session").cookie(sessionOne)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/auth/session").cookie(sessionTwo)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/auth/session").cookie(bystanderSession)).andExpect(status().isOk());
+    }
+
+    @Test
+    void anExpiredResetLinkIsRejectedAndLeavesThePasswordUnchanged() throws Exception {
+        signup("expiredreset@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+        resetRequest("expiredreset@example.com").andExpect(status().isAccepted());
+        var token = extractToken(mailSender.sent.getFirst());
+        clock.advance(Duration.ofHours(1).plusMinutes(1));
+
+        resetSubmit(token, "a-brand-new-password").andExpect(status().isGone());
+
+        login("expiredreset@example.com", "the-old-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void anAlreadyUsedResetLinkIsRejectedOnASecondSubmission() throws Exception {
+        signup("usedreset@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+        resetRequest("usedreset@example.com").andExpect(status().isAccepted());
+        var token = extractToken(mailSender.sent.getFirst());
+        resetSubmit(token, "a-brand-new-password").andExpect(status().isOk());
+
+        resetSubmit(token, "yet-another-password").andExpect(status().isGone());
+
+        login("usedreset@example.com", "a-brand-new-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void aNewPasswordViolatingThePolicyIsRejectedWithoutConsumingTheToken() throws Exception {
+        signup("badpolicy@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+        resetRequest("badpolicy@example.com").andExpect(status().isAccepted());
+        var token = extractToken(mailSender.sent.getFirst());
+
+        resetSubmit(token, "tooshort")
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.type").value("urn:alexandrea:auth:password-policy"));
+
+        resetSubmit(token, "a-brand-new-password").andExpect(status().isOk());
+    }
+
+    private ResultActions resetRequest(String email) throws Exception {
+        return mockMvc.perform(post("/api/auth/forgot-password")
+            .with(csrf())
+            .contentType("application/json")
+            .content("{\"email\":\"" + email + "\"}"));
+    }
+
+    private ResultActions resetSubmit(String token, String newPassword) throws Exception {
+        return mockMvc.perform(post("/api/auth/reset-password")
+            .with(csrf())
+            .contentType("application/json")
+            .content("{\"token\":\"" + token + "\",\"newPassword\":\"" + newPassword + "\"}"));
+    }
+
     private ResultActions switchMediaType(Cookie sessionCookie, String mediaType) throws Exception {
         return mockMvc.perform(post("/api/auth/media-type")
             .with(csrf())
@@ -521,11 +664,13 @@ class AuthEndpointTest {
             return new MutableClock(Instant.parse("2026-06-07T12:00:00Z"));
         }
 
-        /** Bind a deterministic verification URL so token extraction is stable. */
+        /** Bind deterministic verification/reset URLs so token extraction is stable. */
         @Bean
         @Primary
         AuthProperties testAuthProperties() {
-            return new AuthProperties(Duration.ofHours(24), "http://localhost/verify?token={token}");
+            return new AuthProperties(
+                Duration.ofHours(24), "http://localhost/verify?token={token}",
+                Duration.ofHours(1), "http://localhost/reset-password?token={token}");
         }
     }
 

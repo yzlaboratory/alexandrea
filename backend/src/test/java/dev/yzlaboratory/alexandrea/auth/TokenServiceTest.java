@@ -102,8 +102,30 @@ class TokenServiceTest {
         assertThat(outcome).isInstanceOf(TokenConsumption.Rejected.class);
     }
 
+    @Test
+    void aResetTokenExpiresAfterOneHourRatherThanTwentyFourHours() {
+        var rawToken = tokenService.issue(TokenKind.RESET, userId);
+        clock.advance(Duration.ofHours(1).plusSeconds(1));
+
+        var outcome = tokenService.consume(TokenKind.RESET, rawToken);
+
+        assertThat(outcome).isInstanceOf(TokenConsumption.Expired.class);
+    }
+
+    @Test
+    void issuingAResetTokenDoesNotInvalidateAnOutstandingVerificationTokenForTheSameUser() {
+        var verificationToken = tokenService.issue(TokenKind.VERIFICATION, userId);
+
+        tokenService.issue(TokenKind.RESET, userId);
+
+        assertThat(tokenService.consume(TokenKind.VERIFICATION, verificationToken))
+            .isEqualTo(new TokenConsumption.Consumed(userId));
+    }
+
     private static AuthProperties defaultProperties() {
-        return new AuthProperties(Duration.ofHours(24), "http://localhost/verify?token={token}");
+        return new AuthProperties(
+            Duration.ofHours(24), "http://localhost/verify?token={token}",
+            Duration.ofHours(1), "http://localhost/reset-password?token={token}");
     }
 
     private static long insertUser(JdbcClient jdbcClient, String email) {
