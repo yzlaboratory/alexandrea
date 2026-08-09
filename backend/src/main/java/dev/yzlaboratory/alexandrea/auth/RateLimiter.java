@@ -2,12 +2,6 @@ package dev.yzlaboratory.alexandrea.auth;
 
 import org.springframework.stereotype.Service;
 
-/**
- * Enforces ADR 0024's dual keying: every guarded request is counted against
- * both the client IP and the target email, and whichever bucket trips first
- * throttles it — closing both the one-host-many-emails and the
- * many-hosts-one-email probing shapes.
- */
 @Service
 public class RateLimiter {
 

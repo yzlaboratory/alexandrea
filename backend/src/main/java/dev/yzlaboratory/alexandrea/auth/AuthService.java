@@ -102,11 +102,8 @@ public class AuthService {
     }
 
     public LoginOutcome login(String email, String rawPassword, String clientIp) {
-        // Checked before anything else touches the request, so a throttled
-        // caller gets the identical InvalidCredentials shape a genuine wrong
-        // password would — never a distinguishable "too many attempts" reply
-        // — and skips the Argon2id run below regardless of whether their
-        // password happened to be correct.
+        // Checked first so a throttled request never pays the Argon2id cost
+        // below, whether or not the submitted password would have matched.
         if (!rateLimiter.allowLogin(clientIp, email)) {
             return new LoginOutcome.InvalidCredentials();
         }
