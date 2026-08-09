@@ -554,6 +554,20 @@ class AuthEndpointTest {
         resetSubmit(token, "a-brand-new-password").andExpect(status().isOk());
     }
 
+    @Test
+    void anExpiredResetLinkIsRejectedEvenWhenTheNewPasswordAlsoViolatesThePolicy() throws Exception {
+        signup("expiredandbadpassword@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+        resetRequest("expiredandbadpassword@example.com").andExpect(status().isAccepted());
+        var token = extractToken(mailSender.sent.getFirst());
+        clock.advance(Duration.ofHours(1).plusMinutes(1));
+
+        // The dead link is the more useful thing to report, so it wins over the
+        // password-policy check even though "tooshort" would also be rejected.
+        resetSubmit(token, "tooshort").andExpect(status().isGone());
+    }
+
     private ResultActions resetRequest(String email) throws Exception {
         return mockMvc.perform(post("/api/auth/forgot-password")
             .with(csrf())

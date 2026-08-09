@@ -161,13 +161,17 @@ public class AuthService {
 
     @Transactional
     public TokenConsumption resetPassword(String rawToken, String newRawPassword) {
-        if (!PasswordPolicy.isAcceptable(newRawPassword)) {
-            throw new PasswordPolicyViolationException();
-        }
         var outcome = tokenService.consume(TokenKind.RESET, rawToken);
         if (outcome instanceof TokenConsumption.Consumed consumed) {
+            // Checked only once the token is known live, so a dead link is always
+            // reported as such (410) even when the submitted password also fails
+            // policy — the token being dead is the more useful thing to tell the
+            // caller, and throwing here rolls back the consume() burn above too.
+            if (!PasswordPolicy.isAcceptable(newRawPassword)) {
+                throw new PasswordPolicyViolationException();
+            }
             userStore.updatePasswordHash(consumed.userId(), passwordEncoder.encode(newRawPassword));
-            sessionStore.invalidateAllAfterCommit(consumed.userId());
+            sessionStore.invalidateAll(consumed.userId());
         }
         return outcome;
     }
