@@ -125,6 +125,10 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
         </Stack>
       )}
       {status === 'error' && (
+        // The backend already serves a stale cached page as a plain 200 on
+        // a transient upstream failure (ADR 0015), so an 'error' status
+        // here only ever means a genuine cold miss — one generic message
+        // covers it, with no separate "may be stale" case to distinguish.
         <Alert
           severity="error"
           action={
@@ -133,7 +137,7 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
             </Button>
           }
         >
-          Couldn&apos;t load the catalog. Please try again.
+          The catalog is temporarily unavailable. Please try again.
         </Alert>
       )}
       {showEmptyMessage && (

@@ -165,15 +165,36 @@ describe('CatalogGrid', () => {
     render(<CatalogGrid mediaType="movies" />);
 
     expect(
-      await screen.findByText(/couldn't load the catalog/i),
+      await screen.findByText(/temporarily unavailable/i),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('renders an ok page with no "stale" affordance, indistinguishable from a fresh one', async () => {
+    // ADR 0015: a page served from the stale-while-error fallback is a
+    // plain 'ok' outcome, identical in shape to a freshly-fetched one — the
+    // grid has no way to tell the two apart and must never try to.
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'A Recently Refetched Movie' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+
+    render(<CatalogGrid mediaType="movies" />);
+
+    expect(
+      await screen.findByText('A Recently Refetched Movie'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/stale/i)).not.toBeInTheDocument();
   });
 
   it('retries the same page and recovers after a failed load', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({ status: 'error' });
     render(<CatalogGrid mediaType="movies" />);
-    await screen.findByText(/couldn't load the catalog/i);
+    await screen.findByText(/temporarily unavailable/i);
 
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
