@@ -157,6 +157,39 @@ export async function changePassword(
   return { status: 'error' };
 }
 
+export type RequestEmailChangeOutcome =
+  | { status: 'requested' }
+  | { status: 'incorrect-current-password' }
+  | { status: 'error' };
+
+// The response is generic regardless of whether the new address is already
+// registered (ADR 0024), so there is nothing to branch on beyond the
+// authenticated-action failure mode (wrong current password) vs. success.
+export async function requestEmailChange(
+  currentPassword: string,
+  newEmail: string,
+): Promise<RequestEmailChangeOutcome> {
+  const response = await postJson('/api/auth/change-email', {
+    currentPassword,
+    newEmail,
+  });
+  if (response.ok) return { status: 'requested' };
+  if (response.status === 401) return { status: 'incorrect-current-password' };
+  return { status: 'error' };
+}
+
+export type ConfirmEmailChangeOutcome = 'changed' | 'rejected' | 'error';
+
+export async function confirmEmailChange(
+  token: string,
+): Promise<ConfirmEmailChangeOutcome> {
+  const response = await postJson('/api/auth/confirm-email-change', { token });
+  if (response.ok) return 'changed';
+  // 410 Gone: expired, already used, or unknown — all one "rejected" link.
+  if (response.status === 410) return 'rejected';
+  return 'error';
+}
+
 export async function switchMediaType(mediaType: string): Promise<void> {
   await postJson('/api/auth/media-type', { mediaType });
 }
