@@ -1,0 +1,253 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import CatalogGrid from './CatalogGrid';
+import * as catalogApi from './catalogApi';
+import type { CatalogEntry, FetchCatalogPageOutcome } from './catalogApi';
+
+vi.mock('./catalogApi', () => ({
+  fetchCatalogPage: vi.fn(),
+}));
+
+const mockedFetchCatalogPage = vi.mocked(catalogApi.fetchCatalogPage);
+
+// jsdom does not implement IntersectionObserver, so CatalogGrid's own module
+// under test can't run without a stand-in. This fake captures the callback
+// each `new IntersectionObserver(...)` call registers, so a test can fire it
+// manually to simulate the sentinel scrolling into view.
+class FakeIntersectionObserver implements IntersectionObserver {
+  static instances: FakeIntersectionObserver[] = [];
+  readonly root = null;
+  readonly rootMargin = '';
+  readonly thresholds: readonly number[] = [];
+  private readonly callback: IntersectionObserverCallback;
+
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback;
+    FakeIntersectionObserver.instances.push(this);
+  }
+
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+
+  trigger(isIntersecting: boolean): void {
+    this.callback([{ isIntersecting } as IntersectionObserverEntry], this);
+  }
+}
+
+function entry(overrides: Partial<CatalogEntry> = {}): CatalogEntry {
+  return {
+    provider: 'TMDB',
+    externalId: '1',
+    mediaType: 'movies',
+    title: 'A Movie',
+    coverUrl: null,
+    releaseDate: '2024-01-01',
+    externalRating: 7.5,
+    externalRatingScale: 10,
+    ...overrides,
+  };
+}
+
+// Every test in this file that reaches this point has already awaited a
+// render that installs exactly one observer, so a missing one is a real bug
+// worth failing loudly on rather than a possibly-undefined access to thread
+// through every call site.
+function lastObserver(): FakeIntersectionObserver {
+  const observer = FakeIntersectionObserver.instances.at(-1);
+  if (!observer) throw new Error('No IntersectionObserver was created');
+  return observer;
+}
+
+describe('CatalogGrid', () => {
+  beforeEach(() => {
+    FakeIntersectionObserver.instances = [];
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+    mockedFetchCatalogPage.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('loads and renders the first page on mount', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        entries: [entry({ title: 'First Movie' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+
+    render(<CatalogGrid mediaType="movies" />);
+
+    expect(await screen.findByText('First Movie')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith('movies', 1);
+  });
+
+  it('fetches the next page when the sentinel intersects, appending to the existing entries', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        entries: [entry({ externalId: '1', title: 'Page One Movie' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+    render(<CatalogGrid mediaType="movies" />);
+    await screen.findByText('Page One Movie');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        entries: [entry({ externalId: '2', title: 'Page Two Movie' })],
+        page: 2,
+        hasMore: true,
+      },
+    });
+    lastObserver().trigger(true);
+
+    expect(await screen.findByText('Page Two Movie')).toBeInTheDocument();
+    // The first page's entries are still there — appended to, not replaced.
+    expect(screen.getByText('Page One Movie')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(2, 'movies', 2);
+  });
+
+  it('does not fetch again once the last page has been reached', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { entries: [entry()], page: 1, hasMore: false },
+    });
+    render(<CatalogGrid mediaType="movies" />);
+    await screen.findByText('A Movie');
+
+    lastObserver().trigger(true);
+
+    // Give any errant async fetch a chance to fire before asserting it didn't.
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('ignores a non-intersecting observer callback', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { entries: [entry()], page: 1, hasMore: true },
+    });
+    render(<CatalogGrid mediaType="movies" />);
+    await screen.findByText('A Movie');
+
+    lastObserver().trigger(false);
+
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('shows a "no entries" message when the upstream page comes back empty', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { entries: [], page: 1, hasMore: false },
+    });
+
+    render(<CatalogGrid mediaType="movies" />);
+
+    expect(await screen.findByText('No entries found.')).toBeInTheDocument();
+  });
+
+  it('shows an error with a retry action when the first page fails to load', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({ status: 'error' });
+
+    render(<CatalogGrid mediaType="movies" />);
+
+    expect(
+      await screen.findByText(/couldn't load the catalog/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('retries the same page and recovers after a failed load', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({ status: 'error' });
+    render(<CatalogGrid mediaType="movies" />);
+    await screen.findByText(/couldn't load the catalog/i);
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        entries: [entry({ title: 'Recovered Movie' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+    const user = (await import('@testing-library/user-event')).default.setup();
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+
+    expect(await screen.findByText('Recovered Movie')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(2, 'movies', 1);
+  });
+
+  it('starts a fresh feed when remounted for a different media type, as CatalogPage does via key', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        entries: [entry({ title: 'Movies Entry' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+    // CatalogPage renders <CatalogGrid key={mediaType} .../> — a changed key
+    // forces React to unmount the old instance and mount a new one, which is
+    // what actually resets state here (not an internal effect). Rerendering
+    // with a different `key` reproduces that from the test.
+    const { rerender } = render(
+      <CatalogGrid key="movies" mediaType="movies" />,
+    );
+    await screen.findByText('Movies Entry');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        entries: [entry({ title: 'TV Entry', mediaType: 'tv' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+    rerender(<CatalogGrid key="tv" mediaType="tv" />);
+
+    expect(await screen.findByText('TV Entry')).toBeInTheDocument();
+    expect(screen.queryByText('Movies Entry')).not.toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(2, 'tv', 1);
+  });
+
+  it('does not stack a second concurrent fetch while one is already in flight', async () => {
+    let resolveFirst: (outcome: FetchCatalogPageOutcome) => void = () =>
+      undefined;
+    mockedFetchCatalogPage.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    render(<CatalogGrid mediaType="movies" />);
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenCalledTimes(1);
+    });
+
+    // The sentinel intersecting while the first request is still pending
+    // must not trigger a second, overlapping fetch.
+    lastObserver().trigger(true);
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenCalledTimes(1);
+    });
+
+    resolveFirst({
+      status: 'ok',
+      result: { entries: [entry()], page: 1, hasMore: true },
+    });
+    await screen.findByText('A Movie');
+  });
+});
