@@ -2,7 +2,11 @@
 // unlike authApi.ts's postJson helper — no X-XSRF-TOKEN header is needed
 // here, mirroring authApi's own fetchSession.
 
-export interface CatalogEntry {
+// Named CatalogItem, not CatalogEntry: CONTEXT.md retires "entry" as an
+// ambiguous synonym for this concept (it used to mean a Catalog Item, a
+// Watchlist entry, and a Library entry interchangeably) and settles on
+// "Catalog Item" as the domain term.
+export interface CatalogItem {
   provider: string;
   externalId: string;
   mediaType: string;
@@ -14,7 +18,7 @@ export interface CatalogEntry {
 }
 
 export interface CatalogPageResult {
-  entries: CatalogEntry[];
+  items: CatalogItem[];
   page: number;
   hasMore: boolean;
 }

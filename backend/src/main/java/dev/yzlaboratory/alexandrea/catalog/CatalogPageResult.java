@@ -8,4 +8,4 @@ import java.util.List;
  * tells the caller whether a further page exists, so the frontend's
  * infinite scroll knows when to stop without guessing from a short page.
  */
-public record CatalogPageResult(List<CatalogEntry> entries, int page, boolean hasMore) {}
+public record CatalogPageResult(List<CatalogItem> items, int page, boolean hasMore) {}

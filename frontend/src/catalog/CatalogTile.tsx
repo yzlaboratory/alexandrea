@@ -1,11 +1,11 @@
 import { type ReactNode } from 'react';
 import { Box, Card, CardContent, CardMedia, Typography } from '@mui/material';
-import type { CatalogEntry } from './catalogApi';
+import type { CatalogItem } from './catalogApi';
 
 // One decimal place matches TMDB's own display convention (e.g. "7.8/10").
-export function formatExternalRating(entry: CatalogEntry): string {
-  if (entry.externalRating === null) return 'Not yet rated';
-  return `${entry.externalRating.toFixed(1)}/${entry.externalRatingScale.toString()} ${entry.provider}`;
+export function formatExternalRating(item: CatalogItem): string {
+  if (item.externalRating === null) return 'Not yet rated';
+  return `${item.externalRating.toFixed(1)}/${item.externalRatingScale.toString()} ${item.provider}`;
 }
 
 export function formatReleaseDate(releaseDate: string | null): string {
@@ -13,23 +13,23 @@ export function formatReleaseDate(releaseDate: string | null): string {
 }
 
 interface CatalogTileProps {
-  entry: CatalogEntry;
+  item: CatalogItem;
 }
 
-function CatalogTile({ entry }: CatalogTileProps): ReactNode {
+function CatalogTile({ item }: CatalogTileProps): ReactNode {
   return (
     <Card>
-      {entry.coverUrl !== null ? (
+      {item.coverUrl !== null ? (
         <CardMedia
           component="img"
-          image={entry.coverUrl}
-          alt={`${entry.title} cover`}
+          image={item.coverUrl}
+          alt={`${item.title} cover`}
           sx={{ aspectRatio: '2 / 3', objectFit: 'cover' }}
         />
       ) : (
         <Box
           role="img"
-          aria-label={`${entry.title} has no cover art`}
+          aria-label={`${item.title} has no cover art`}
           sx={{ aspectRatio: '2 / 3', bgcolor: 'action.hover' }}
         />
       )}
@@ -37,15 +37,15 @@ function CatalogTile({ entry }: CatalogTileProps): ReactNode {
         <Typography
           variant="subtitle1"
           component="h3"
-          title={entry.title}
+          title={item.title}
           noWrap
         >
-          {entry.title}
+          {item.title}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {formatReleaseDate(entry.releaseDate)}
+          {formatReleaseDate(item.releaseDate)}
         </Typography>
-        <Typography variant="body2">{formatExternalRating(entry)}</Typography>
+        <Typography variant="body2">{formatExternalRating(item)}</Typography>
       </CardContent>
     </Card>
   );

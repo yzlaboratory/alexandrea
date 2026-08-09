@@ -13,7 +13,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import { fetchCatalogPage, type CatalogEntry } from './catalogApi';
+import { fetchCatalogPage, type CatalogItem } from './catalogApi';
 import CatalogTile from './CatalogTile';
 
 interface CatalogGridProps {
@@ -33,10 +33,10 @@ type LoadState = 'idle' | 'loading' | 'error';
 // here for free and avoids a same-render cascade from calling setState
 // synchronously inside an effect.
 function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
-  const [entries, setEntries] = useState<CatalogEntry[]>([]);
+  const [items, setItems] = useState<CatalogItem[]>([]);
   // Starts 'loading', not 'idle': the mount effect below always calls
   // loadNextPage unconditionally, so an 'idle' initial value would let the
-  // "No entries found." message flash on the very first paint (React
+  // "No items found." message flash on the very first paint (React
   // commits before this component's effects run), ahead of the fetch it's
   // about to kick off.
   const [status, setStatus] = useState<LoadState>('loading');
@@ -55,16 +55,16 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
       setStatus('error');
       return;
     }
-    setEntries((previous) => {
+    setItems((previous) => {
       // TMDB's "popular" ranking can shift between successive page fetches,
       // so the same title can legitimately reappear on a later page. Without
       // this dedup, appending it again produces a duplicate React key
       // (`${provider}|${externalId}`) across the combined list.
       const seen = new Set(
-        previous.map((entry) => `${entry.provider}|${entry.externalId}`),
+        previous.map((item) => `${item.provider}|${item.externalId}`),
       );
-      const fresh = outcome.result.entries.filter(
-        (entry) => !seen.has(`${entry.provider}|${entry.externalId}`),
+      const fresh = outcome.result.items.filter(
+        (item) => !seen.has(`${item.provider}|${item.externalId}`),
       );
       return [...previous, ...fresh];
     });
@@ -101,7 +101,7 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
     void loadNextPage();
   }
 
-  const showEmptyMessage = status === 'idle' && entries.length === 0;
+  const showEmptyMessage = status === 'idle' && items.length === 0;
 
   return (
     <Stack spacing={2}>
@@ -112,10 +112,10 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
           gap: 2,
         }}
       >
-        {entries.map((entry) => (
+        {items.map((item) => (
           <CatalogTile
-            key={`${entry.provider}|${entry.externalId}`}
-            entry={entry}
+            key={`${item.provider}|${item.externalId}`}
+            item={item}
           />
         ))}
       </Box>
@@ -137,7 +137,7 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
         </Alert>
       )}
       {showEmptyMessage && (
-        <Typography color="text.secondary">No entries found.</Typography>
+        <Typography color="text.secondary">No items found.</Typography>
       )}
       <div ref={sentinelRef} data-testid="catalog-grid-sentinel" />
     </Stack>

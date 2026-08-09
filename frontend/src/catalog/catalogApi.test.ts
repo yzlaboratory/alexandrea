@@ -23,7 +23,7 @@ describe('catalogApi', () => {
 
   it('requests the given media type and page with same-origin credentials', async () => {
     fetchMock.mockResolvedValueOnce(
-      response(200, { entries: [], page: 3, hasMore: false }),
+      response(200, { items: [], page: 3, hasMore: false }),
     );
 
     await fetchCatalogPage('movies', 3);
@@ -37,7 +37,7 @@ describe('catalogApi', () => {
 
   it('resolves to an ok outcome carrying the parsed page on a 200', async () => {
     const result: CatalogPageResult = {
-      entries: [
+      items: [
         {
           provider: 'TMDB',
           externalId: '603692',
@@ -60,14 +60,14 @@ describe('catalogApi', () => {
     });
   });
 
-  it('resolves to an ok outcome with an empty entries array on an empty upstream page', async () => {
+  it('resolves to an ok outcome with an empty items array on an empty upstream page', async () => {
     fetchMock.mockResolvedValueOnce(
-      response(200, { entries: [], page: 50, hasMore: false }),
+      response(200, { items: [], page: 50, hasMore: false }),
     );
 
     expect(await fetchCatalogPage('movies', 50)).toEqual({
       status: 'ok',
-      result: { entries: [], page: 50, hasMore: false },
+      result: { items: [], page: 50, hasMore: false },
     });
   });
 
@@ -103,7 +103,7 @@ describe('catalogApi', () => {
 
   it('formats the page number as a plain integer in the query string', async () => {
     fetchMock.mockResolvedValueOnce(
-      response(200, { entries: [], page: 12, hasMore: false }),
+      response(200, { items: [], page: 12, hasMore: false }),
     );
 
     await fetchCatalogPage('movies', 12);

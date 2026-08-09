@@ -12,9 +12,9 @@ import org.junit.jupiter.api.Test;
 
 class CatalogCacheTest {
 
-    private static final CatalogEntry ENTRY =
-        new CatalogEntry("TMDB", "1", "movies", "Title", "cover", LocalDate.of(2024, 1, 1), 7.5, 10.0);
-    private static final CatalogPageResult PAGE = new CatalogPageResult(List.of(ENTRY), 1, true);
+    private static final CatalogItem ITEM =
+        new CatalogItem("TMDB", "1", "movies", "Title", "cover", LocalDate.of(2024, 1, 1), 7.5, 10.0);
+    private static final CatalogPageResult PAGE = new CatalogPageResult(List.of(ITEM), 1, true);
 
     private MutableTicker ticker;
     private CatalogCache cache;
@@ -31,8 +31,8 @@ class CatalogCacheTest {
     }
 
     @Test
-    void anEntryKeyNeverWrittenIsAMiss() {
-        assertThat(cache.getEntry("nope")).isEmpty();
+    void anItemKeyNeverWrittenIsAMiss() {
+        assertThat(cache.getItem("nope")).isEmpty();
     }
 
     @Test
@@ -43,12 +43,12 @@ class CatalogCacheTest {
     }
 
     @Test
-    void aStoredEntryIsAHitImmediatelyAfterWrite() {
-        var key = CatalogCache.entryKey("TMDB", "1", "movies");
+    void aStoredItemIsAHitImmediatelyAfterWrite() {
+        var key = CatalogCache.itemKey("TMDB", "1", "movies");
 
-        cache.putEntry(key, ENTRY);
+        cache.putItem(key, ITEM);
 
-        assertThat(cache.getEntry(key)).contains(ENTRY);
+        assertThat(cache.getItem(key)).contains(ITEM);
     }
 
     @Test
@@ -70,20 +70,20 @@ class CatalogCacheTest {
     }
 
     @Test
-    void anEntryExpiresOnceTheSevenDayTtlElapsesIndependentlyOfThePageCache() {
-        var key = CatalogCache.entryKey("TMDB", "1", "movies");
-        cache.putEntry(key, ENTRY);
+    void anItemExpiresOnceTheSevenDayTtlElapsesIndependentlyOfThePageCache() {
+        var key = CatalogCache.itemKey("TMDB", "1", "movies");
+        cache.putItem(key, ITEM);
 
         ticker.advance(Duration.ofDays(7).plusSeconds(1));
 
-        assertThat(cache.getEntry(key)).isEmpty();
+        assertThat(cache.getItem(key)).isEmpty();
     }
 
     @Test
-    void theEntryAndPageCachesAreIndependentEvenWhenTheyShareAKeyString() {
+    void theItemAndPageCachesAreIndependentEvenWhenTheyShareAKeyString() {
         cache.putPage("shared-key", PAGE);
 
-        assertThat(cache.getEntry("shared-key")).isEmpty();
+        assertThat(cache.getItem("shared-key")).isEmpty();
     }
 
     @Test
@@ -106,8 +106,8 @@ class CatalogCacheTest {
     }
 
     @Test
-    void entryKeyJoinsProviderExternalIdAndMediaTypeWithAPipe() {
-        assertThat(CatalogCache.entryKey("tmdb", "603692", "movies")).isEqualTo("tmdb|603692|movies");
+    void itemKeyJoinsProviderExternalIdAndMediaTypeWithAPipe() {
+        assertThat(CatalogCache.itemKey("tmdb", "603692", "movies")).isEqualTo("tmdb|603692|movies");
     }
 
     @Test

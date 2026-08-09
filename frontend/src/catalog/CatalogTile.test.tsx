@@ -4,9 +4,9 @@ import CatalogTile, {
   formatExternalRating,
   formatReleaseDate,
 } from './CatalogTile';
-import type { CatalogEntry } from './catalogApi';
+import type { CatalogItem } from './catalogApi';
 
-const BASE_ENTRY: CatalogEntry = {
+const BASE_ITEM: CatalogItem = {
   provider: 'TMDB',
   externalId: '603692',
   mediaType: 'movies',
@@ -19,23 +19,23 @@ const BASE_ENTRY: CatalogEntry = {
 
 describe('formatExternalRating', () => {
   it('formats a present rating with one decimal, the native scale, and the provider', () => {
-    expect(formatExternalRating(BASE_ENTRY)).toBe('7.8/10 TMDB');
+    expect(formatExternalRating(BASE_ITEM)).toBe('7.8/10 TMDB');
   });
 
   it('formats a whole-number rating with a trailing .0 rather than dropping it', () => {
-    expect(formatExternalRating({ ...BASE_ENTRY, externalRating: 8 })).toBe(
+    expect(formatExternalRating({ ...BASE_ITEM, externalRating: 8 })).toBe(
       '8.0/10 TMDB',
     );
   });
 
   it('formats a rating of exactly zero as a real rating, not as "no rating"', () => {
-    expect(formatExternalRating({ ...BASE_ENTRY, externalRating: 0 })).toBe(
+    expect(formatExternalRating({ ...BASE_ITEM, externalRating: 0 })).toBe(
       '0.0/10 TMDB',
     );
   });
 
   it('shows a not-yet-rated message when the rating is null', () => {
-    expect(formatExternalRating({ ...BASE_ENTRY, externalRating: null })).toBe(
+    expect(formatExternalRating({ ...BASE_ITEM, externalRating: null })).toBe(
       'Not yet rated',
     );
   });
@@ -53,7 +53,7 @@ describe('formatReleaseDate', () => {
 
 describe('CatalogTile', () => {
   it('renders the title, release date, and rating', () => {
-    render(<CatalogTile entry={BASE_ENTRY} />);
+    render(<CatalogTile item={BASE_ITEM} />);
 
     expect(
       screen.getByRole('heading', { name: 'John Wick: Chapter 4' }),
@@ -63,15 +63,15 @@ describe('CatalogTile', () => {
   });
 
   it('renders the cover image with alt text naming the title', () => {
-    render(<CatalogTile entry={BASE_ENTRY} />);
+    render(<CatalogTile item={BASE_ITEM} />);
 
     expect(
       screen.getByRole('img', { name: 'John Wick: Chapter 4 cover' }),
-    ).toHaveAttribute('src', BASE_ENTRY.coverUrl);
+    ).toHaveAttribute('src', BASE_ITEM.coverUrl);
   });
 
   it('renders a placeholder instead of a broken image when there is no cover', () => {
-    render(<CatalogTile entry={{ ...BASE_ENTRY, coverUrl: null }} />);
+    render(<CatalogTile item={{ ...BASE_ITEM, coverUrl: null }} />);
 
     expect(
       screen.getByRole('img', { name: /has no cover art/i }),
@@ -81,14 +81,14 @@ describe('CatalogTile', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows the not-yet-rated message for an entry with no rating', () => {
-    render(<CatalogTile entry={{ ...BASE_ENTRY, externalRating: null }} />);
+  it('shows the not-yet-rated message for an item with no rating', () => {
+    render(<CatalogTile item={{ ...BASE_ITEM, externalRating: null }} />);
 
     expect(screen.getByText('Not yet rated')).toBeInTheDocument();
   });
 
-  it('shows the unknown-date message for an entry with no release date', () => {
-    render(<CatalogTile entry={{ ...BASE_ENTRY, releaseDate: null }} />);
+  it('shows the unknown-date message for an item with no release date', () => {
+    render(<CatalogTile item={{ ...BASE_ITEM, releaseDate: null }} />);
 
     expect(screen.getByText('Release date unknown')).toBeInTheDocument();
   });

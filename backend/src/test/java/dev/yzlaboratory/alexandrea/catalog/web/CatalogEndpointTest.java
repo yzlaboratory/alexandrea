@@ -112,13 +112,13 @@ class CatalogEndpointTest {
 
         mockMvc.perform(get("/api/catalog/movies").param("page", "11").with(loggedIn()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.entries[0].title").value("A Movie"))
-            .andExpect(jsonPath("$.entries[0].provider").value("TMDB"))
-            .andExpect(jsonPath("$.entries[0].externalId").value("1"))
-            .andExpect(jsonPath("$.entries[0].coverUrl").value("https://image.tmdb.org/t/p/w500/a.jpg"))
-            .andExpect(jsonPath("$.entries[0].releaseDate").value("2024-05-01"))
-            .andExpect(jsonPath("$.entries[0].externalRating").value(8.1))
-            .andExpect(jsonPath("$.entries[0].externalRatingScale").value(10.0))
+            .andExpect(jsonPath("$.items[0].title").value("A Movie"))
+            .andExpect(jsonPath("$.items[0].provider").value("TMDB"))
+            .andExpect(jsonPath("$.items[0].externalId").value("1"))
+            .andExpect(jsonPath("$.items[0].coverUrl").value("https://image.tmdb.org/t/p/w500/a.jpg"))
+            .andExpect(jsonPath("$.items[0].releaseDate").value("2024-05-01"))
+            .andExpect(jsonPath("$.items[0].externalRating").value(8.1))
+            .andExpect(jsonPath("$.items[0].externalRatingScale").value(10.0))
             .andExpect(jsonPath("$.page").value(11))
             .andExpect(jsonPath("$.hasMore").value(true));
     }
@@ -192,7 +192,7 @@ class CatalogEndpointTest {
         // resetState() already stubs an empty results array by default.
         mockMvc.perform(get("/api/catalog/movies").param("page", "15").with(loggedIn()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.entries").isEmpty())
+            .andExpect(jsonPath("$.items").isEmpty())
             .andExpect(jsonPath("$.hasMore").value(false));
     }
 

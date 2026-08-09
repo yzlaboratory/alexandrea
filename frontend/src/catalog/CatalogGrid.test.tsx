@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CatalogGrid from './CatalogGrid';
 import * as catalogApi from './catalogApi';
-import type { CatalogEntry, FetchCatalogPageOutcome } from './catalogApi';
+import type { CatalogItem, FetchCatalogPageOutcome } from './catalogApi';
 
 vi.mock('./catalogApi', () => ({
   fetchCatalogPage: vi.fn(),
@@ -38,7 +38,7 @@ class FakeIntersectionObserver implements IntersectionObserver {
   }
 }
 
-function entry(overrides: Partial<CatalogEntry> = {}): CatalogEntry {
+function item(overrides: Partial<CatalogItem> = {}): CatalogItem {
   return {
     provider: 'TMDB',
     externalId: '1',
@@ -77,7 +77,7 @@ describe('CatalogGrid', () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
-        entries: [entry({ title: 'First Movie' })],
+        items: [item({ title: 'First Movie' })],
         page: 1,
         hasMore: true,
       },
@@ -89,11 +89,11 @@ describe('CatalogGrid', () => {
     expect(mockedFetchCatalogPage).toHaveBeenCalledWith('movies', 1);
   });
 
-  it('fetches the next page when the sentinel intersects, appending to the existing entries', async () => {
+  it('fetches the next page when the sentinel intersects, appending to the existing items', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
-        entries: [entry({ externalId: '1', title: 'Page One Movie' })],
+        items: [item({ externalId: '1', title: 'Page One Movie' })],
         page: 1,
         hasMore: true,
       },
@@ -104,7 +104,7 @@ describe('CatalogGrid', () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
-        entries: [entry({ externalId: '2', title: 'Page Two Movie' })],
+        items: [item({ externalId: '2', title: 'Page Two Movie' })],
         page: 2,
         hasMore: true,
       },
@@ -112,7 +112,7 @@ describe('CatalogGrid', () => {
     lastObserver().trigger(true);
 
     expect(await screen.findByText('Page Two Movie')).toBeInTheDocument();
-    // The first page's entries are still there — appended to, not replaced.
+    // The first page's items are still there — appended to, not replaced.
     expect(screen.getByText('Page One Movie')).toBeInTheDocument();
     expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(2, 'movies', 2);
   });
@@ -120,7 +120,7 @@ describe('CatalogGrid', () => {
   it('does not fetch again once the last page has been reached', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
-      result: { entries: [entry()], page: 1, hasMore: false },
+      result: { items: [item()], page: 1, hasMore: false },
     });
     render(<CatalogGrid mediaType="movies" />);
     await screen.findByText('A Movie');
@@ -136,7 +136,7 @@ describe('CatalogGrid', () => {
   it('ignores a non-intersecting observer callback', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
-      result: { entries: [entry()], page: 1, hasMore: true },
+      result: { items: [item()], page: 1, hasMore: true },
     });
     render(<CatalogGrid mediaType="movies" />);
     await screen.findByText('A Movie');
@@ -148,15 +148,15 @@ describe('CatalogGrid', () => {
     });
   });
 
-  it('shows a "no entries" message when the upstream page comes back empty', async () => {
+  it('shows a "no items" message when the upstream page comes back empty', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
-      result: { entries: [], page: 1, hasMore: false },
+      result: { items: [], page: 1, hasMore: false },
     });
 
     render(<CatalogGrid mediaType="movies" />);
 
-    expect(await screen.findByText('No entries found.')).toBeInTheDocument();
+    expect(await screen.findByText('No items found.')).toBeInTheDocument();
   });
 
   it('shows an error with a retry action when the first page fails to load', async () => {
@@ -178,7 +178,7 @@ describe('CatalogGrid', () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
-        entries: [entry({ title: 'Recovered Movie' })],
+        items: [item({ title: 'Recovered Movie' })],
         page: 1,
         hasMore: false,
       },
@@ -194,7 +194,7 @@ describe('CatalogGrid', () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
-        entries: [entry({ title: 'Movies Entry' })],
+        items: [item({ title: 'Movies Title' })],
         page: 1,
         hasMore: false,
       },
@@ -206,20 +206,20 @@ describe('CatalogGrid', () => {
     const { rerender } = render(
       <CatalogGrid key="movies" mediaType="movies" />,
     );
-    await screen.findByText('Movies Entry');
+    await screen.findByText('Movies Title');
 
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
-        entries: [entry({ title: 'TV Entry', mediaType: 'tv' })],
+        items: [item({ title: 'TV Title', mediaType: 'tv' })],
         page: 1,
         hasMore: false,
       },
     });
     rerender(<CatalogGrid key="tv" mediaType="tv" />);
 
-    expect(await screen.findByText('TV Entry')).toBeInTheDocument();
-    expect(screen.queryByText('Movies Entry')).not.toBeInTheDocument();
+    expect(await screen.findByText('TV Title')).toBeInTheDocument();
+    expect(screen.queryByText('Movies Title')).not.toBeInTheDocument();
     expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(2, 'tv', 1);
   });
 
@@ -246,7 +246,7 @@ describe('CatalogGrid', () => {
 
     resolveFirst({
       status: 'ok',
-      result: { entries: [entry()], page: 1, hasMore: true },
+      result: { items: [item()], page: 1, hasMore: true },
     });
     await screen.findByText('A Movie');
   });

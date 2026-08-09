@@ -13,7 +13,7 @@ import org.springframework.web.client.RestClientException;
 
 /**
  * Talks to TMDB's {@code /movie/popular} endpoint and maps its response into
- * the common {@link CatalogEntry} shape (ADR 0001). TMDB already paginates
+ * the common {@link CatalogItem} shape (ADR 0001). TMDB already paginates
  * at 20 results per page, so the page-number contract this app exposes to
  * the frontend needs no offset math for this provider.
  */
@@ -45,9 +45,9 @@ public class TmdbClient {
         // try/catch, which would surface as a bare 500 instead of the
         // intended CatalogUpstreamException -> 503.
         var results = response.results() != null ? response.results() : List.<TmdbMovie>of();
-        var entries = results.stream().map(this::toEntry).toList();
+        var items = results.stream().map(this::toItem).toList();
         var hasMore = page < response.totalPages();
-        return new CatalogPageResult(entries, page, hasMore);
+        return new CatalogPageResult(items, page, hasMore);
     }
 
     private TmdbPopularMoviesResponse fetchPopular(int page) {
@@ -66,8 +66,8 @@ public class TmdbClient {
         }
     }
 
-    private CatalogEntry toEntry(TmdbMovie movie) {
-        return new CatalogEntry(
+    private CatalogItem toItem(TmdbMovie movie) {
+        return new CatalogItem(
             PROVIDER,
             String.valueOf(movie.id()),
             MOVIES_MEDIA_TYPE,

@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * The two-layer cache from ADR 0007: a per-entry metadata cache and a
+ * The two-layer cache from ADR 0007: a per-item metadata cache and a
  * feed/query page cache, both expiring 7 days after write and held
  * in-memory only (ADR 0026) — a redeploy cold-starts both, which is a
  * designed-for path, not a degraded one (ADR 0001 already requires an
@@ -21,7 +21,7 @@ import java.util.function.Supplier;
  * <p>Both caches are also size-bounded (ADR 0026: "Cache size is bounded by
  * Caffeine's own eviction policy (size/weight-based)"). {@code MAX_PAGES} is
  * a generous multiple of TMDB's own 500-page cap on the "popular" feed, and
- * {@code MAX_ENTRIES} covers every entry that many pages could ever
+ * {@code MAX_ITEMS} covers every item that many pages could ever
  * reference, so eviction here is a genuine backstop, not a limit expected to
  * bind in normal operation.
  */
@@ -29,16 +29,16 @@ public class CatalogCache {
 
     private static final Duration TTL = Duration.ofDays(7);
     private static final long MAX_PAGES = 2_000;
-    private static final long MAX_ENTRIES = 50_000;
+    private static final long MAX_ITEMS = 50_000;
 
-    private final Cache<String, CatalogEntry> entries;
+    private final Cache<String, CatalogItem> items;
     private final Cache<String, CatalogPageResult> pages;
 
     public CatalogCache(Ticker ticker) {
-        this.entries = Caffeine.newBuilder()
+        this.items = Caffeine.newBuilder()
             .ticker(ticker)
             .expireAfterWrite(TTL)
-            .maximumSize(MAX_ENTRIES)
+            .maximumSize(MAX_ITEMS)
             .build();
         this.pages = Caffeine.newBuilder()
             .ticker(ticker)
@@ -47,12 +47,12 @@ public class CatalogCache {
             .build();
     }
 
-    public Optional<CatalogEntry> getEntry(String key) {
-        return Optional.ofNullable(entries.getIfPresent(key));
+    public Optional<CatalogItem> getItem(String key) {
+        return Optional.ofNullable(items.getIfPresent(key));
     }
 
-    public void putEntry(String key, CatalogEntry entry) {
-        entries.put(key, entry);
+    public void putItem(String key, CatalogItem item) {
+        items.put(key, item);
     }
 
     public Optional<CatalogPageResult> getPage(String key) {
@@ -76,8 +76,8 @@ public class CatalogCache {
         return pages.get(key, ignoredKey -> compute.get());
     }
 
-    /** {@code provider|externalId|mediaType}, per ADR 0007's per-entry key shape. */
-    public static String entryKey(String provider, String externalId, String mediaType) {
+    /** {@code provider|externalId|mediaType}, per ADR 0007's per-item key shape. */
+    public static String itemKey(String provider, String externalId, String mediaType) {
         return String.join("|", provider, externalId, mediaType);
     }
 

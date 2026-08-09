@@ -20,8 +20,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class CatalogServiceTest {
 
-    private static final CatalogEntry ENTRY =
-        new CatalogEntry("TMDB", "1", "movies", "Title", "cover", LocalDate.of(2024, 1, 1), 7.5, 10.0);
+    private static final CatalogItem ITEM =
+        new CatalogItem("TMDB", "1", "movies", "Title", "cover", LocalDate.of(2024, 1, 1), 7.5, 10.0);
 
     @Mock
     private TmdbClient tmdbClient;
@@ -36,7 +36,7 @@ class CatalogServiceTest {
 
     @Test
     void aColdCacheFetchesFromTmdbAndReturnsTheFetchedPage() {
-        var page = new CatalogPageResult(List.of(ENTRY), 1, true);
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
         when(tmdbClient.popularMovies(1)).thenReturn(page);
 
         var result = service.browse("movies", 1);
@@ -47,7 +47,7 @@ class CatalogServiceTest {
 
     @Test
     void aWarmCacheSkipsTheUpstreamCallEntirely() {
-        var page = new CatalogPageResult(List.of(ENTRY), 1, true);
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
         when(tmdbClient.popularMovies(1)).thenReturn(page);
         service.browse("movies", 1);
 
@@ -59,7 +59,7 @@ class CatalogServiceTest {
 
     @Test
     void differentPagesAreCachedIndependentlyAndBothHitTheProviderOnce() {
-        var page1 = new CatalogPageResult(List.of(ENTRY), 1, true);
+        var page1 = new CatalogPageResult(List.of(ITEM), 1, true);
         var page2 = new CatalogPageResult(List.of(), 2, false);
         when(tmdbClient.popularMovies(1)).thenReturn(page1);
         when(tmdbClient.popularMovies(2)).thenReturn(page2);
@@ -97,8 +97,8 @@ class CatalogServiceTest {
         var first = service.browse("movies", 50);
         var second = service.browse("movies", 50);
 
-        assertThat(first.entries()).isEmpty();
-        assertThat(second.entries()).isEmpty();
+        assertThat(first.items()).isEmpty();
+        assertThat(second.items()).isEmpty();
         verify(tmdbClient, times(1)).popularMovies(50);
     }
 }

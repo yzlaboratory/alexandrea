@@ -13,7 +13,7 @@ describe('CatalogPage', () => {
   beforeEach(() => {
     mockedFetchCatalogPage.mockReset().mockResolvedValue({
       status: 'ok',
-      result: { entries: [], page: 1, hasMore: false },
+      result: { items: [], page: 1, hasMore: false },
     });
   });
 

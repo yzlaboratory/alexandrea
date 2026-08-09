@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
  * The facade {@code CatalogController} calls: resolves {@code media_type} to
  * the right provider client, checks {@link CatalogCache} first (ADR 0007),
  * and falls through to the upstream call on a miss, caching both the page
- * and its entries. Only "movies" is wired to a real provider for this slice
+ * and its items. Only "movies" is wired to a real provider for this slice
  * (#37) — every other media type is #39's job, and #38 adds the
  * stale-cache-on-failure fallback and circuit breaker this doesn't have yet.
  */
@@ -15,9 +15,9 @@ public class CatalogService {
 
     private static final String MOVIES_MEDIA_TYPE = "movies";
     // Matches TmdbClient's own PROVIDER constant exactly (including case) —
-    // CatalogEntry.provider() is always "TMDB", so a lowercase "tmdb" here
-    // would build page keys under a different string than the entry keys
-    // built from entry.provider() in fetchAndCache(), even though both
+    // CatalogItem.provider() is always "TMDB", so a lowercase "tmdb" here
+    // would build page keys under a different string than the item keys
+    // built from item.provider() in fetchAndCache(), even though both
     // conceptually name the same provider.
     private static final String TMDB_PROVIDER = "TMDB";
     private static final String POPULAR_FEED = "popular";
@@ -46,9 +46,9 @@ public class CatalogService {
 
     private CatalogPageResult fetchAndCache(int page) {
         var fetched = tmdbClient.popularMovies(page);
-        for (var entry : fetched.entries()) {
-            var entryKey = CatalogCache.entryKey(entry.provider(), entry.externalId(), entry.mediaType());
-            cache.putEntry(entryKey, entry);
+        for (var item : fetched.items()) {
+            var itemKey = CatalogCache.itemKey(item.provider(), item.externalId(), item.mediaType());
+            cache.putItem(itemKey, item);
         }
         return fetched;
     }

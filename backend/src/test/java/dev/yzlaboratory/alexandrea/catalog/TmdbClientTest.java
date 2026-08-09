@@ -39,7 +39,7 @@ class TmdbClientTest {
     }
 
     @Test
-    void mapsAPopularMoviesResponseIntoCatalogEntries() {
+    void mapsAPopularMoviesResponseIntoCatalogItems() {
         expectPopularRequest().andRespond(withSuccess("""
             {
               "page": 1,
@@ -58,17 +58,17 @@ class TmdbClientTest {
 
         var result = client.popularMovies(1);
 
-        assertThat(result.entries()).hasSize(1);
-        var entry = result.entries().getFirst();
-        assertThat(entry.provider()).isEqualTo("TMDB");
-        assertThat(entry.externalId()).isEqualTo("603692");
-        assertThat(entry.mediaType()).isEqualTo("movies");
-        assertThat(entry.title()).isEqualTo("John Wick: Chapter 4");
-        assertThat(entry.coverUrl())
+        assertThat(result.items()).hasSize(1);
+        var item = result.items().getFirst();
+        assertThat(item.provider()).isEqualTo("TMDB");
+        assertThat(item.externalId()).isEqualTo("603692");
+        assertThat(item.mediaType()).isEqualTo("movies");
+        assertThat(item.title()).isEqualTo("John Wick: Chapter 4");
+        assertThat(item.coverUrl())
             .isEqualTo("https://image.tmdb.org/t/p/w500/vZloFAK7NmvMGKE7VkF5UHaz0I.jpg");
-        assertThat(entry.releaseDate()).isEqualTo(LocalDate.of(2023, 3, 22));
-        assertThat(entry.externalRating()).isEqualTo(7.8);
-        assertThat(entry.externalRatingScale()).isEqualTo(10.0);
+        assertThat(item.releaseDate()).isEqualTo(LocalDate.of(2023, 3, 22));
+        assertThat(item.externalRating()).isEqualTo(7.8);
+        assertThat(item.externalRatingScale()).isEqualTo(10.0);
         assertThat(result.page()).isEqualTo(1);
         assertThat(result.hasMore()).isTrue();
     }
@@ -98,13 +98,13 @@ class TmdbClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var entry = client.popularMovies(1).entries().getFirst();
+        var item = client.popularMovies(1).items().getFirst();
 
-        assertThat(entry.coverUrl()).isNull();
-        assertThat(entry.releaseDate()).isNull();
+        assertThat(item.coverUrl()).isNull();
+        assertThat(item.releaseDate()).isNull();
         // TMDB reports 0.0 (not null) for an unrated title — a real, present
         // rating of zero, distinct from "no rating field at all".
-        assertThat(entry.externalRating()).isEqualTo(0.0);
+        assertThat(item.externalRating()).isEqualTo(0.0);
     }
 
     @Test
@@ -119,9 +119,9 @@ class TmdbClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var entry = client.popularMovies(1).entries().getFirst();
+        var item = client.popularMovies(1).items().getFirst();
 
-        assertThat(entry.releaseDate()).isNull();
+        assertThat(item.releaseDate()).isNull();
     }
 
     @Test
@@ -134,7 +134,7 @@ class TmdbClientTest {
 
         var result = client.popularMovies(50);
 
-        assertThat(result.entries()).isEmpty();
+        assertThat(result.items()).isEmpty();
         assertThat(result.hasMore()).isFalse();
     }
 
@@ -148,7 +148,7 @@ class TmdbClientTest {
 
         var result = client.popularMovies(60);
 
-        assertThat(result.entries()).isEmpty();
+        assertThat(result.items()).isEmpty();
     }
 
     @Test
