@@ -1,12 +1,15 @@
 import { type ReactNode, useState } from 'react';
 import { Alert, Container, Stack, Typography } from '@mui/material';
-import { changePassword } from '../auth/authApi';
+import { changePassword, requestEmailChange } from '../auth/authApi';
 import ChangePasswordForm from '../auth/ChangePasswordForm';
+import ChangeEmailForm from '../auth/ChangeEmailForm';
 
 function AccountPage(): ReactNode {
-  // Bumping the key remounts the form, clearing its uncontrolled fields —
-  // simpler than lifting the password values into state just to reset them.
+  // Bumping a form's key remounts it, clearing its uncontrolled fields —
+  // simpler than lifting the field values into state just to reset them.
   const [changeCount, setChangeCount] = useState(0);
+  const [emailChangeCount, setEmailChangeCount] = useState(0);
+  const [requestedEmail, setRequestedEmail] = useState<string | null>(null);
 
   return (
     <Container maxWidth="sm" sx={{ py: 8 }}>
@@ -31,13 +34,22 @@ function AccountPage(): ReactNode {
           />
         </Stack>
 
-        <Stack spacing={1}>
-          <Typography variant="h6" component="h2">
-            Change email
-          </Typography>
-          <Typography color="text.secondary">
-            Changing your email address is coming in a later update.
-          </Typography>
+        <Stack spacing={2}>
+          {requestedEmail !== null && (
+            <Alert severity="success">
+              If <strong>{requestedEmail}</strong> is available, we&apos;ve sent
+              a confirmation link there. Your email stays the same until you
+              open it.
+            </Alert>
+          )}
+          <ChangeEmailForm
+            key={emailChangeCount}
+            onRequested={(newEmail) => {
+              setEmailChangeCount((count) => count + 1);
+              setRequestedEmail(newEmail);
+            }}
+            submit={requestEmailChange}
+          />
         </Stack>
       </Stack>
     </Container>
