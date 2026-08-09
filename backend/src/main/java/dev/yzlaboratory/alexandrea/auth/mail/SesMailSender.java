@@ -3,11 +3,6 @@ package dev.yzlaboratory.alexandrea.auth.mail;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.sesv2.SesV2Client;
-import software.amazon.awssdk.services.sesv2.model.Body;
-import software.amazon.awssdk.services.sesv2.model.Content;
-import software.amazon.awssdk.services.sesv2.model.Destination;
-import software.amazon.awssdk.services.sesv2.model.EmailContent;
-import software.amazon.awssdk.services.sesv2.model.Message;
 import software.amazon.awssdk.services.sesv2.model.SendEmailRequest;
 
 @Component
@@ -30,13 +25,10 @@ public class SesMailSender implements MailSender {
             .configurationSetName(configurationSet)
             .fromEmailAddress(SENDER_ADDRESS)
             .replyToAddresses(SENDER_ADDRESS)
-            .destination(Destination.builder().toAddresses(message.to()).build())
-            .content(EmailContent.builder()
-                .simple(Message.builder()
-                    .subject(Content.builder().data(message.subject()).build())
-                    .body(Body.builder().text(Content.builder().data(message.body()).build()).build())
-                    .build())
-                .build())
+            .destination(d -> d.toAddresses(message.to()))
+            .content(c -> c.simple(s -> s
+                .subject(subject -> subject.data(message.subject()))
+                .body(b -> b.text(t -> t.data(message.body())))))
             .build();
         sesClient.sendEmail(request);
     }
