@@ -20,7 +20,7 @@ import { logout, switchMediaType } from '../auth/authApi';
 import { useSession } from '../auth/SessionContext';
 
 const MEDIA_TYPES = ['movies', 'tv', 'books', 'games'] as const;
-const SURFACES = ['watchlist', 'library'] as const;
+const SURFACES = ['catalog', 'watchlist', 'library'] as const;
 
 type MediaType = (typeof MEDIA_TYPES)[number];
 type Surface = (typeof SURFACES)[number];
@@ -33,6 +33,7 @@ const MEDIA_TYPE_LABELS: Record<MediaType, string> = {
 };
 
 const SURFACE_LABELS: Record<Surface, string> = {
+  catalog: 'Catalog',
   watchlist: 'Watchlist',
   library: 'Library',
 };

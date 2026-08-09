@@ -12,6 +12,7 @@ import { SessionProvider } from './auth/SessionContext';
 import AppShell from './shell/AppShell';
 import AccountPage from './shell/AccountPage';
 import CatalogPlaceholder from './shell/CatalogPlaceholder';
+import CatalogPage from './catalog/CatalogPage';
 
 // SessionProvider lives here, not in main.tsx: LoginPage reads it directly
 // (to refresh after a successful login) even though it sits outside
@@ -32,6 +33,13 @@ function App(): ReactNode {
         />
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
+            {/* Only Movies has a real catalog provider wired up yet (#39
+                adds the rest); every other media type still falls through
+                to the generic placeholder route below. */}
+            <Route
+              path="/movies/catalog"
+              element={<CatalogPage mediaType="movies" />}
+            />
             <Route
               path="/:mediaType/:surface"
               element={<CatalogPlaceholder />}
