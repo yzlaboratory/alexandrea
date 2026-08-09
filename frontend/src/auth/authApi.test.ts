@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  changePassword,
   fetchSession,
   login,
   logout,
@@ -155,6 +156,46 @@ describe('authApi', () => {
     const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(path).toBe('/api/auth/logout');
     expect(init.method).toBe('POST');
+  });
+
+  it('maps change-password responses to outcomes', async () => {
+    fetchMock.mockResolvedValueOnce(response(204));
+    expect(
+      await changePassword('the-old-password', 'a-brand-new-password'),
+    ).toEqual({
+      status: 'changed',
+    });
+
+    fetchMock.mockResolvedValueOnce(response(401));
+    expect(
+      await changePassword('wrong-password', 'a-brand-new-password'),
+    ).toEqual({ status: 'incorrect-current-password' });
+
+    fetchMock.mockResolvedValueOnce(
+      response(400, { type: 'urn:alexandrea:auth:password-policy' }),
+    );
+    expect(await changePassword('the-old-password', 'tooshort')).toEqual({
+      status: 'invalid-password',
+    });
+
+    fetchMock.mockResolvedValueOnce(response(500));
+    expect(
+      await changePassword('the-old-password', 'a-brand-new-password'),
+    ).toEqual({ status: 'error' });
+  });
+
+  it('posts the current and new password to the change-password endpoint', async () => {
+    fetchMock.mockResolvedValueOnce(response(204));
+    await changePassword('the-old-password', 'a-brand-new-password');
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/auth/change-password');
+    expect(init.body).toBe(
+      JSON.stringify({
+        currentPassword: 'the-old-password',
+        newPassword: 'a-brand-new-password',
+      }),
+    );
   });
 
   it('posts the chosen type to the media-type endpoint', async () => {

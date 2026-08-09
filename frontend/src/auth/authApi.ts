@@ -135,6 +135,28 @@ export async function resetPassword(
   return { status: 'error' };
 }
 
+export type ChangePasswordOutcome =
+  | { status: 'changed' }
+  | { status: 'incorrect-current-password' }
+  | { status: 'invalid-password' }
+  | { status: 'error' };
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<ChangePasswordOutcome> {
+  const response = await postJson('/api/auth/change-password', {
+    currentPassword,
+    newPassword,
+  });
+  if (response.ok) return { status: 'changed' };
+  if (response.status === 401) return { status: 'incorrect-current-password' };
+  if (await isPasswordPolicyRejection(response)) {
+    return { status: 'invalid-password' };
+  }
+  return { status: 'error' };
+}
+
 export async function switchMediaType(mediaType: string): Promise<void> {
   await postJson('/api/auth/media-type', { mediaType });
 }
