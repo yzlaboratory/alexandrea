@@ -22,6 +22,8 @@ public class AuthService {
     private static final String DUMMY_HASH =
         "{argon2}$argon2id$v=19$m=16384,t=2,p=1$RV/b40k462pPnnpoFcGzTw$i5PUH969l9692gVwVdgZkUStX0cjzfUtuZepeJ/l50U";
 
+    private static final String TOKEN_PLACEHOLDER = "{token}";
+
     private final UserStore userStore;
     private final TokenService tokenService;
     private final EmailChangeTokenStore emailChangeTokenStore;
@@ -177,7 +179,7 @@ public class AuthService {
 
     private String issueVerificationLink(long userId) {
         var rawToken = tokenService.issue(TokenKind.VERIFICATION, userId);
-        return properties.verificationUrlTemplate().replace("{token}", rawToken);
+        return properties.verificationUrlTemplate().replace(TOKEN_PLACEHOLDER, rawToken);
     }
 
     @Transactional
@@ -196,7 +198,7 @@ public class AuthService {
 
     private String issueResetLink(long userId) {
         var rawToken = tokenService.issue(TokenKind.RESET, userId);
-        return properties.resetUrlTemplate().replace("{token}", rawToken);
+        return properties.resetUrlTemplate().replace(TOKEN_PLACEHOLDER, rawToken);
     }
 
     @Transactional
@@ -245,7 +247,7 @@ public class AuthService {
 
     private String issueEmailChangeLink(long userId, String newEmail) {
         var rawToken = emailChangeTokenStore.issue(userId, newEmail);
-        return properties.emailChangeUrlTemplate().replace("{token}", rawToken);
+        return properties.emailChangeUrlTemplate().replace(TOKEN_PLACEHOLDER, rawToken);
     }
 
     @Transactional
