@@ -12,7 +12,9 @@ public record AuthProperties(
     Duration verificationTokenTtl,
     String verificationUrlTemplate,
     Duration resetTokenTtl,
-    String resetUrlTemplate
+    String resetUrlTemplate,
+    RateLimit loginRateLimit,
+    RateLimit mailRateLimit
 ) {
 
     public AuthProperties {
@@ -28,5 +30,15 @@ public record AuthProperties(
         if (resetUrlTemplate == null || resetUrlTemplate.isBlank()) {
             resetUrlTemplate = "http://localhost:5173/reset-password?token={token}";
         }
+        // Defaults are the windows ADR 0024 names: ~10/15min for login, ~5/hour
+        // for every mail-sending endpoint.
+        if (loginRateLimit == null) {
+            loginRateLimit = new RateLimit(10, Duration.ofMinutes(15));
+        }
+        if (mailRateLimit == null) {
+            mailRateLimit = new RateLimit(5, Duration.ofHours(1));
+        }
     }
+
+    public record RateLimit(int maxAttempts, Duration window) {}
 }
