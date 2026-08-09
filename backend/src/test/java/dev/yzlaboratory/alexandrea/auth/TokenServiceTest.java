@@ -122,6 +122,41 @@ class TokenServiceTest {
             .isEqualTo(new TokenConsumption.Consumed(userId));
     }
 
+    @Test
+    void sweepingWithNothingToCleanIsANoOp() {
+        assertThat(tokenService.deleteExpiredOrConsumed()).isZero();
+    }
+
+    @Test
+    void anExpiredUnconsumedTokenIsRemovedBySweep() {
+        tokenService.issue(TokenKind.VERIFICATION, userId);
+        clock.advance(Duration.ofHours(24).plusSeconds(1));
+
+        assertThat(tokenService.deleteExpiredOrConsumed()).isOne();
+        assertThat(tokenRowCount()).isZero();
+    }
+
+    @Test
+    void aConsumedTokenIsRemovedBySweepEvenBeforeItExpires() {
+        var rawToken = tokenService.issue(TokenKind.VERIFICATION, userId);
+        tokenService.consume(TokenKind.VERIFICATION, rawToken);
+
+        assertThat(tokenService.deleteExpiredOrConsumed()).isOne();
+        assertThat(tokenRowCount()).isZero();
+    }
+
+    @Test
+    void aLiveUnexpiredUnconsumedTokenSurvivesSweep() {
+        tokenService.issue(TokenKind.VERIFICATION, userId);
+
+        assertThat(tokenService.deleteExpiredOrConsumed()).isZero();
+        assertThat(tokenRowCount()).isOne();
+    }
+
+    private int tokenRowCount() {
+        return db.jdbcClient().sql("SELECT COUNT(*) FROM auth_tokens").query(Integer.class).single();
+    }
+
     private static AuthProperties defaultProperties() {
         return new AuthProperties(
             Duration.ofHours(24), "http://localhost/verify?token={token}",
