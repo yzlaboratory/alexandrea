@@ -34,7 +34,12 @@ type LoadState = 'idle' | 'loading' | 'error';
 // synchronously inside an effect.
 function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
   const [entries, setEntries] = useState<CatalogEntry[]>([]);
-  const [status, setStatus] = useState<LoadState>('idle');
+  // Starts 'loading', not 'idle': the mount effect below always calls
+  // loadNextPage unconditionally, so an 'idle' initial value would let the
+  // "No entries found." message flash on the very first paint (React
+  // commits before this component's effects run), ahead of the fetch it's
+  // about to kick off.
+  const [status, setStatus] = useState<LoadState>('loading');
   const nextPageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
@@ -50,7 +55,19 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
       setStatus('error');
       return;
     }
-    setEntries((previous) => [...previous, ...outcome.result.entries]);
+    setEntries((previous) => {
+      // TMDB's "popular" ranking can shift between successive page fetches,
+      // so the same title can legitimately reappear on a later page. Without
+      // this dedup, appending it again produces a duplicate React key
+      // (`${provider}|${externalId}`) across the combined list.
+      const seen = new Set(
+        previous.map((entry) => `${entry.provider}|${entry.externalId}`),
+      );
+      const fresh = outcome.result.entries.filter(
+        (entry) => !seen.has(`${entry.provider}|${entry.externalId}`),
+      );
+      return [...previous, ...fresh];
+    });
     nextPageRef.current = outcome.result.page + 1;
     hasMoreRef.current = outcome.result.hasMore;
     setStatus('idle');
