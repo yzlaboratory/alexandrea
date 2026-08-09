@@ -77,6 +77,14 @@ describe('catalogApi', () => {
     expect(await fetchCatalogPage('movies', 1)).toEqual({ status: 'error' });
   });
 
+  it('resolves to an error outcome rather than rejecting when fetch itself fails', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    await expect(fetchCatalogPage('movies', 1)).resolves.toEqual({
+      status: 'error',
+    });
+  });
+
   it('resolves to an error outcome on a 404 (unsupported media type)', async () => {
     fetchMock.mockResolvedValueOnce(response(404));
 
