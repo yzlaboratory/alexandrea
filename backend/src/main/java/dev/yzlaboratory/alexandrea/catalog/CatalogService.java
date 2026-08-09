@@ -14,7 +14,12 @@ import org.springframework.stereotype.Service;
 public class CatalogService {
 
     private static final String MOVIES_MEDIA_TYPE = "movies";
-    private static final String TMDB_PROVIDER = "tmdb";
+    // Matches TmdbClient's own PROVIDER constant exactly (including case) —
+    // CatalogEntry.provider() is always "TMDB", so a lowercase "tmdb" here
+    // would build page keys under a different string than the entry keys
+    // built from entry.provider() in fetchAndCache(), even though both
+    // conceptually name the same provider.
+    private static final String TMDB_PROVIDER = "TMDB";
     private static final String POPULAR_FEED = "popular";
     private static final String NO_FILTERS = "";
     private static final String DEFAULT_SORT = "default";
