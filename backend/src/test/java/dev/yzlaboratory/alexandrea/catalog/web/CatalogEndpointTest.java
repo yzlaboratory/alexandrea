@@ -56,10 +56,23 @@ class CatalogEndpointTest {
     private static final AtomicReference<Integer> nextTvResponseStatus = new AtomicReference<>(200);
     private static final AtomicInteger tvRequestCount = new AtomicInteger();
 
+    private static final AtomicReference<String> nextSearchResponseBody = new AtomicReference<>();
+    private static final AtomicReference<Integer> nextSearchResponseStatus = new AtomicReference<>(200);
+    private static final AtomicInteger searchRequestCount = new AtomicInteger();
+    private static final AtomicReference<String> lastSearchQuery = new AtomicReference<>();
+
+    private static final AtomicReference<String> nextTvSearchResponseBody = new AtomicReference<>();
+    private static final AtomicReference<Integer> nextTvSearchResponseStatus = new AtomicReference<>(200);
+    private static final AtomicInteger tvSearchRequestCount = new AtomicInteger();
+
     private static HttpServer openLibraryServer;
     private static final AtomicReference<String> nextOpenLibraryResponseBody = new AtomicReference<>();
     private static final AtomicReference<Integer> nextOpenLibraryResponseStatus = new AtomicReference<>(200);
     private static final AtomicInteger openLibraryRequestCount = new AtomicInteger();
+
+    private static final AtomicReference<String> nextOpenLibrarySearchResponseBody = new AtomicReference<>();
+    private static final AtomicReference<Integer> nextOpenLibrarySearchResponseStatus = new AtomicReference<>(200);
+    private static final AtomicInteger openLibrarySearchRequestCount = new AtomicInteger();
 
     private static HttpServer igdbGamesServer;
     private static final AtomicReference<String> nextIgdbGamesResponseBody = new AtomicReference<>();
@@ -87,6 +100,15 @@ class CatalogEndpointTest {
             tvRequestCount.incrementAndGet();
             respond(exchange, nextTvResponseStatus.get(), nextTvResponseBody.get());
         });
+        tmdbServer.createContext("/search/movie", exchange -> {
+            searchRequestCount.incrementAndGet();
+            lastSearchQuery.set(exchange.getRequestURI().getQuery());
+            respond(exchange, nextSearchResponseStatus.get(), nextSearchResponseBody.get());
+        });
+        tmdbServer.createContext("/search/tv", exchange -> {
+            tvSearchRequestCount.incrementAndGet();
+            respond(exchange, nextTvSearchResponseStatus.get(), nextTvSearchResponseBody.get());
+        });
         tmdbServer.start();
         var tmdbPort = tmdbServer.getAddress().getPort();
         registry.add("alexandrea.catalog.tmdb.base-url", () -> "http://localhost:" + tmdbPort);
@@ -96,6 +118,10 @@ class CatalogEndpointTest {
         openLibraryServer.createContext("/trending/daily.json", exchange -> {
             openLibraryRequestCount.incrementAndGet();
             respond(exchange, nextOpenLibraryResponseStatus.get(), nextOpenLibraryResponseBody.get());
+        });
+        openLibraryServer.createContext("/search.json", exchange -> {
+            openLibrarySearchRequestCount.incrementAndGet();
+            respond(exchange, nextOpenLibrarySearchResponseStatus.get(), nextOpenLibrarySearchResponseBody.get());
         });
         openLibraryServer.start();
         var openLibraryPort = openLibraryServer.getAddress().getPort();
@@ -159,10 +185,29 @@ class CatalogEndpointTest {
             {"page": 1, "results": [], "total_pages": 1}
             """);
 
+        searchRequestCount.set(0);
+        lastSearchQuery.set(null);
+        nextSearchResponseStatus.set(200);
+        nextSearchResponseBody.set("""
+            {"page": 1, "results": [], "total_pages": 1}
+            """);
+
+        tvSearchRequestCount.set(0);
+        nextTvSearchResponseStatus.set(200);
+        nextTvSearchResponseBody.set("""
+            {"page": 1, "results": [], "total_pages": 1}
+            """);
+
         openLibraryRequestCount.set(0);
         nextOpenLibraryResponseStatus.set(200);
         nextOpenLibraryResponseBody.set("""
             {"works": []}
+            """);
+
+        openLibrarySearchRequestCount.set(0);
+        nextOpenLibrarySearchResponseStatus.set(200);
+        nextOpenLibrarySearchResponseBody.set("""
+            {"docs": []}
             """);
 
         igdbGamesRequestCount.set(0);
@@ -423,6 +468,119 @@ class CatalogEndpointTest {
 
         mockMvc.perform(get("/api/catalog/games").param("page", "5").with(loggedIn()))
             .andExpect(status().isServiceUnavailable());
+
+        assertThat(igdbGamesRequestCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    void aSearchParamRoutesToTmdbSearchMovieRatherThanThePopularFeed() throws Exception {
+        nextSearchResponseBody.set("""
+            {
+              "page": 1,
+              "results": [
+                {"id": 78, "title": "Blade Runner", "poster_path": "/blade.jpg", "release_date": "1982-06-25", "vote_average": 7.9}
+              ],
+              "total_pages": 1
+            }
+            """);
+
+        mockMvc.perform(get("/api/catalog/movies").param("search", "blade runner").param("page", "30").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].title").value("Blade Runner"));
+
+        assertThat(searchRequestCount.get()).isEqualTo(1);
+        assertThat(lastSearchQuery.get()).contains("query=blade");
+        assertThat(requestCount.get()).isZero();
+    }
+
+    @Test
+    void anEmptySearchParamBehavesLikeThePopularFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("search", "").param("page", "31").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(requestCount.get()).isEqualTo(1);
+        assertThat(searchRequestCount.get()).isZero();
+    }
+
+    @Test
+    void aSearchWithNoMatchesReturnsAnEmptyPageRatherThanAnError() throws Exception {
+        // resetState() already stubs an empty results array for search.
+        mockMvc.perform(get("/api/catalog/movies").param("search", "zzzznomatch").param("page", "32").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items").isEmpty())
+            .andExpect(jsonPath("$.hasMore").value(false));
+    }
+
+    @Test
+    void aSearchUpstreamFailureSurfacesAsServiceUnavailableJustLikePopular() throws Exception {
+        nextSearchResponseStatus.set(500);
+        nextSearchResponseBody.set("Internal Server Error");
+
+        mockMvc.perform(get("/api/catalog/movies").param("search", "blade runner").param("page", "33").with(loggedIn()))
+            .andExpect(status().isServiceUnavailable());
+
+        assertThat(searchRequestCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    void popularAndSearchForTheSamePageNumberHitTheirOwnEndpointsRatherThanSharingACacheEntry() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("page", "34").with(loggedIn())).andExpect(status().isOk());
+        mockMvc.perform(get("/api/catalog/movies").param("search", "blade runner").param("page", "34").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(requestCount.get()).isEqualTo(1);
+        assertThat(searchRequestCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    void aSearchParamRoutesToTmdbSearchTvRatherThanThePopularFeed() throws Exception {
+        nextTvSearchResponseBody.set("""
+            {
+              "page": 1,
+              "results": [
+                {"id": 66732, "name": "Stranger Things", "poster_path": "/st.jpg", "first_air_date": "2016-07-15", "vote_average": 8.6}
+              ],
+              "total_pages": 1
+            }
+            """);
+
+        mockMvc.perform(get("/api/catalog/tv").param("search", "stranger things").param("page", "1").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].title").value("Stranger Things"));
+
+        assertThat(tvSearchRequestCount.get()).isEqualTo(1);
+        assertThat(tvRequestCount.get()).isZero();
+    }
+
+    @Test
+    void aSearchParamRoutesToOpenLibrarySearchJsonRatherThanTrending() throws Exception {
+        nextOpenLibrarySearchResponseBody.set("""
+            {
+              "docs": [
+                {"key": "/works/OL262758W", "title": "Ready Player One", "cover_i": 8235116, "first_publish_year": 2011}
+              ]
+            }
+            """);
+
+        mockMvc.perform(get("/api/catalog/books").param("search", "ready player one").param("page", "1").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].title").value("Ready Player One"));
+
+        assertThat(openLibrarySearchRequestCount.get()).isEqualTo(1);
+        assertThat(openLibraryRequestCount.get()).isZero();
+    }
+
+    @Test
+    void aSearchParamOnGamesReturnsMappedItemsFromIgdb() throws Exception {
+        nextIgdbGamesResponseBody.set("""
+            [
+              {"id": 1942, "name": "The Witcher 3: Wild Hunt", "cover": {"id": 1, "image_id": "co1wyy"}, "first_release_date": 1431993600, "total_rating": 92.5}
+            ]
+            """);
+
+        mockMvc.perform(get("/api/catalog/games").param("search", "witcher").param("page", "1").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].title").value("The Witcher 3: Wild Hunt"));
 
         assertThat(igdbGamesRequestCount.get()).isEqualTo(1);
     }
