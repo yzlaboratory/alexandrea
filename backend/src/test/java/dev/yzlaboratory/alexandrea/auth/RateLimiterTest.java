@@ -31,7 +31,7 @@ class RateLimiterTest {
             null, null, null, null, null, null,
             new AuthProperties.RateLimit(MAX_ATTEMPTS, WINDOW),
             new AuthProperties.RateLimit(MAX_ATTEMPTS, WINDOW));
-        rateLimiter = new RateLimiter(new RateLimitBucketStore(db.jdbcClient(), clock), properties);
+        rateLimiter = new RateLimiter(new RateLimitBucketStore(db.jdbcClient(), clock, properties), properties);
     }
 
     @AfterEach
