@@ -9,9 +9,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * Talks to OpenLibrary's {@code /trending/daily.json} endpoint and maps its
- * response into the common {@link CatalogItem} shape (ADR 0001). Needs no
- * API key — OpenLibrary is a public, unauthenticated API.
+ * Talks to OpenLibrary's {@code /trending/daily.json} and {@code
+ * /search.json} endpoints (ADR 0018's "nothing applied" and "text search
+ * active" rows) and maps their responses into the common {@link CatalogItem}
+ * shape (ADR 0001). Needs no API key — OpenLibrary is a public,
+ * unauthenticated API.
  */
 @Component
 public class OpenLibraryClient {
@@ -36,15 +38,29 @@ public class OpenLibraryClient {
     public CatalogPageResult trendingBooks(int page) {
         var response = fetchTrending(page);
         var works = response.works() != null ? response.works() : List.<OpenLibraryWork>of();
+        return toPageResult(works, page);
+    }
+
+    public CatalogPageResult search(String query, int page) {
+        var response = fetchSearch(query, page);
+        var docs = response.docs() != null ? response.docs() : List.<OpenLibraryWork>of();
+        return toPageResult(docs, page);
+    }
+
+    // Shared by the trending feed and search: /search.json's "docs" entries
+    // carry the same key/title/cover_i/first_publish_year fields as
+    // /trending/daily.json's "works", so the same filter, mapping, and
+    // hasMore heuristic apply to either response.
+    private CatalogPageResult toPageResult(List<OpenLibraryWork> works, int page) {
         // A work with no "key" has no stable external id to cache it under;
         // CatalogCache.itemKey would otherwise fold every such work into the
         // same literal "null" segment, letting unrelated keyless works
         // silently overwrite each other's cache entry.
         var items = works.stream().filter(work -> work.key() != null).map(this::toItem).toList();
-        // Unlike TMDB's total_pages, /trending/daily.json reports no
-        // total-count field, so a full page is the only available signal
-        // that more might follow; a next page that turns out short or empty
-        // ends pagination correctly on its own.
+        // Neither endpoint reports a total-count field, so a full page is
+        // the only available signal that more might follow; a next page
+        // that turns out short or empty ends pagination correctly on its
+        // own.
         var hasMore = items.size() >= PAGE_SIZE;
         return new CatalogPageResult(items, page, hasMore);
     }
@@ -60,6 +76,23 @@ public class OpenLibraryClient {
                 .retrieve()
                 .body(OpenLibraryTrendingResponse.class);
             return response != null ? response : OpenLibraryTrendingResponse.empty();
+        } catch (RestClientException e) {
+            throw new CatalogUpstreamException(PROVIDER, e);
+        }
+    }
+
+    private OpenLibrarySearchResponse fetchSearch(String query, int page) {
+        try {
+            var response = restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                    .path("/search.json")
+                    .queryParam("q", query)
+                    .queryParam("limit", PAGE_SIZE)
+                    .queryParam("offset", (page - 1) * PAGE_SIZE)
+                    .build())
+                .retrieve()
+                .body(OpenLibrarySearchResponse.class);
+            return response != null ? response : OpenLibrarySearchResponse.empty();
         } catch (RestClientException e) {
             throw new CatalogUpstreamException(PROVIDER, e);
         }
@@ -109,6 +142,13 @@ public class OpenLibraryClient {
     private record OpenLibraryTrendingResponse(List<OpenLibraryWork> works) {
         static OpenLibraryTrendingResponse empty() {
             return new OpenLibraryTrendingResponse(List.of());
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record OpenLibrarySearchResponse(List<OpenLibraryWork> docs) {
+        static OpenLibrarySearchResponse empty() {
+            return new OpenLibrarySearchResponse(List.of());
         }
     }
 

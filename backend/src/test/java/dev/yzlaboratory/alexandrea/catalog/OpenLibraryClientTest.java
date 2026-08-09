@@ -204,10 +204,102 @@ class OpenLibraryClientTest {
         server.verify();
     }
 
+    @Test
+    void searchMapsAMatchingDocIntoCatalogItemsJustLikeTrending() {
+        expectSearchRequest("q", "ready%20player%20one").andRespond(withSuccess("""
+            {
+              "docs": [
+                {
+                  "key": "/works/OL262758W",
+                  "title": "Ready Player One",
+                  "cover_i": 8235116,
+                  "first_publish_year": 2011
+                }
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.search("ready player one", 1);
+
+        assertThat(result.items()).hasSize(1);
+        var item = result.items().getFirst();
+        assertThat(item.provider()).isEqualTo("OpenLibrary");
+        assertThat(item.externalId()).isEqualTo("OL262758W");
+        assertThat(item.mediaType()).isEqualTo("books");
+        assertThat(item.title()).isEqualTo("Ready Player One");
+        assertThat(item.coverUrl()).isEqualTo("https://covers.openlibrary.org/b/id/8235116-M.jpg");
+    }
+
+    @Test
+    void searchWithNoMatchesMapsToAnEmptyPageRatherThanAnError() {
+        expectSearchRequest("q", "zzzznomatch").andRespond(withSuccess("""
+            {"docs": []}
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.search("zzzznomatch", 1);
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.hasMore()).isFalse();
+    }
+
+    @Test
+    void aNullDocsFieldMapsToAnEmptyListRatherThanThrowing() {
+        expectSearchRequest("q", "anything").andRespond(withSuccess("""
+            {"docs": null}
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.search("anything", 1);
+
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void searchExcludesKeylessDocsJustLikeTrending() {
+        expectSearchRequest("q", "anything").andRespond(withSuccess("""
+            {
+              "docs": [
+                {"title": "No Key Book"},
+                {"key": "/works/OL9W", "title": "Has A Key"}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.search("anything", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("Has A Key");
+    }
+
+    @Test
+    void anUpstream5xxOnSearchIsWrappedAsACatalogUpstreamException() {
+        expectSearchRequest("q", "anything").andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.search("anything", 1)).isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void searchRequestsLimitAndOffsetComputedFromThePageNumber() {
+        server.expect(requestTo(BASE_URL + "/search.json?q=title&limit=20&offset=40"))
+            .andExpect(method(HttpMethod.GET))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.search("title", 3);
+
+        server.verify();
+    }
+
     private org.springframework.test.web.client.ResponseActions expectTrendingRequest() {
         return server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/trending/daily.json")))
             .andExpect(method(HttpMethod.GET))
             .andExpect(queryParam("limit", "20"));
+    }
+
+    private org.springframework.test.web.client.ResponseActions expectSearchRequest(String queryParamName, String queryParamValue) {
+        return server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam(queryParamName, queryParamValue));
     }
 
     private static String fullPageOfWorksJson() {
