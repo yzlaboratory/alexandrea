@@ -4,9 +4,9 @@ import dev.yzlaboratory.alexandrea.auth.AuthService;
 import dev.yzlaboratory.alexandrea.auth.AuthenticatedUser;
 import dev.yzlaboratory.alexandrea.auth.InvalidCredentialsException;
 import dev.yzlaboratory.alexandrea.auth.LoginOutcome;
-import dev.yzlaboratory.alexandrea.auth.ResetLinkRejectedException;
+import dev.yzlaboratory.alexandrea.auth.SingleUseLinkKind;
+import dev.yzlaboratory.alexandrea.auth.SingleUseLinkRejectedException;
 import dev.yzlaboratory.alexandrea.auth.TokenConsumption;
-import dev.yzlaboratory.alexandrea.auth.VerificationLinkRejectedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -58,7 +58,7 @@ public class AuthController {
         return switch (outcome) {
             case TokenConsumption.Consumed _ -> new VerifyResponse(true);
             case TokenConsumption.Expired _, TokenConsumption.Rejected _ ->
-                throw new VerificationLinkRejectedException();
+                throw new SingleUseLinkRejectedException(SingleUseLinkKind.VERIFICATION);
         };
     }
 
@@ -139,7 +139,7 @@ public class AuthController {
         return switch (outcome) {
             case TokenConsumption.Consumed _ -> new ResetPasswordResponse(true);
             case TokenConsumption.Expired _, TokenConsumption.Rejected _ ->
-                throw new ResetLinkRejectedException();
+                throw new SingleUseLinkRejectedException(SingleUseLinkKind.RESET);
         };
     }
 
