@@ -3,6 +3,7 @@ import {
   fetchSession,
   login,
   logout,
+  requestPasswordReset,
   resendVerification,
   signup,
   switchMediaType,
@@ -82,6 +83,18 @@ describe('authApi', () => {
 
     fetchMock.mockResolvedValueOnce(response(500));
     expect(await verify('boom')).toBe('error');
+  });
+
+  it('resolves when the reset request is accepted', async () => {
+    fetchMock.mockResolvedValueOnce(response(202));
+    await expect(
+      requestPasswordReset('reader@example.com'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects when the reset request fails, instead of reporting success', async () => {
+    fetchMock.mockResolvedValueOnce(response(500));
+    await expect(requestPasswordReset('reader@example.com')).rejects.toThrow();
   });
 
   it('posts the address to the resend endpoint', async () => {

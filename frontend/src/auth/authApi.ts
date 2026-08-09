@@ -104,11 +104,12 @@ export async function logout(): Promise<void> {
   await postJson('/api/auth/logout', {});
 }
 
-// Always fire-and-forget: the response is generic regardless of account state
-// (ADR 0024), so there is nothing for the caller to branch on beyond a
-// network failure, which the caller catches.
+// The response body is generic regardless of account state (ADR 0024), so
+// there is nothing for the caller to branch on beyond success vs. failure,
+// which the caller catches.
 export async function requestPasswordReset(email: string): Promise<void> {
-  await postJson('/api/auth/forgot-password', { email });
+  const response = await postJson('/api/auth/forgot-password', { email });
+  if (!response.ok) throw new Error('Failed to request password reset');
 }
 
 export type ResetPasswordOutcome =
