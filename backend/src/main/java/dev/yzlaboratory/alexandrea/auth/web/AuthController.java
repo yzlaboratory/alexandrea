@@ -2,6 +2,7 @@ package dev.yzlaboratory.alexandrea.auth.web;
 
 import dev.yzlaboratory.alexandrea.auth.AuthService;
 import dev.yzlaboratory.alexandrea.auth.AuthenticatedUser;
+import dev.yzlaboratory.alexandrea.auth.EmailChangeConsumption;
 import dev.yzlaboratory.alexandrea.auth.InvalidCredentialsException;
 import dev.yzlaboratory.alexandrea.auth.LoginOutcome;
 import dev.yzlaboratory.alexandrea.auth.SingleUseLinkKind;
@@ -158,6 +159,31 @@ public class AuthController {
     }
 
     public record ResetPasswordResponse(boolean reset) {}
+
+    @PostMapping("/change-email")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void changeEmail(
+        @Valid @RequestBody ChangeEmailRequest request,
+        @AuthenticationPrincipal AuthenticatedUser principal,
+        HttpServletRequest servletRequest
+    ) {
+        authService.requestEmailChange(
+            principal.userId(), request.currentPassword(), request.newEmail(), clientIp(servletRequest));
+    }
+
+    @PostMapping("/confirm-email-change")
+    public ConfirmEmailChangeResponse confirmEmailChange(
+        @Valid @RequestBody ConfirmEmailChangeRequest request
+    ) {
+        var outcome = authService.completeEmailChange(request.token());
+        return switch (outcome) {
+            case EmailChangeConsumption.Consumed _ -> new ConfirmEmailChangeResponse(true);
+            case EmailChangeConsumption.Expired _, EmailChangeConsumption.Rejected _ ->
+                throw new SingleUseLinkRejectedException(SingleUseLinkKind.EMAIL_CHANGE);
+        };
+    }
+
+    public record ConfirmEmailChangeResponse(boolean changed) {}
 
     private static String clientIp(HttpServletRequest request) {
         return request.getRemoteAddr();
