@@ -571,6 +571,62 @@ class AuthEndpointTest {
     }
 
     @Test
+    void changingPasswordUpdatesTheHashAndInvalidatesOtherSessionsButKeepsTheCurrentOne() throws Exception {
+        signup("changepw@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var currentSession = sessionCookieFrom(
+            login("changepw@example.com", "the-old-password").andReturn());
+        var otherSession = sessionCookieFrom(
+            login("changepw@example.com", "the-old-password").andReturn());
+
+        changePassword(currentSession, "the-old-password", "a-brand-new-password")
+            .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/auth/session").cookie(currentSession)).andExpect(status().isOk());
+        mockMvc.perform(get("/api/auth/session").cookie(otherSession)).andExpect(status().isUnauthorized());
+        login("changepw@example.com", "the-old-password").andExpect(status().isUnauthorized());
+        login("changepw@example.com", "a-brand-new-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void changingPasswordWithTheWrongCurrentPasswordIsRejectedAndChangesNothing() throws Exception {
+        signup("wrongcurrent@example.com", "the-real-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("wrongcurrent@example.com", "the-real-password").andReturn());
+
+        changePassword(sessionCookie, "not-the-real-password", "a-brand-new-password")
+            .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie)).andExpect(status().isOk());
+        login("wrongcurrent@example.com", "the-real-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void changingPasswordWithAPolicyViolatingNewPasswordIsRejectedAndChangesNothing() throws Exception {
+        signup("badnewpw@example.com", "the-old-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("badnewpw@example.com", "the-old-password").andReturn());
+
+        changePassword(sessionCookie, "the-old-password", "tooshort")
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.type").value("urn:alexandrea:auth:password-policy"));
+
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie)).andExpect(status().isOk());
+        login("badnewpw@example.com", "the-old-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void changingPasswordWithoutASessionIsRejected() throws Exception {
+        mockMvc.perform(post("/api/auth/change-password")
+                .with(csrf())
+                .contentType("application/json")
+                .content("{\"currentPassword\":\"whatever-it-is\",\"newPassword\":\"a-brand-new-password\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void exceedingTheMailIpRateLimitStopsSendingMailButKeepsThe202Shape() throws Exception {
         for (var i = 0; i < 4; i++) {
             signup("throttle-ip-" + i + "@example.com", "a-good-long-password");
@@ -657,6 +713,17 @@ class AuthEndpointTest {
             .with(csrf())
             .contentType("application/json")
             .content("{\"token\":\"" + token + "\",\"newPassword\":\"" + newPassword + "\"}"));
+    }
+
+    private ResultActions changePassword(
+        Cookie sessionCookie, String currentPassword, String newPassword
+    ) throws Exception {
+        return mockMvc.perform(post("/api/auth/change-password")
+            .with(csrf())
+            .cookie(sessionCookie)
+            .contentType("application/json")
+            .content("{\"currentPassword\":\"" + currentPassword
+                + "\",\"newPassword\":\"" + newPassword + "\"}"));
     }
 
     private ResultActions switchMediaType(Cookie sessionCookie, String mediaType) throws Exception {
