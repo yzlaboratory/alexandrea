@@ -12,6 +12,7 @@ import dev.yzlaboratory.alexandrea.auth.MutableClock;
 import dev.yzlaboratory.alexandrea.auth.mail.MailDispatcher;
 import dev.yzlaboratory.alexandrea.auth.mail.MailMessage;
 import dev.yzlaboratory.alexandrea.auth.mail.MailSender;
+import dev.yzlaboratory.alexandrea.auth.mail.UnsendableAddressStore;
 import jakarta.servlet.http.Cookie;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -1004,8 +1005,10 @@ class AuthEndpointTest {
          */
         @Bean
         @Primary
-        MailDispatcher synchronousMailDispatcher(MailSender mailSender) {
-            return new MailDispatcher(mailSender, Runnable::run);
+        MailDispatcher synchronousMailDispatcher(
+            MailSender mailSender, UnsendableAddressStore unsendableAddressStore
+        ) {
+            return new MailDispatcher(mailSender, Runnable::run, unsendableAddressStore);
         }
 
         /** A clock the expiry test can fast-forward, replacing the system clock. */
