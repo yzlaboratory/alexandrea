@@ -23,6 +23,21 @@ public class CatalogConfig {
     }
 
     @Bean
+    public RestClient openLibraryRestClient(RestClient.Builder builder, CatalogProperties properties) {
+        return builder.baseUrl(properties.openLibrary().baseUrl()).build();
+    }
+
+    @Bean
+    public RestClient igdbGamesRestClient(RestClient.Builder builder, CatalogProperties properties) {
+        return builder.baseUrl(properties.igdb().baseUrl()).build();
+    }
+
+    @Bean
+    public RestClient igdbTwitchRestClient(RestClient.Builder builder, CatalogProperties properties) {
+        return builder.baseUrl(properties.igdb().twitchBaseUrl()).build();
+    }
+
+    @Bean
     public Ticker catalogCacheTicker() {
         return Ticker.systemTicker();
     }

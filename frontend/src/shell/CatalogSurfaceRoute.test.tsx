@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CatalogSurfaceRoute from './CatalogSurfaceRoute';
+import { MEDIA_TYPES, type MediaType } from './AppShell';
 import * as catalogApi from '../catalog/catalogApi';
 
 vi.mock('../catalog/catalogApi', () => ({
@@ -9,6 +10,15 @@ vi.mock('../catalog/catalogApi', () => ({
 }));
 
 const mockedFetchCatalogPage = vi.mocked(catalogApi.fetchCatalogPage);
+
+// Test fixture only — the media types under test come from AppShell's
+// own MEDIA_TYPES (imported below), not a hardcoded copy here.
+const EXPECTED_HEADINGS: Record<MediaType, string> = {
+  movies: 'Movies catalog',
+  tv: 'TV catalog',
+  books: 'Books catalog',
+  games: 'Games catalog',
+};
 
 function renderAt(path: string): void {
   render(
@@ -28,19 +38,24 @@ describe('CatalogSurfaceRoute', () => {
     });
   });
 
-  it('renders the real Movies catalog page on /movies/catalog', async () => {
-    renderAt('/movies/catalog');
+  it.each(MEDIA_TYPES)(
+    'renders the real %s catalog page',
+    async (mediaType) => {
+      renderAt(`/${mediaType}/catalog`);
 
-    expect(
-      await screen.findByRole('heading', { name: 'Movies catalog' }),
-    ).toBeInTheDocument();
-    expect(mockedFetchCatalogPage).toHaveBeenCalledWith('movies', 1);
-  });
+      expect(
+        await screen.findByRole('heading', {
+          name: EXPECTED_HEADINGS[mediaType],
+        }),
+      ).toBeInTheDocument();
+      expect(mockedFetchCatalogPage).toHaveBeenCalledWith(mediaType, 1);
+    },
+  );
 
-  it('renders the generic placeholder for a media type with no real catalog yet', () => {
-    renderAt('/tv/catalog');
+  it('renders the generic placeholder for an unrecognized media type', () => {
+    renderAt('/podcasts/catalog');
 
-    expect(screen.getByText(/later slice/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing to show/i)).toBeInTheDocument();
     expect(mockedFetchCatalogPage).not.toHaveBeenCalled();
   });
 });

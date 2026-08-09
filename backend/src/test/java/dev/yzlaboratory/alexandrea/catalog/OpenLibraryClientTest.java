@@ -1,0 +1,223 @@
+package dev.yzlaboratory.alexandrea.catalog;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+
+import java.time.LocalDate;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.RestClient;
+
+/**
+ * Request shape and response mapping for OpenLibrary's
+ * {@code /trending/daily.json} endpoint, against captured/mocked HTTP
+ * responses rather than a live call (per the feature ticket's testing
+ * decisions).
+ */
+class OpenLibraryClientTest {
+
+    private static final String BASE_URL = "https://openlibrary.org";
+
+    private MockRestServiceServer server;
+    private OpenLibraryClient client;
+
+    @BeforeEach
+    void setUp() {
+        var properties = new CatalogProperties(
+            null, new CatalogProperties.OpenLibrary(BASE_URL, "https://covers.openlibrary.org/b/id/"), null);
+        var builder = RestClient.builder().baseUrl(BASE_URL);
+        server = MockRestServiceServer.bindTo(builder).build();
+        client = new OpenLibraryClient(builder.build(), properties);
+    }
+
+    @Test
+    void mapsATrendingResponseIntoCatalogItems() {
+        expectTrendingRequest().andRespond(withSuccess("""
+            {
+              "works": [
+                {
+                  "key": "/works/OL262758W",
+                  "title": "Ready Player One",
+                  "cover_i": 8235116,
+                  "first_publish_year": 2011
+                }
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.trendingBooks(1);
+
+        assertThat(result.items()).hasSize(1);
+        var item = result.items().getFirst();
+        assertThat(item.provider()).isEqualTo("OpenLibrary");
+        assertThat(item.externalId()).isEqualTo("OL262758W");
+        assertThat(item.mediaType()).isEqualTo("books");
+        assertThat(item.title()).isEqualTo("Ready Player One");
+        assertThat(item.coverUrl()).isEqualTo("https://covers.openlibrary.org/b/id/8235116-M.jpg");
+        assertThat(item.releaseDate()).isEqualTo(LocalDate.of(2011, 1, 1));
+        assertThat(item.externalRatingScale()).isEqualTo(5.0);
+        assertThat(result.page()).isEqualTo(1);
+    }
+
+    @Test
+    void externalRatingIsAlwaysNullSinceTrendingCarriesNoRatingField() {
+        // /trending/daily.json exposes no community-rating field at all
+        // (verified against the live endpoint) — OpenLibrary's real rating
+        // lives behind a per-work /works/{id}/ratings.json call, deferred
+        // to #48 rather than fetched inline here.
+        expectTrendingRequest().andRespond(withSuccess("""
+            {
+              "works": [
+                {"key": "/works/OL1W", "title": "A Book"}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var item = client.trendingBooks(1).items().getFirst();
+
+        assertThat(item.externalRating()).isNull();
+    }
+
+    @Test
+    void anUnexpectedRatingsAverageFieldInTheResponseIsIgnored() {
+        // Guards against silently regressing to the earlier bug: reading a
+        // "ratings_average" field the live endpoint never actually sends,
+        // which made externalRating read as a checked-and-absent null
+        // instead of the honestly-not-fetched null it is for now.
+        expectTrendingRequest().andRespond(withSuccess("""
+            {
+              "works": [
+                {"key": "/works/OL1W", "title": "A Book", "ratings_average": 4.2}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var item = client.trendingBooks(1).items().getFirst();
+
+        assertThat(item.externalRating()).isNull();
+    }
+
+    @Test
+    void worksWithNoKeyAreExcludedRatherThanCollidingUnderANullCacheKey() {
+        expectTrendingRequest().andRespond(withSuccess("""
+            {
+              "works": [
+                {"title": "No Key One"},
+                {"title": "No Key Two"},
+                {"key": "/works/OL9W", "title": "Has A Key"}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.trendingBooks(1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("Has A Key");
+    }
+
+    @Test
+    void aWorkWithNoCoverOrPublishYearMapsToNullFieldsRatherThanCrashing() {
+        expectTrendingRequest().andRespond(withSuccess("""
+            {
+              "works": [
+                {"key": "/works/OL3W", "title": "No Cover Or Year"}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var item = client.trendingBooks(1).items().getFirst();
+
+        assertThat(item.coverUrl()).isNull();
+        assertThat(item.releaseDate()).isNull();
+        assertThat(item.externalRating()).isNull();
+    }
+
+    @Test
+    void anEmptyWorksArrayMapsToAnEmptyListWithoutError() {
+        expectTrendingRequest().andRespond(withSuccess("""
+            {"works": []}
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.trendingBooks(1);
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.hasMore()).isFalse();
+    }
+
+    @Test
+    void aNullWorksFieldMapsToAnEmptyListRatherThanThrowing() {
+        expectTrendingRequest().andRespond(withSuccess("""
+            {"works": null}
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.trendingBooks(1);
+
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void aFullPageOfTwentyReportsMoreAvailable() {
+        expectTrendingRequest().andRespond(withSuccess(fullPageOfWorksJson(), MediaType.APPLICATION_JSON));
+
+        var result = client.trendingBooks(1);
+
+        assertThat(result.items()).hasSize(20);
+        assertThat(result.hasMore()).isTrue();
+    }
+
+    @Test
+    void aShortPageReportsNoMoreAvailable() {
+        expectTrendingRequest().andRespond(withSuccess("""
+            {"works": [{"key": "/works/OL9W", "title": "Only One Left"}]}
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.trendingBooks(1);
+
+        assertThat(result.hasMore()).isFalse();
+    }
+
+    @Test
+    void anUpstream5xxIsWrappedAsACatalogUpstreamException() {
+        expectTrendingRequest().andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.trendingBooks(1)).isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void requestsLimitAndOffsetComputedFromThePageNumber() {
+        server.expect(requestTo(BASE_URL + "/trending/daily.json?limit=20&offset=40"))
+            .andExpect(method(HttpMethod.GET))
+            .andRespond(withSuccess("""
+                {"works": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.trendingBooks(3);
+
+        server.verify();
+    }
+
+    private org.springframework.test.web.client.ResponseActions expectTrendingRequest() {
+        return server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/trending/daily.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("limit", "20"));
+    }
+
+    private static String fullPageOfWorksJson() {
+        var works = new StringBuilder();
+        for (var i = 1; i <= 20; i++) {
+            if (i > 1) {
+                works.append(',');
+            }
+            works.append("{\"key\": \"/works/OL").append(i).append("W\", \"title\": \"Work ").append(i).append("\"}");
+        }
+        return "{\"works\": [" + works + "]}";
+    }
+}

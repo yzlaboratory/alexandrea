@@ -30,6 +30,12 @@ class CatalogServiceTest {
     @Mock
     private TmdbClient tmdbClient;
 
+    @Mock
+    private OpenLibraryClient openLibraryClient;
+
+    @Mock
+    private IgdbClient igdbClient;
+
     private MutableTicker ticker;
     private MutableClock clock;
     private CatalogService service;
@@ -40,7 +46,7 @@ class CatalogServiceTest {
         clock = new MutableClock(Instant.parse("2026-06-07T12:00:00Z"));
         var cache = new CatalogCache(ticker);
         var circuitBreaker = new ProviderCircuitBreaker(clock);
-        service = new CatalogService(tmdbClient, cache, circuitBreaker);
+        service = new CatalogService(tmdbClient, openLibraryClient, igdbClient, cache, circuitBreaker);
     }
 
     @Test
@@ -84,15 +90,15 @@ class CatalogServiceTest {
 
     @Test
     void anUnsupportedMediaTypeIsRejectedWithoutCallingAnyProvider() {
-        assertThatThrownBy(() -> service.browse("games", 1))
+        assertThatThrownBy(() -> service.browse("podcasts", 1))
             .isInstanceOf(UnsupportedCatalogMediaTypeException.class);
 
-        verifyNoInteractions(tmdbClient);
+        verifyNoInteractions(tmdbClient, openLibraryClient, igdbClient);
     }
 
     @Test
-    void anUnrecognisedMediaTypeIsRejectedTheSameWayAsARecognisedButUnbuiltOne() {
-        assertThatThrownBy(() -> service.browse("podcasts", 1))
+    void anEmptyMediaTypeIsAlsoRejectedRatherThanMatchingAnySwitchCase() {
+        assertThatThrownBy(() -> service.browse("", 1))
             .isInstanceOf(UnsupportedCatalogMediaTypeException.class);
 
         verify(tmdbClient, never()).popularMovies(anyInt());
@@ -256,6 +262,106 @@ class CatalogServiceTest {
         when(tmdbClient.popularMovies(501)).thenReturn(recovered);
 
         assertThat(service.browse("movies", 501)).isEqualTo(recovered);
+    }
+
+    @Test
+    void tvRoutesToTmdbPopularTvRatherThanPopularMovies() {
+        var tvItem = new CatalogItem("TMDB", "2", "tv", "A Series", "cover", LocalDate.of(2020, 1, 1), 8.0, 10.0);
+        var page = new CatalogPageResult(List.of(tvItem), 1, true);
+        when(tmdbClient.popularTv(1)).thenReturn(page);
+
+        var result = service.browse("tv", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).popularTv(1);
+        verify(tmdbClient, never()).popularMovies(anyInt());
+    }
+
+    @Test
+    void moviesAndTvAreCachedUnderDistinctPagesDespiteSharingTheTmdbProvider() {
+        var movieItem = ITEM;
+        var tvItem = new CatalogItem("TMDB", "2", "tv", "A Series", "cover", LocalDate.of(2020, 1, 1), 8.0, 10.0);
+        when(tmdbClient.popularMovies(1)).thenReturn(new CatalogPageResult(List.of(movieItem), 1, true));
+        when(tmdbClient.popularTv(1)).thenReturn(new CatalogPageResult(List.of(tvItem), 1, true));
+
+        var movies = service.browse("movies", 1);
+        var tv = service.browse("tv", 1);
+
+        assertThat(movies.items()).containsExactly(movieItem);
+        assertThat(tv.items()).containsExactly(tvItem);
+    }
+
+    @Test
+    void booksRoutesToOpenLibraryTrendingBooks() {
+        var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Book", "cover", null, 4.2, 5.0);
+        var page = new CatalogPageResult(List.of(bookItem), 1, true);
+        when(openLibraryClient.trendingBooks(1)).thenReturn(page);
+
+        var result = service.browse("books", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(openLibraryClient, times(1)).trendingBooks(1);
+        verifyNoInteractions(tmdbClient, igdbClient);
+    }
+
+    @Test
+    void gamesRoutesToIgdbPopularGames() {
+        var gameItem = new CatalogItem("IGDB", "42", "games", "A Game", "cover", null, 84.0, 100.0);
+        var page = new CatalogPageResult(List.of(gameItem), 1, true);
+        when(igdbClient.popularGames(1)).thenReturn(page);
+
+        var result = service.browse("games", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(igdbClient, times(1)).popularGames(1);
+        verifyNoInteractions(tmdbClient, openLibraryClient);
+    }
+
+    @Test
+    void aBooksUpstreamFailureFallsThroughToAStaleCachedPageJustLikeMovies() {
+        var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Book", "cover", null, 4.2, 5.0);
+        var page = new CatalogPageResult(List.of(bookItem), 1, true);
+        when(openLibraryClient.trendingBooks(1)).thenReturn(page);
+        service.browse("books", 1);
+        ticker.advance(Duration.ofDays(7).plusSeconds(1));
+        when(openLibraryClient.trendingBooks(1))
+            .thenThrow(new CatalogUpstreamException("OpenLibrary", new RuntimeException("boom")));
+
+        var result = service.browse("books", 1);
+
+        assertThat(result).isEqualTo(page);
+    }
+
+    @Test
+    void eachProviderHasItsOwnIndependentCircuitBreaker() {
+        // Five OpenLibrary failures must not affect TMDB's breaker — the
+        // breaker map is keyed by provider name, not shared globally.
+        var openLibraryFailure = new CatalogUpstreamException("OpenLibrary", new RuntimeException("boom"));
+        for (var page = 1; page <= 5; page++) {
+            var currentPage = page;
+            when(openLibraryClient.trendingBooks(currentPage)).thenThrow(openLibraryFailure);
+            assertThatThrownBy(() -> service.browse("books", currentPage)).isInstanceOf(CatalogUpstreamException.class);
+        }
+
+        var moviePage = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(moviePage);
+        assertThat(service.browse("movies", 1)).isEqualTo(moviePage);
+    }
+
+    @Test
+    void fiveTvFailuresOpenTheSharedTmdbBreakerAndAlsoBlockMovies() {
+        var tvFailure = new CatalogUpstreamException("TMDB", new RuntimeException("boom"));
+        for (var page = 1; page <= 5; page++) {
+            var currentPage = page;
+            when(tmdbClient.popularTv(currentPage)).thenThrow(tvFailure);
+            assertThatThrownBy(() -> service.browse("tv", currentPage)).isInstanceOf(CatalogUpstreamException.class);
+        }
+
+        // TMDB backs both movies and tv, and ProviderCircuitBreaker is keyed
+        // by provider name alone — five tv failures must open the same
+        // breaker a movies request would hit.
+        assertThatThrownBy(() -> service.browse("movies", 999)).isInstanceOf(CatalogUpstreamException.class);
+        verify(tmdbClient, never()).popularMovies(999);
     }
 
     private void failFivePages() {

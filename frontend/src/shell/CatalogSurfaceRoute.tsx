@@ -2,20 +2,22 @@ import { type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import CatalogPage from '../catalog/CatalogPage';
 import CatalogPlaceholder from './CatalogPlaceholder';
+import { isMediaType } from './AppShell';
 
-// Only Movies has a real catalog provider wired up yet (#39 adds the
-// rest); every other media type still falls through to the generic
-// placeholder. This route is matched on "/:mediaType/catalog" — a
-// dynamic :mediaType segment, not a movies-only static path — so
-// AppShell's useParams()-driven tab highlighting (which media-type tab
-// and which surface tab is active) keeps working here exactly like it
-// does on every other surface route. A static "/movies/catalog" route
-// left both tab rows unable to tell which tab was active, since neither
-// param existed on that route at all.
+// All four media types have a real catalog provider wired up now (#39
+// completed TV/Books/Games alongside #37's Movies). This route is
+// matched on "/:mediaType/catalog" — a dynamic :mediaType segment, not
+// a movies-only static path — so AppShell's useParams()-driven tab
+// highlighting (which media-type tab and which surface tab is active)
+// keeps working here exactly like it does on every other surface route.
 function CatalogSurfaceRoute(): ReactNode {
   const { mediaType } = useParams<{ mediaType: string }>();
-  if (mediaType === 'movies') {
-    return <CatalogPage mediaType="movies" />;
+  // A stale bookmark or typo could put an unrecognized segment in
+  // :mediaType; that still falls through to the generic placeholder
+  // rather than reaching CatalogGrid with a media type the backend
+  // will 404 on.
+  if (isMediaType(mediaType)) {
+    return <CatalogPage mediaType={mediaType} />;
   }
   return <CatalogPlaceholder />;
 }

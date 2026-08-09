@@ -12,18 +12,28 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * Talks to TMDB's {@code /movie/popular} endpoint and maps its response into
- * the common {@link CatalogItem} shape (ADR 0001). TMDB already paginates
- * at 20 results per page, so the page-number contract this app exposes to
- * the frontend needs no offset math for this provider.
+ * Talks to TMDB's {@code /movie/popular} and {@code /tv/popular} endpoints
+ * and maps each response into the common {@link CatalogItem} shape
+ * (ADR 0001). TMDB already paginates at 20 results per page, so the
+ * page-number contract this app exposes to the frontend needs no offset math
+ * for this provider.
+ *
+ * <p>{@code /tv/popular} already returns one row per series — TMDB has no
+ * per-season entry in this feed — so {@link #popularTv(int)} needs no extra
+ * work to satisfy ADR 0005's series-level requirement beyond calling the
+ * right endpoint.
  */
 @Component
 public class TmdbClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(TmdbClient.class);
 
-    private static final String PROVIDER = "TMDB";
-    private static final String MOVIES_MEDIA_TYPE = "movies";
+    // Package-private (not private): CatalogService references these
+    // directly for its dispatch and cache-key building rather than
+    // redeclaring its own copy that could silently drift out of sync.
+    static final String PROVIDER = "TMDB";
+    static final String MOVIES_MEDIA_TYPE = "movies";
+    static final String TV_MEDIA_TYPE = "tv";
     private static final double TMDB_RATING_SCALE = 10.0;
     private static final String API_KEY_PARAM = "api_key";
     private static final String PAGE_PARAM = "page";
@@ -37,44 +47,56 @@ public class TmdbClient {
     }
 
     public CatalogPageResult popularMovies(int page) {
-        var response = fetchPopular(page);
+        return popular("/movie/popular", MOVIES_MEDIA_TYPE, page);
+    }
+
+    public CatalogPageResult popularTv(int page) {
+        return popular("/tv/popular", TV_MEDIA_TYPE, page);
+    }
+
+    private CatalogPageResult popular(String path, String mediaType, int page) {
+        var response = fetchPopular(path, page);
         // response itself is never null (fetchPopular falls back to
-        // TmdbPopularMoviesResponse.empty(page)), but a 200 whose body omits
+        // TmdbPopularResponse.empty(page)), but a 200 whose body omits
         // "results" (or sends it explicitly null) deserializes the field to
         // null too — guard here rather than NPE outside fetchPopular's
         // try/catch, which would surface as a bare 500 instead of the
         // intended CatalogUpstreamException -> 503.
-        var results = response.results() != null ? response.results() : List.<TmdbMovie>of();
-        var items = results.stream().map(this::toItem).toList();
+        var results = response.results() != null ? response.results() : List.<TmdbTitle>of();
+        var items = results.stream().map(result -> toItem(result, mediaType)).toList();
         var hasMore = page < response.totalPages();
         return new CatalogPageResult(items, page, hasMore);
     }
 
-    private TmdbPopularMoviesResponse fetchPopular(int page) {
+    private TmdbPopularResponse fetchPopular(String path, int page) {
         try {
             var response = restClient.get()
                 .uri(uriBuilder -> uriBuilder
-                    .path("/movie/popular")
+                    .path(path)
                     .queryParam(API_KEY_PARAM, properties.tmdb().apiKey())
                     .queryParam(PAGE_PARAM, page)
                     .build())
                 .retrieve()
-                .body(TmdbPopularMoviesResponse.class);
-            return response != null ? response : TmdbPopularMoviesResponse.empty(page);
+                .body(TmdbPopularResponse.class);
+            return response != null ? response : TmdbPopularResponse.empty(page);
         } catch (RestClientException e) {
             throw new CatalogUpstreamException(PROVIDER, e);
         }
     }
 
-    private CatalogItem toItem(TmdbMovie movie) {
+    // TMDB names a movie's title field "title"/"release_date" and a series'
+    // "name"/"first_air_date" — one shared record with both pairs, picking
+    // whichever this mediaType's endpoint actually populated, avoids a
+    // second near-identical response/mapping pair for TV.
+    private CatalogItem toItem(TmdbTitle result, String mediaType) {
         return new CatalogItem(
             PROVIDER,
-            String.valueOf(movie.id()),
-            MOVIES_MEDIA_TYPE,
-            movie.title(),
-            coverUrl(movie.posterPath()),
-            parseReleaseDate(movie.releaseDate()),
-            movie.voteAverage(),
+            String.valueOf(result.id()),
+            mediaType,
+            result.title() != null ? result.title() : result.name(),
+            coverUrl(result.posterPath()),
+            parseReleaseDate(result.releaseDate() != null ? result.releaseDate() : result.firstAirDate()),
+            result.voteAverage(),
             TMDB_RATING_SCALE
         );
     }
@@ -105,20 +127,22 @@ public class TmdbClient {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private record TmdbPopularMoviesResponse(
-        int page, List<TmdbMovie> results, @JsonProperty("total_pages") int totalPages
+    private record TmdbPopularResponse(
+        int page, List<TmdbTitle> results, @JsonProperty("total_pages") int totalPages
     ) {
-        static TmdbPopularMoviesResponse empty(int page) {
-            return new TmdbPopularMoviesResponse(page, List.of(), page);
+        static TmdbPopularResponse empty(int page) {
+            return new TmdbPopularResponse(page, List.of(), page);
         }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private record TmdbMovie(
+    private record TmdbTitle(
         long id,
         String title,
+        String name,
         @JsonProperty("poster_path") String posterPath,
         @JsonProperty("release_date") String releaseDate,
+        @JsonProperty("first_air_date") String firstAirDate,
         @JsonProperty("vote_average") Double voteAverage
     ) {}
 }

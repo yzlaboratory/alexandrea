@@ -12,11 +12,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * {@code GET /api/catalog/{media_type}} — one page of one media type's
- * catalog. Routes generically on {@code media_type} rather than hardcoding
- * "movies" into the path, even though only Movies has a real provider wired
- * up yet (see {@link CatalogService}; #39 adds Books/TV/Games). This
- * endpoint requires authentication via the app-wide default in
- * {@code SecurityConfig} — no route-specific rule needed here.
+ * catalog, identical in shape for movies, tv, books, and games (see
+ * {@link CatalogService} for the per-media-type routing). This endpoint
+ * requires authentication via the app-wide default in {@code SecurityConfig}
+ * — no route-specific rule needed here.
  */
 @RestController
 @RequestMapping("/api/catalog")

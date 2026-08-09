@@ -19,10 +19,13 @@ import {
 import { logout, switchMediaType } from '../auth/authApi';
 import { useSession } from '../auth/SessionContext';
 
-const MEDIA_TYPES = ['movies', 'tv', 'books', 'games'] as const;
+// Exported so CatalogSurfaceRoute (and its test) can validate :mediaType
+// against the same list rather than keeping an independent copy that could
+// silently drift out of sync with the tabs rendered here.
+export const MEDIA_TYPES = ['movies', 'tv', 'books', 'games'] as const;
 const SURFACES = ['catalog', 'watchlist', 'library'] as const;
 
-type MediaType = (typeof MEDIA_TYPES)[number];
+export type MediaType = (typeof MEDIA_TYPES)[number];
 type Surface = (typeof SURFACES)[number];
 
 const MEDIA_TYPE_LABELS: Record<MediaType, string> = {
@@ -38,7 +41,7 @@ const SURFACE_LABELS: Record<Surface, string> = {
   library: 'Library',
 };
 
-function isMediaType(value: string | undefined): value is MediaType {
+export function isMediaType(value: string | undefined): value is MediaType {
   return MEDIA_TYPES.includes(value as MediaType);
 }
 

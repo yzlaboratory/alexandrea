@@ -32,7 +32,7 @@ class TmdbClientTest {
     @BeforeEach
     void setUp() {
         var properties = new CatalogProperties(
-            new CatalogProperties.Tmdb(BASE_URL, "test-key", "https://image.tmdb.org/t/p/w500"));
+            new CatalogProperties.Tmdb(BASE_URL, "test-key", "https://image.tmdb.org/t/p/w500"), null, null);
         var builder = RestClient.builder().baseUrl(BASE_URL);
         server = MockRestServiceServer.bindTo(builder).build();
         client = new TmdbClient(builder.build(), properties);
@@ -176,5 +176,85 @@ class TmdbClientTest {
     private org.springframework.test.web.client.ResponseActions expectPopularRequest() {
         return server.expect(requestTo(startsWith(BASE_URL + "/movie/popular")))
             .andExpect(method(HttpMethod.GET));
+    }
+
+    @Test
+    void mapsAPopularTvResponseIntoOneSeriesLevelCatalogItemPerEntry() {
+        server.expect(requestTo(startsWith(BASE_URL + "/tv/popular")))
+            .andExpect(method(HttpMethod.GET))
+            .andRespond(withSuccess("""
+                {
+                  "page": 1,
+                  "results": [
+                    {
+                      "id": 66732,
+                      "name": "Stranger Things",
+                      "poster_path": "/x2LSRK2Cm7MZhjluni1msVJ3wDF.jpg",
+                      "first_air_date": "2016-07-15",
+                      "vote_average": 8.6
+                    }
+                  ],
+                  "total_pages": 500
+                }
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.popularTv(1);
+
+        // One CatalogItem per series entry TMDB returned — /tv/popular
+        // already lists whole series (never a season or episode row), so
+        // ADR 0005's series-level requirement holds without any extra
+        // de-duplication or per-season filtering here.
+        assertThat(result.items()).hasSize(1);
+        var item = result.items().getFirst();
+        assertThat(item.provider()).isEqualTo("TMDB");
+        assertThat(item.externalId()).isEqualTo("66732");
+        assertThat(item.mediaType()).isEqualTo("tv");
+        assertThat(item.title()).isEqualTo("Stranger Things");
+        assertThat(item.coverUrl())
+            .isEqualTo("https://image.tmdb.org/t/p/w500/x2LSRK2Cm7MZhjluni1msVJ3wDF.jpg");
+        assertThat(item.releaseDate()).isEqualTo(LocalDate.of(2016, 7, 15));
+        assertThat(item.externalRating()).isEqualTo(8.6);
+        assertThat(item.externalRatingScale()).isEqualTo(10.0);
+    }
+
+    @Test
+    void requestsTvFromTheTvPopularPathNotTheMoviesPath() {
+        server.expect(requestTo(startsWith(BASE_URL + "/tv/popular")))
+            .andExpect(queryParam("page", "3"))
+            .andExpect(queryParam("api_key", "test-key"))
+            .andRespond(withSuccess("""
+                {"page": 3, "results": [], "total_pages": 10}
+                """, MediaType.APPLICATION_JSON));
+
+        client.popularTv(3);
+
+        server.verify();
+    }
+
+    @Test
+    void aTvSeriesWithNoPosterOrAirDateMapsToNullFieldsRatherThanCrashing() {
+        server.expect(requestTo(startsWith(BASE_URL + "/tv/popular")))
+            .andRespond(withSuccess("""
+                {
+                  "page": 1,
+                  "results": [
+                    {"id": 2, "name": "Untitled Upcoming Series", "poster_path": null, "first_air_date": "", "vote_average": 0.0}
+                  ],
+                  "total_pages": 1
+                }
+                """, MediaType.APPLICATION_JSON));
+
+        var item = client.popularTv(1).items().getFirst();
+
+        assertThat(item.coverUrl()).isNull();
+        assertThat(item.releaseDate()).isNull();
+        assertThat(item.externalRating()).isEqualTo(0.0);
+    }
+
+    @Test
+    void anUpstream5xxOnTvIsWrappedAsACatalogUpstreamException() {
+        server.expect(requestTo(startsWith(BASE_URL + "/tv/popular"))).andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.popularTv(1)).isInstanceOf(CatalogUpstreamException.class);
     }
 }

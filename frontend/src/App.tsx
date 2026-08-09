@@ -35,9 +35,9 @@ function App(): ReactNode {
           <Route element={<AppShell />}>
             {/* Ahead of the generic /:mediaType/:surface route below so it
                 wins the match for every media type's Catalog surface —
-                CatalogSurfaceRoute itself decides Movies (real) vs. the
-                other three (placeholder), keeping :mediaType a genuine
-                route param either way. */}
+                CatalogSurfaceRoute itself decides which :mediaType values
+                render the real CatalogPage vs. the generic placeholder,
+                keeping :mediaType a genuine route param either way. */}
             <Route
               path="/:mediaType/catalog"
               element={<CatalogSurfaceRoute />}
