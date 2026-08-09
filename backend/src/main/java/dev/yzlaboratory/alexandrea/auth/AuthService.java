@@ -88,7 +88,8 @@ public class AuthService {
 
     private void sendVerificationLink(long userId, String email) {
         var verificationLink = issueVerificationLink(userId);
-        mailDispatcher.dispatch(VerificationMail.build(email, verificationLink));
+        mailDispatcher.dispatch(
+            VerificationMail.build(email, verificationLink, properties.verificationTokenTtl()));
     }
 
     public LoginOutcome login(String email, String rawPassword) {
@@ -151,7 +152,8 @@ public class AuthService {
             return;
         }
         var resetLink = issueResetLink(user.id());
-        mailDispatcher.dispatch(PasswordResetMail.build(user.email(), resetLink));
+        mailDispatcher.dispatch(
+            PasswordResetMail.build(user.email(), resetLink, properties.resetTokenTtl()));
     }
 
     private String issueResetLink(long userId) {
