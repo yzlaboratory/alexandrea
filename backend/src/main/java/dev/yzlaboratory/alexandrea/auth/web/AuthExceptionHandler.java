@@ -2,8 +2,7 @@ package dev.yzlaboratory.alexandrea.auth.web;
 
 import dev.yzlaboratory.alexandrea.auth.InvalidCredentialsException;
 import dev.yzlaboratory.alexandrea.auth.PasswordPolicyViolationException;
-import dev.yzlaboratory.alexandrea.auth.ResetLinkRejectedException;
-import dev.yzlaboratory.alexandrea.auth.VerificationLinkRejectedException;
+import dev.yzlaboratory.alexandrea.auth.SingleUseLinkRejectedException;
 import java.net.URI;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -32,20 +31,14 @@ class AuthExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, invalid.getMessage());
     }
 
-    @ExceptionHandler(VerificationLinkRejectedException.class)
-    ProblemDetail handleVerificationLinkRejected(VerificationLinkRejectedException rejected) {
-        var problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.GONE, "This verification link is no longer valid.");
-        problem.setTitle("Verification link expired or already used");
-        problem.setProperty("canResend", true);
-        return problem;
-    }
-
-    @ExceptionHandler(ResetLinkRejectedException.class)
-    ProblemDetail handleResetLinkRejected(ResetLinkRejectedException rejected) {
-        var problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.GONE, "This password reset link is no longer valid.");
-        problem.setTitle("Password reset link expired or already used");
+    @ExceptionHandler(SingleUseLinkRejectedException.class)
+    ProblemDetail handleSingleUseLinkRejected(SingleUseLinkRejectedException rejected) {
+        var kind = rejected.kind();
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.GONE, kind.detail());
+        problem.setTitle(kind.title());
+        if (kind.canResend()) {
+            problem.setProperty("canResend", true);
+        }
         return problem;
     }
 }
