@@ -16,7 +16,8 @@ public record AuthProperties(
     Duration emailChangeTokenTtl,
     String emailChangeUrlTemplate,
     RateLimit loginRateLimit,
-    RateLimit mailRateLimit
+    RateLimit mailRateLimit,
+    Duration cleanupInterval
 ) {
 
     public AuthProperties {
@@ -45,6 +46,9 @@ public record AuthProperties(
         }
         if (mailRateLimit == null) {
             mailRateLimit = new RateLimit(5, Duration.ofHours(1));
+        }
+        if (cleanupInterval == null) {
+            cleanupInterval = Duration.ofHours(1);
         }
     }
 
