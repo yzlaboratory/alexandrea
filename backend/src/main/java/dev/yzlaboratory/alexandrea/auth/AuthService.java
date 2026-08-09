@@ -25,6 +25,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final MailDispatcher mailDispatcher;
     private final AuthProperties properties;
+    private final RateLimiter rateLimiter;
 
     public AuthService(
         UserStore userStore,
@@ -32,7 +33,8 @@ public class AuthService {
         SessionStore sessionStore,
         PasswordEncoder passwordEncoder,
         MailDispatcher mailDispatcher,
-        AuthProperties properties
+        AuthProperties properties,
+        RateLimiter rateLimiter
     ) {
         this.userStore = userStore;
         this.tokenService = tokenService;
@@ -40,10 +42,14 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.mailDispatcher = mailDispatcher;
         this.properties = properties;
+        this.rateLimiter = rateLimiter;
     }
 
     @Transactional
-    public void signup(String email, String rawPassword) {
+    public void signup(String email, String rawPassword, String clientIp) {
+        if (!rateLimiter.allowMailAction(clientIp, email)) {
+            return;
+        }
         if (!PasswordPolicy.isAcceptable(rawPassword)) {
             throw new PasswordPolicyViolationException();
         }
@@ -78,7 +84,10 @@ public class AuthService {
     }
 
     @Transactional
-    public void resendVerification(String email) {
+    public void resendVerification(String email, String clientIp) {
+        if (!rateLimiter.allowMailAction(clientIp, email)) {
+            return;
+        }
         var user = userStore.findByEmail(email).orElse(null);
         if (user == null || user.verified()) {
             return;
@@ -92,7 +101,15 @@ public class AuthService {
             VerificationMail.build(email, verificationLink, properties.verificationTokenTtl()));
     }
 
-    public LoginOutcome login(String email, String rawPassword) {
+    public LoginOutcome login(String email, String rawPassword, String clientIp) {
+        // Checked before anything else touches the request, so a throttled
+        // caller gets the identical InvalidCredentials shape a genuine wrong
+        // password would — never a distinguishable "too many attempts" reply
+        // — and skips the Argon2id run below regardless of whether their
+        // password happened to be correct.
+        if (!rateLimiter.allowLogin(clientIp, email)) {
+            return new LoginOutcome.InvalidCredentials();
+        }
         // A registered password always satisfies PasswordPolicy (signup enforces
         // it), so an out-of-policy submission is already a guaranteed mismatch.
         // Rejecting it here, rather than falling through to the hash below,
@@ -146,7 +163,10 @@ public class AuthService {
     }
 
     @Transactional
-    public void requestPasswordReset(String email) {
+    public void requestPasswordReset(String email, String clientIp) {
+        if (!rateLimiter.allowMailAction(clientIp, email)) {
+            return;
+        }
         var user = userStore.findByEmail(email).orElse(null);
         if (user == null || !user.verified()) {
             return;

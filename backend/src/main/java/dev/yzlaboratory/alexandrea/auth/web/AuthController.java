@@ -42,14 +42,14 @@ public class AuthController {
 
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public void signup(@Valid @RequestBody SignupRequest request) {
-        authService.signup(request.email(), request.password());
+    public void signup(@Valid @RequestBody SignupRequest request, HttpServletRequest servletRequest) {
+        authService.signup(request.email(), request.password(), clientIp(servletRequest));
     }
 
     @PostMapping("/resend")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public void resend(@Valid @RequestBody ResendRequest request) {
-        authService.resendVerification(request.email());
+    public void resend(@Valid @RequestBody ResendRequest request, HttpServletRequest servletRequest) {
+        authService.resendVerification(request.email(), clientIp(servletRequest));
     }
 
     @PostMapping("/verify")
@@ -70,7 +70,7 @@ public class AuthController {
         HttpServletRequest servletRequest,
         HttpServletResponse servletResponse
     ) {
-        var outcome = authService.login(request.email(), request.password());
+        var outcome = authService.login(request.email(), request.password(), clientIp(servletRequest));
         return switch (outcome) {
             case LoginOutcome.Authenticated authenticated -> {
                 var user = authenticated.user();
@@ -129,8 +129,10 @@ public class AuthController {
 
     @PostMapping("/forgot-password")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public void forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
-        authService.requestPasswordReset(request.email());
+    public void forgotPassword(
+        @Valid @RequestBody ForgotPasswordRequest request, HttpServletRequest servletRequest
+    ) {
+        authService.requestPasswordReset(request.email(), clientIp(servletRequest));
     }
 
     @PostMapping("/reset-password")
@@ -144,4 +146,8 @@ public class AuthController {
     }
 
     public record ResetPasswordResponse(boolean reset) {}
+
+    private static String clientIp(HttpServletRequest request) {
+        return request.getRemoteAddr();
+    }
 }
