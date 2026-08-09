@@ -126,6 +126,7 @@ class TokenServiceTest {
         return new AuthProperties(
             Duration.ofHours(24), "http://localhost/verify?token={token}",
             Duration.ofHours(1), "http://localhost/reset-password?token={token}",
+            Duration.ofHours(24), "http://localhost/confirm-email-change?token={token}",
             null, null);
     }
 

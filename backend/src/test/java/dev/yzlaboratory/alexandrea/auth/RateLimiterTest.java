@@ -28,7 +28,7 @@ class RateLimiterTest {
         db = MigratedSqlite.create();
         clock = new MutableClock(START);
         var properties = new AuthProperties(
-            null, null, null, null,
+            null, null, null, null, null, null,
             new AuthProperties.RateLimit(MAX_ATTEMPTS, WINDOW),
             new AuthProperties.RateLimit(MAX_ATTEMPTS, WINDOW));
         rateLimiter = new RateLimiter(new RateLimitBucketStore(db.jdbcClient(), clock), properties);

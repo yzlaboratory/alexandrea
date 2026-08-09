@@ -9,6 +9,8 @@ alexandrea:
     verification-url-template: http://localhost:5173/verify?token={token}
     reset-token-ttl: 1h
     reset-url-template: http://localhost:5173/reset-password?token={token}
+    email-change-token-ttl: 24h
+    email-change-url-template: http://localhost:5173/confirm-email-change?token={token}
     login-rate-limit:
       max-attempts: 10
       window: 15m

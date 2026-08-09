@@ -13,6 +13,8 @@ public record AuthProperties(
     String verificationUrlTemplate,
     Duration resetTokenTtl,
     String resetUrlTemplate,
+    Duration emailChangeTokenTtl,
+    String emailChangeUrlTemplate,
     RateLimit loginRateLimit,
     RateLimit mailRateLimit
 ) {
@@ -29,6 +31,12 @@ public record AuthProperties(
         }
         if (resetUrlTemplate == null || resetUrlTemplate.isBlank()) {
             resetUrlTemplate = "http://localhost:5173/reset-password?token={token}";
+        }
+        if (emailChangeTokenTtl == null) {
+            emailChangeTokenTtl = Duration.ofHours(24);
+        }
+        if (emailChangeUrlTemplate == null || emailChangeUrlTemplate.isBlank()) {
+            emailChangeUrlTemplate = "http://localhost:5173/confirm-email-change?token={token}";
         }
         // Defaults are the windows ADR 0024 names: ~10/15min for login, ~5/hour
         // for every mail-sending endpoint.
