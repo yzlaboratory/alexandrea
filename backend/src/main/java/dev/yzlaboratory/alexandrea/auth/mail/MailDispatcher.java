@@ -20,13 +20,16 @@ public class MailDispatcher {
 
     private final MailSender mailSender;
     private final Executor executor;
+    private final UnsendableAddressStore unsendableAddressStore;
 
     public MailDispatcher(
         MailSender mailSender,
-        @Qualifier("verificationMailExecutor") Executor executor
+        @Qualifier("verificationMailExecutor") Executor executor,
+        UnsendableAddressStore unsendableAddressStore
     ) {
         this.mailSender = mailSender;
         this.executor = executor;
+        this.unsendableAddressStore = unsendableAddressStore;
     }
 
     public void dispatch(MailMessage message) {
@@ -47,6 +50,10 @@ public class MailDispatcher {
     }
 
     private void sendBestEffort(MailMessage message) {
+        if (unsendableAddressStore.isUnsendable(message.to())) {
+            log.info("Skipping mail to {}: address is marked unsendable", message.to());
+            return;
+        }
         try {
             mailSender.send(message);
         } catch (RuntimeException e) {
