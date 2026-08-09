@@ -1,42 +1,21 @@
 package dev.yzlaboratory.alexandrea.auth;
 
-import org.springframework.session.FindByIndexNameSessionRepository;
-import org.springframework.session.Session;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Repository
 public class SessionStore {
 
-    private final FindByIndexNameSessionRepository<? extends Session> sessions;
+    private final JdbcClient jdbcClient;
 
-    public SessionStore(FindByIndexNameSessionRepository<? extends Session> sessions) {
-        this.sessions = sessions;
+    public SessionStore(JdbcClient jdbcClient) {
+        this.jdbcClient = jdbcClient;
     }
 
-    /**
-     * Spring Session's JDBC repository always writes in its own {@code REQUIRES_NEW}
-     * transaction, which would contend for SQLite's single-writer lock against a
-     * caller's still-open transaction — deferring to the caller's commit (if any)
-     * avoids that self-contention.
-     */
-    public void invalidateAllAfterCommit(long userId) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            invalidateAll(userId);
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                invalidateAll(userId);
-            }
-        });
-    }
-
-    private void invalidateAll(long userId) {
-        sessions.findByPrincipalName(AuthenticatedUser.principalName(userId))
-            .keySet()
-            .forEach(sessions::deleteById);
+    public void invalidateAll(long userId) {
+        jdbcClient
+            .sql("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME = :principalName")
+            .param("principalName", AuthenticatedUser.principalName(userId))
+            .update();
     }
 }
