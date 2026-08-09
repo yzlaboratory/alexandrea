@@ -257,4 +257,101 @@ class TmdbClientTest {
 
         assertThatThrownBy(() -> client.popularTv(1)).isInstanceOf(CatalogUpstreamException.class);
     }
+
+    @Test
+    void searchMoviesMapsAMatchingResponseIntoCatalogItemsJustLikePopular() {
+        server.expect(requestTo(startsWith(BASE_URL + "/search/movie")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("query", "blade%20runner"))
+            .andExpect(queryParam("api_key", "test-key"))
+            .andRespond(withSuccess("""
+                {
+                  "page": 1,
+                  "results": [
+                    {
+                      "id": 78,
+                      "title": "Blade Runner",
+                      "poster_path": "/blade.jpg",
+                      "release_date": "1982-06-25",
+                      "vote_average": 7.9
+                    }
+                  ],
+                  "total_pages": 1
+                }
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.searchMovies("blade runner", 1);
+
+        assertThat(result.items()).hasSize(1);
+        var item = result.items().getFirst();
+        assertThat(item.provider()).isEqualTo("TMDB");
+        assertThat(item.externalId()).isEqualTo("78");
+        assertThat(item.mediaType()).isEqualTo("movies");
+        assertThat(item.title()).isEqualTo("Blade Runner");
+        assertThat(item.releaseDate()).isEqualTo(LocalDate.of(1982, 6, 25));
+        assertThat(result.hasMore()).isFalse();
+    }
+
+    @Test
+    void searchMoviesWithNoMatchesMapsToAnEmptyPageRatherThanAnError() {
+        server.expect(requestTo(startsWith(BASE_URL + "/search/movie")))
+            .andExpect(queryParam("query", "zzzznomatch"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.searchMovies("zzzznomatch", 1);
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.hasMore()).isFalse();
+    }
+
+    @Test
+    void searchMoviesRequestsTheGivenPageNumberAsAQueryParam() {
+        server.expect(requestTo(startsWith(BASE_URL + "/search/movie")))
+            .andExpect(queryParam("query", "sequel"))
+            .andExpect(queryParam("page", "3"))
+            .andRespond(withSuccess("""
+                {"page": 3, "results": [], "total_pages": 5}
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.searchMovies("sequel", 3);
+
+        assertThat(result.hasMore()).isTrue();
+    }
+
+    @Test
+    void anUpstream5xxOnMovieSearchIsWrappedAsACatalogUpstreamException() {
+        server.expect(requestTo(startsWith(BASE_URL + "/search/movie"))).andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.searchMovies("blade runner", 1)).isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void searchTvRequestsTheTvSearchPathNotTheMoviesSearchPath() {
+        server.expect(requestTo(startsWith(BASE_URL + "/search/tv")))
+            .andExpect(queryParam("query", "stranger%20things"))
+            .andRespond(withSuccess("""
+                {
+                  "page": 1,
+                  "results": [
+                    {"id": 66732, "name": "Stranger Things", "poster_path": "/st.jpg", "first_air_date": "2016-07-15", "vote_average": 8.6}
+                  ],
+                  "total_pages": 1
+                }
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.searchTv("stranger things", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().mediaType()).isEqualTo("tv");
+        assertThat(result.items().getFirst().title()).isEqualTo("Stranger Things");
+    }
+
+    @Test
+    void anUpstream5xxOnTvSearchIsWrappedAsACatalogUpstreamException() {
+        server.expect(requestTo(startsWith(BASE_URL + "/search/tv"))).andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.searchTv("stranger things", 1)).isInstanceOf(CatalogUpstreamException.class);
+    }
 }
