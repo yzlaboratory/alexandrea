@@ -76,6 +76,15 @@ public class UserStore {
             .update();
     }
 
+    public void updateEmail(long userId, String newEmail) {
+        jdbcClient
+            .sql("UPDATE users SET email = :email, updated_at = :now WHERE id = :id")
+            .param(EMAIL_COLUMN, Emails.normalise(newEmail))
+            .param("now", clock.instant().toString())
+            .param("id", userId)
+            .update();
+    }
+
     public void updateLastMediaType(long userId, String mediaType) {
         jdbcClient
             .sql("UPDATE users SET last_media_type = :mediaType, updated_at = :now WHERE id = :id")

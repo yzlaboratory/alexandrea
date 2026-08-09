@@ -68,6 +68,15 @@ class UserStoreTest {
     }
 
     @Test
+    void updateEmailReplacesTheStoredEmailNormalised() {
+        var id = userStore.createUnverified("reader@example.com", "{argon2}hash");
+
+        userStore.updateEmail(id, "  New-Reader@Example.com  ");
+
+        assertThat(userStore.findById(id).orElseThrow().email()).isEqualTo("new-reader@example.com");
+    }
+
+    @Test
     void updateLastMediaTypeStoresTheChosenType() {
         var id = userStore.createUnverified("reader@example.com", "{argon2}hash");
 
