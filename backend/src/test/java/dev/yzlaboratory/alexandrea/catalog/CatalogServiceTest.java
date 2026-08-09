@@ -9,6 +9,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import dev.yzlaboratory.alexandrea.auth.MutableClock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,16 +25,22 @@ class CatalogServiceTest {
 
     private static final CatalogItem ITEM =
         new CatalogItem("TMDB", "1", "movies", "Title", "cover", LocalDate.of(2024, 1, 1), 7.5, 10.0);
+    private static final Duration OPEN_WINDOW = Duration.ofSeconds(60);
 
     @Mock
     private TmdbClient tmdbClient;
 
+    private MutableTicker ticker;
+    private MutableClock clock;
     private CatalogService service;
 
     @BeforeEach
     void setUp() {
-        var cache = new CatalogCache(new MutableTicker());
-        service = new CatalogService(tmdbClient, cache);
+        ticker = new MutableTicker();
+        clock = new MutableClock(Instant.parse("2026-06-07T12:00:00Z"));
+        var cache = new CatalogCache(ticker);
+        var circuitBreaker = new ProviderCircuitBreaker(clock);
+        service = new CatalogService(tmdbClient, cache, circuitBreaker);
     }
 
     @Test
@@ -100,5 +109,120 @@ class CatalogServiceTest {
         assertThat(first.items()).isEmpty();
         assertThat(second.items()).isEmpty();
         verify(tmdbClient, times(1)).popularMovies(50);
+    }
+
+    @Test
+    void aColdMissOnUpstreamFailureThrowsRatherThanFabricatingAResult() {
+        when(tmdbClient.popularMovies(1))
+            .thenThrow(new CatalogUpstreamException("TMDB", new RuntimeException("boom")));
+
+        assertThatThrownBy(() -> service.browse("movies", 1)).isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void aWarmButExpiredPageIsServedStaleOnAnUpstreamFailureInsteadOfThrowing() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+        service.browse("movies", 1);
+        ticker.advance(Duration.ofDays(7).plusSeconds(1));
+        when(tmdbClient.popularMovies(1))
+            .thenThrow(new CatalogUpstreamException("TMDB", new RuntimeException("boom")));
+
+        var result = service.browse("movies", 1);
+
+        assertThat(result).isEqualTo(page);
+    }
+
+    @Test
+    void theCircuitBreakerOpensAfterFiveConsecutiveFailuresAcrossDifferentPages() {
+        failFivePages();
+
+        // A sixth, still never-cached page must not reach TmdbClient at all —
+        // the breaker is scoped to the provider, not to any one page.
+        assertThatThrownBy(() -> service.browse("movies", 6)).isInstanceOf(CatalogUpstreamException.class);
+
+        verify(tmdbClient, times(5)).popularMovies(anyInt());
+    }
+
+    @Test
+    void anOpenBreakerStillServesAStalePageWithoutCallingTmdbAgain() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+        service.browse("movies", 1);
+        ticker.advance(Duration.ofDays(7).plusSeconds(1));
+
+        failFivePages(2); // opens the breaker without ever touching page 1 again
+        var result = service.browse("movies", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).popularMovies(1);
+    }
+
+    @Test
+    void theBreakerShortCircuitsForTheWholeOpenWindow() {
+        failFivePages();
+
+        clock.advance(OPEN_WINDOW.minusSeconds(1));
+
+        assertThatThrownBy(() -> service.browse("movies", 100)).isInstanceOf(CatalogUpstreamException.class);
+        verify(tmdbClient, never()).popularMovies(100);
+    }
+
+    @Test
+    void theBreakerAdmitsExactlyOneProbeAfterTheOpenWindowElapses() {
+        failFivePages();
+        clock.advance(OPEN_WINDOW.plusSeconds(1));
+        when(tmdbClient.popularMovies(200))
+            .thenThrow(new CatalogUpstreamException("TMDB", new RuntimeException("boom")));
+
+        assertThatThrownBy(() -> service.browse("movies", 200)).isInstanceOf(CatalogUpstreamException.class);
+        // Still inside the same (now re-opened) window — a second call must
+        // not get a second probe.
+        assertThatThrownBy(() -> service.browse("movies", 201)).isInstanceOf(CatalogUpstreamException.class);
+
+        verify(tmdbClient, times(1)).popularMovies(200);
+        verify(tmdbClient, never()).popularMovies(201);
+    }
+
+    @Test
+    void aSuccessfulProbeClosesTheBreakerAndRestoresNormalCalls() {
+        failFivePages();
+        clock.advance(OPEN_WINDOW.plusSeconds(1));
+        var probePage = new CatalogPageResult(List.of(ITEM), 300, true);
+        when(tmdbClient.popularMovies(300)).thenReturn(probePage);
+
+        var result = service.browse("movies", 300);
+
+        assertThat(result).isEqualTo(probePage);
+        var nextPage = new CatalogPageResult(List.of(ITEM), 301, true);
+        when(tmdbClient.popularMovies(301)).thenReturn(nextPage);
+        assertThat(service.browse("movies", 301)).isEqualTo(nextPage);
+    }
+
+    @Test
+    void aFailedProbeReopensTheBreakerForAnotherWindow() {
+        failFivePages();
+        clock.advance(OPEN_WINDOW.plusSeconds(1));
+        when(tmdbClient.popularMovies(400))
+            .thenThrow(new CatalogUpstreamException("TMDB", new RuntimeException("boom")));
+        assertThatThrownBy(() -> service.browse("movies", 400)).isInstanceOf(CatalogUpstreamException.class);
+
+        clock.advance(OPEN_WINDOW.minusSeconds(1));
+
+        assertThatThrownBy(() -> service.browse("movies", 401)).isInstanceOf(CatalogUpstreamException.class);
+        verify(tmdbClient, never()).popularMovies(401);
+    }
+
+    private void failFivePages() {
+        failFivePages(1);
+    }
+
+    private void failFivePages(int startingPage) {
+        var failure = new CatalogUpstreamException("TMDB", new RuntimeException("boom"));
+        for (var page = startingPage; page < startingPage + 5; page++) {
+            var currentPage = page;
+            when(tmdbClient.popularMovies(currentPage)).thenThrow(failure);
+            assertThatThrownBy(() -> service.browse("movies", currentPage)).isInstanceOf(CatalogUpstreamException.class);
+        }
     }
 }
