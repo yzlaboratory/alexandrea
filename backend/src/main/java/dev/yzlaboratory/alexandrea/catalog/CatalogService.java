@@ -36,12 +36,11 @@ public class CatalogService {
 
     private CatalogPageResult popularMovies(int page) {
         var key = CatalogCache.pageKey(TMDB_PROVIDER, MOVIES_MEDIA_TYPE, POPULAR_FEED, NO_FILTERS, DEFAULT_SORT, page);
-        return cache.getPage(key).orElseGet(() -> fetchAndCache(page, key));
+        return cache.getOrComputePage(key, () -> fetchAndCache(page));
     }
 
-    private CatalogPageResult fetchAndCache(int page, String key) {
+    private CatalogPageResult fetchAndCache(int page) {
         var fetched = tmdbClient.popularMovies(page);
-        cache.putPage(key, fetched);
         for (var entry : fetched.entries()) {
             var entryKey = CatalogCache.entryKey(entry.provider(), entry.externalId(), entry.mediaType());
             cache.putEntry(entryKey, entry);

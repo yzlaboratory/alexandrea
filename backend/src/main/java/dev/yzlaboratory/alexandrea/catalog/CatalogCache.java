@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Ticker;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * The two-layer cache from ADR 0007: a per-entry metadata cache and a
@@ -16,17 +17,34 @@ import java.util.Optional;
  * <p>The {@link Ticker} is injected (system time in prod) so a test can
  * fast-forward past the TTL without sleeping — the same trick
  * {@code AuthConfig}'s {@link java.time.Clock} bean plays for token expiry.
+ *
+ * <p>Both caches are also size-bounded (ADR 0026: "Cache size is bounded by
+ * Caffeine's own eviction policy (size/weight-based)"). {@code MAX_PAGES} is
+ * a generous multiple of TMDB's own 500-page cap on the "popular" feed, and
+ * {@code MAX_ENTRIES} covers every entry that many pages could ever
+ * reference, so eviction here is a genuine backstop, not a limit expected to
+ * bind in normal operation.
  */
 public class CatalogCache {
 
     private static final Duration TTL = Duration.ofDays(7);
+    private static final long MAX_PAGES = 2_000;
+    private static final long MAX_ENTRIES = 50_000;
 
     private final Cache<String, CatalogEntry> entries;
     private final Cache<String, CatalogPageResult> pages;
 
     public CatalogCache(Ticker ticker) {
-        this.entries = Caffeine.newBuilder().ticker(ticker).expireAfterWrite(TTL).build();
-        this.pages = Caffeine.newBuilder().ticker(ticker).expireAfterWrite(TTL).build();
+        this.entries = Caffeine.newBuilder()
+            .ticker(ticker)
+            .expireAfterWrite(TTL)
+            .maximumSize(MAX_ENTRIES)
+            .build();
+        this.pages = Caffeine.newBuilder()
+            .ticker(ticker)
+            .expireAfterWrite(TTL)
+            .maximumSize(MAX_PAGES)
+            .build();
     }
 
     public Optional<CatalogEntry> getEntry(String key) {
@@ -43,6 +61,19 @@ public class CatalogCache {
 
     public void putPage(String key, CatalogPageResult page) {
         pages.put(key, page);
+    }
+
+    /**
+     * Atomic get-or-compute for a page-cache miss: Caffeine guarantees
+     * {@code compute} runs at most once per key even under concurrent
+     * callers, unlike a separate {@code getPage(key).orElseGet(...)} +
+     * {@code putPage(...)} pair, which lets two concurrent misses on the
+     * same never-cached page both call through to {@code compute} (a
+     * cache-stampede: two upstream calls and two blocked request threads
+     * for what should cost one).
+     */
+    public CatalogPageResult getOrComputePage(String key, Supplier<CatalogPageResult> compute) {
+        return pages.get(key, ignoredKey -> compute.get());
     }
 
     /** {@code provider|externalId|mediaType}, per ADR 0007's per-entry key shape. */
