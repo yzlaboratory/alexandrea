@@ -4,16 +4,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
-/**
- * Email is normalised to lower case here, so the normalisation has a single home
- * every caller passes through.
- */
 @Repository
 public class UserStore {
 
@@ -30,7 +25,7 @@ public class UserStore {
     public Optional<User> findByEmail(String email) {
         return jdbcClient
             .sql("SELECT * FROM users WHERE email = :email")
-            .param(EMAIL_COLUMN, normalise(email))
+            .param(EMAIL_COLUMN, Emails.normalise(email))
             .query(UserStore::mapUser)
             .optional();
     }
@@ -52,7 +47,7 @@ public class UserStore {
                 INSERT INTO users (email, password_hash, verified, created_at, updated_at)
                 VALUES (:email, :passwordHash, 0, :now, :now)
                 """)
-            .param(EMAIL_COLUMN, normalise(email))
+            .param(EMAIL_COLUMN, Emails.normalise(email))
             .param("passwordHash", passwordHash)
             .param("now", now)
             .update(keyHolder);
@@ -88,10 +83,6 @@ public class UserStore {
             .param("now", clock.instant().toString())
             .param("id", userId)
             .update();
-    }
-
-    private static String normalise(String email) {
-        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     private static User mapUser(ResultSet rs, int rowNum) throws SQLException {
