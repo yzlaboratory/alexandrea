@@ -98,9 +98,9 @@ not an ADR change.
   rows; the upstream is shielded. Rate-limiting our *clients*
   (separate from rate-limiting our *upstream calls*) is a
   different concern not covered here.
-- **Cold-start after instance replacement is brittle until the
-  cache warms.** Per ADR 0014 the SQLite file (which holds the
-  cache) is restored from the daily backup, so the cache is at
-  worst 24h cold. The breaker behaves identically on a cold cache
-  as on a warm one — cold misses fail fast once the breaker
-  opens.
+- **Every redeploy, not just instance replacement, cold-starts the
+  cache.** The catalog cache is in-memory Caffeine (ADR 0026), not
+  the SQLite file, so it carries no backup/restore path — a fresh
+  process always starts empty. The breaker behaves identically on a
+  cold cache as on a warm one — cold misses fail fast once the
+  breaker opens — so this costs latency, not correctness.
