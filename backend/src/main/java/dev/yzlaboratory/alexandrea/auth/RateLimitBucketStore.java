@@ -18,14 +18,12 @@ public class RateLimitBucketStore {
     }
 
     /**
-     * Starts a fresh window once the stored one has rolled past, otherwise
-     * increments within it, and returns the resulting count — a single UPSERT
-     * so two requests racing the same key can't interleave a read-then-write
-     * gap and both land as attempt 1.
+     * A single UPSERT so two requests racing the same key can't interleave a
+     * read-then-write gap and both land as attempt 1.
      */
     public int recordAttempt(String bucketKey, Duration window) {
         var windowStart = currentWindowStart(window).toString();
-        jdbcClient
+        return jdbcClient
             .sql("""
                 INSERT INTO rate_limit_buckets (bucket_key, window_started_at, attempt_count)
                 VALUES (:bucketKey, :windowStart, 1)
@@ -35,13 +33,10 @@ public class RateLimitBucketStore {
                         ELSE 1
                     END,
                     window_started_at = :windowStart
+                RETURNING attempt_count
                 """)
             .param("bucketKey", bucketKey)
             .param("windowStart", windowStart)
-            .update();
-        return jdbcClient
-            .sql("SELECT attempt_count FROM rate_limit_buckets WHERE bucket_key = :bucketKey")
-            .param("bucketKey", bucketKey)
             .query(Integer.class)
             .single();
     }
