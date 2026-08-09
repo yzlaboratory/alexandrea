@@ -627,6 +627,181 @@ class AuthEndpointTest {
     }
 
     @Test
+    void requestingAnEmailChangeMailsAConfirmationLinkToTheNewAddressAndLeavesTheEmailUnchanged()
+        throws Exception {
+        signup("changeemail@example.com", "the-current-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("changeemail@example.com", "the-current-password").andReturn());
+        mailSender.sent.clear();
+
+        changeEmail(sessionCookie, "the-current-password", "changed-to@example.com")
+            .andExpect(status().isAccepted());
+
+        assertThat(mailSender.sent).hasSize(1);
+        assertThat(mailSender.sent.getFirst().to()).isEqualTo("changed-to@example.com");
+        assertThat(extractToken(mailSender.sent.getFirst())).isNotBlank();
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie))
+            .andExpect(jsonPath("$.email").value("changeemail@example.com"));
+    }
+
+    @Test
+    void openingTheEmailChangeLinkUpdatesTheEmailAndNotifiesThePreviousAddress() throws Exception {
+        signup("oldaddress@example.com", "the-current-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("oldaddress@example.com", "the-current-password").andReturn());
+        mailSender.sent.clear();
+        changeEmail(sessionCookie, "the-current-password", "newaddress@example.com")
+            .andExpect(status().isAccepted());
+        var confirmToken = extractToken(mailSender.sent.getFirst());
+        mailSender.sent.clear();
+
+        confirmEmailChange(confirmToken)
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.changed").value(true));
+
+        assertThat(mailSender.sent).hasSize(1);
+        assertThat(mailSender.sent.getFirst().to()).isEqualTo("oldaddress@example.com");
+        assertThat(mailSender.sent.getFirst().subject()).isEqualTo("Your Alexandrea email was changed");
+        login("oldaddress@example.com", "the-current-password").andExpect(status().isUnauthorized());
+        login("newaddress@example.com", "the-current-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void completingAnEmailChangeInvalidatesEverySessionIncludingTheOneUsedToRequestIt() throws Exception {
+        signup("multisessionemail@example.com", "the-current-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionOne = sessionCookieFrom(
+            login("multisessionemail@example.com", "the-current-password").andReturn());
+        var sessionTwo = sessionCookieFrom(
+            login("multisessionemail@example.com", "the-current-password").andReturn());
+        mailSender.sent.clear();
+        changeEmail(sessionOne, "the-current-password", "changedmultisession@example.com")
+            .andExpect(status().isAccepted());
+        var confirmToken = extractToken(mailSender.sent.getFirst());
+
+        confirmEmailChange(confirmToken).andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/auth/session").cookie(sessionOne)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/auth/session").cookie(sessionTwo)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void requestingAChangeToAnAlreadyRegisteredEmailGetsTheIdenticalGenericResponseAndDoesNotChangeAnything()
+        throws Exception {
+        signup("requester@example.com", "the-current-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+        signup("taken@example.com", "someone-elses-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("requester@example.com", "the-current-password").andReturn());
+        mailSender.sent.clear();
+
+        changeEmail(sessionCookie, "the-current-password", "taken@example.com")
+            .andExpect(status().isAccepted());
+
+        assertThat(mailSender.sent).isEmpty();
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie))
+            .andExpect(jsonPath("$.email").value("requester@example.com"));
+        login("taken@example.com", "someone-elses-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void requestingAChangeToYourOwnCurrentEmailIsANoOpAndSendsNoMail() throws Exception {
+        signup("sameemail@example.com", "the-current-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("sameemail@example.com", "the-current-password").andReturn());
+        mailSender.sent.clear();
+
+        changeEmail(sessionCookie, "the-current-password", "sameemail@example.com")
+            .andExpect(status().isAccepted());
+
+        assertThat(mailSender.sent).isEmpty();
+    }
+
+    @Test
+    void anExpiredEmailChangeLinkIsRejectedAndLeavesTheEmailUnchanged() throws Exception {
+        signup("expiredemailchange@example.com", "the-current-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("expiredemailchange@example.com", "the-current-password").andReturn());
+        mailSender.sent.clear();
+        changeEmail(sessionCookie, "the-current-password", "wouldbenew@example.com")
+            .andExpect(status().isAccepted());
+        var confirmToken = extractToken(mailSender.sent.getFirst());
+        clock.advance(Duration.ofHours(24).plusMinutes(1));
+
+        confirmEmailChange(confirmToken).andExpect(status().isGone());
+
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie))
+            .andExpect(jsonPath("$.email").value("expiredemailchange@example.com"));
+    }
+
+    @Test
+    void anAlreadyUsedEmailChangeLinkIsRejectedOnASecondSubmission() throws Exception {
+        signup("reusedemailchange@example.com", "the-current-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("reusedemailchange@example.com", "the-current-password").andReturn());
+        mailSender.sent.clear();
+        changeEmail(sessionCookie, "the-current-password", "usedonce@example.com")
+            .andExpect(status().isAccepted());
+        var confirmToken = extractToken(mailSender.sent.getFirst());
+        confirmEmailChange(confirmToken).andExpect(status().isOk());
+
+        confirmEmailChange(confirmToken).andExpect(status().isGone());
+    }
+
+    @Test
+    void aSecondEmailChangeRequestInvalidatesThePriorOutstandingLink() throws Exception {
+        signup("tworequests@example.com", "the-current-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("tworequests@example.com", "the-current-password").andReturn());
+        mailSender.sent.clear();
+        changeEmail(sessionCookie, "the-current-password", "firstchoice@example.com")
+            .andExpect(status().isAccepted());
+        var firstToken = extractToken(mailSender.sent.getFirst());
+
+        changeEmail(sessionCookie, "the-current-password", "secondchoice@example.com")
+            .andExpect(status().isAccepted());
+        var secondToken = extractToken(mailSender.sent.getLast());
+
+        confirmEmailChange(firstToken).andExpect(status().isGone());
+        confirmEmailChange(secondToken).andExpect(status().isOk());
+        login("firstchoice@example.com", "the-current-password").andExpect(status().isUnauthorized());
+        login("secondchoice@example.com", "the-current-password").andExpect(status().isOk());
+    }
+
+    @Test
+    void requestingAnEmailChangeWithTheWrongCurrentPasswordIsRejectedAndSendsNoMail() throws Exception {
+        signup("wrongcurrentemail@example.com", "the-real-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("wrongcurrentemail@example.com", "the-real-password").andReturn());
+        mailSender.sent.clear();
+
+        changeEmail(sessionCookie, "not-the-real-password", "shouldnotchange@example.com")
+            .andExpect(status().isUnauthorized());
+
+        assertThat(mailSender.sent).isEmpty();
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie))
+            .andExpect(jsonPath("$.email").value("wrongcurrentemail@example.com"));
+    }
+
+    @Test
+    void requestingAnEmailChangeWithoutASessionIsRejected() throws Exception {
+        mockMvc.perform(post("/api/auth/change-email")
+                .with(csrf())
+                .contentType("application/json")
+                .content("{\"currentPassword\":\"whatever-it-is\",\"newEmail\":\"someone@example.com\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void exceedingTheMailIpRateLimitStopsSendingMailButKeepsThe202Shape() throws Exception {
         for (var i = 0; i < 4; i++) {
             signup("throttle-ip-" + i + "@example.com", "a-good-long-password");
@@ -724,6 +899,24 @@ class AuthEndpointTest {
             .contentType("application/json")
             .content("{\"currentPassword\":\"" + currentPassword
                 + "\",\"newPassword\":\"" + newPassword + "\"}"));
+    }
+
+    private ResultActions changeEmail(
+        Cookie sessionCookie, String currentPassword, String newEmail
+    ) throws Exception {
+        return mockMvc.perform(post("/api/auth/change-email")
+            .with(csrf())
+            .cookie(sessionCookie)
+            .contentType("application/json")
+            .content("{\"currentPassword\":\"" + currentPassword
+                + "\",\"newEmail\":\"" + newEmail + "\"}"));
+    }
+
+    private ResultActions confirmEmailChange(String token) throws Exception {
+        return mockMvc.perform(post("/api/auth/confirm-email-change")
+            .with(csrf())
+            .contentType("application/json")
+            .content("{\"token\":\"" + token + "\"}"));
     }
 
     private ResultActions switchMediaType(Cookie sessionCookie, String mediaType) throws Exception {
@@ -834,6 +1027,7 @@ class AuthEndpointTest {
             return new AuthProperties(
                 Duration.ofHours(24), "http://localhost/verify?token={token}",
                 Duration.ofHours(1), "http://localhost/reset-password?token={token}",
+                Duration.ofHours(24), "http://localhost/confirm-email-change?token={token}",
                 new AuthProperties.RateLimit(4, Duration.ofMinutes(15)),
                 new AuthProperties.RateLimit(4, Duration.ofHours(1)));
         }
