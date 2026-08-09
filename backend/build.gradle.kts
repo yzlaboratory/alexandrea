@@ -62,6 +62,16 @@ dependencies {
     implementation("software.amazon.awssdk:sesv2")
     implementation("software.amazon.awssdk:sqs")
 
+    // --- Catalog: TMDB client + cache (ADR 0001, ADR 0007, ADR 0026) ---------
+    // Boot 4 modularised RestClient autoconfiguration out of
+    // spring-boot-autoconfigure the same way it did Flyway and Session (see
+    // above) — without this module no RestClient.Builder bean exists to
+    // inject into CatalogConfig.
+    implementation("org.springframework.boot:spring-boot-restclient")
+    // In-memory only, no SQLite table and no eviction-sweep job (ADR 0026).
+    // Version comes from the Spring Boot BOM above.
+    implementation("com.github.ben-manes.caffeine:caffeine")
+
     // --- Tests ---------------------------------------------------------------
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
