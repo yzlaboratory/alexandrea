@@ -6,6 +6,7 @@ import VerifyPage from './auth/VerifyPage';
 import LoginPage from './auth/LoginPage';
 import ForgotPasswordPage from './auth/ForgotPasswordPage';
 import ResetPasswordPage from './auth/ResetPasswordPage';
+import ConfirmEmailChangePage from './auth/ConfirmEmailChangePage';
 import RequireAuth from './auth/RequireAuth';
 import { SessionProvider } from './auth/SessionContext';
 import AppShell from './shell/AppShell';
@@ -25,6 +26,10 @@ function App(): ReactNode {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route
+          path="/confirm-email-change"
+          element={<ConfirmEmailChangePage />}
+        />
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
             <Route
