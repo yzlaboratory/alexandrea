@@ -17,8 +17,11 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
  * migration and the test's queries would land in different DBs. The temp file
  * shares one database across connections and is deleted on JVM exit, exercising
  * the real SQLite dialect prod runs (ADR 0014).
+ *
+ * <p>Public because {@code auth.mail}'s store tests reuse it too — same need,
+ * different package.
  */
-final class MigratedSqlite implements AutoCloseable {
+public final class MigratedSqlite implements AutoCloseable {
 
     private final Path dbFile;
     private final DataSource dataSource;
@@ -28,7 +31,7 @@ final class MigratedSqlite implements AutoCloseable {
         this.dataSource = dataSource;
     }
 
-    static MigratedSqlite create() {
+    public static MigratedSqlite create() {
         try {
             var dbFile = Files.createTempFile("alexandrea-test-", ".db");
             var url = "jdbc:sqlite:" + dbFile + "?foreign_keys=on";
@@ -44,7 +47,7 @@ final class MigratedSqlite implements AutoCloseable {
         }
     }
 
-    JdbcClient jdbcClient() {
+    public JdbcClient jdbcClient() {
         return JdbcClient.create(dataSource);
     }
 
