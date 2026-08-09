@@ -146,6 +146,21 @@ public class AuthService {
     }
 
     @Transactional
+    public void changePassword(
+        long userId, String currentRawPassword, String newRawPassword, String currentSessionId
+    ) {
+        var user = requireUser(userId);
+        if (!passwordEncoder.matches(currentRawPassword, user.passwordHash())) {
+            throw new InvalidCredentialsException();
+        }
+        if (!PasswordPolicy.isAcceptable(newRawPassword)) {
+            throw new PasswordPolicyViolationException();
+        }
+        userStore.updatePasswordHash(userId, passwordEncoder.encode(newRawPassword));
+        sessionStore.invalidateAllExcept(userId, currentSessionId);
+    }
+
+    @Transactional
     public TokenConsumption verify(String rawToken) {
         var outcome = tokenService.consume(TokenKind.VERIFICATION, rawToken);
         if (outcome instanceof TokenConsumption.Consumed consumed) {
