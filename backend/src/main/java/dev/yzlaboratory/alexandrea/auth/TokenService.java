@@ -1,13 +1,8 @@
 package dev.yzlaboratory.alexandrea.auth;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,13 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class TokenService {
 
-    private static final int TOKEN_BYTES = 16;
-
     private final JdbcClient jdbcClient;
     private final Clock clock;
     private final AuthProperties properties;
-    private final SecureRandom secureRandom = new SecureRandom();
-    private final Base64.Encoder urlEncoder = Base64.getUrlEncoder().withoutPadding();
 
     public TokenService(JdbcClient jdbcClient, Clock clock, AuthProperties properties) {
         this.jdbcClient = jdbcClient;
@@ -34,7 +25,7 @@ public class TokenService {
     public String issue(TokenKind kind, long userId) {
         invalidateActive(kind, userId);
 
-        var rawToken = generateRawToken();
+        var rawToken = SingleUseTokens.generate();
         var now = clock.instant();
         jdbcClient
             .sql("""
@@ -43,7 +34,7 @@ public class TokenService {
                 """)
             .param("userId", userId)
             .param("kind", kind.storageValue())
-            .param("tokenHash", hash(rawToken))
+            .param("tokenHash", SingleUseTokens.hash(rawToken))
             .param("expiresAt", now.plus(ttlFor(kind)).toString())
             .param("createdAt", now.toString())
             .update();
@@ -64,7 +55,7 @@ public class TokenService {
                 WHERE kind = :kind AND token_hash = :tokenHash AND consumed_at IS NULL
                 """)
             .param("kind", kind.storageValue())
-            .param("tokenHash", hash(rawToken))
+            .param("tokenHash", SingleUseTokens.hash(rawToken))
             .query((rs, rowNum) -> new LiveToken(
                 rs.getLong("id"),
                 rs.getLong("user_id"),
@@ -109,23 +100,6 @@ public class TokenService {
             case VERIFICATION -> properties.verificationTokenTtl();
             case RESET -> properties.resetTokenTtl();
         };
-    }
-
-    private String generateRawToken() {
-        var bytes = new byte[TOKEN_BYTES];
-        secureRandom.nextBytes(bytes);
-        return urlEncoder.encodeToString(bytes);
-    }
-
-    private static String hash(String rawToken) {
-        try {
-            var digest = MessageDigest.getInstance("SHA-256");
-            var hashed = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(hashed);
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is mandated on every JVM; its absence is unrecoverable.
-            throw new IllegalStateException("SHA-256 is unavailable", e);
-        }
     }
 
     private record LiveToken(long id, long userId, Instant expiresAt) {}
