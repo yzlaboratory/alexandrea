@@ -7,6 +7,7 @@ import dev.yzlaboratory.alexandrea.auth.mail.MailDispatcher;
 import dev.yzlaboratory.alexandrea.auth.mail.PasswordResetMail;
 import dev.yzlaboratory.alexandrea.auth.mail.VerificationMail;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -215,22 +216,20 @@ public class AuthService {
         return outcome;
     }
 
-    /**
-     * Unlike the other mail-sending flows, the password check runs before the
-     * rate-limit gate: this action is already session-gated, so a wrong
-     * password is reported as its own 401 (matching {@link #changePassword})
-     * rather than folded into the generic throttled/accepted response.
-     */
     @Transactional
     public void requestEmailChange(
         long userId, String currentRawPassword, String newEmail, String clientIp
     ) {
         var user = requireUser(userId);
-        if (!passwordEncoder.matches(currentRawPassword, user.passwordHash())) {
-            throw new InvalidCredentialsException();
-        }
+        // Checked before the password, like login(), so a throttled request
+        // never pays the Argon2id cost below — otherwise an authenticated
+        // caller could force unbounded hashing by hammering this endpoint
+        // with their own (always-correct-for-them) password.
         if (!rateLimiter.allowMailAction(clientIp, newEmail)) {
             return;
+        }
+        if (!passwordEncoder.matches(currentRawPassword, user.passwordHash())) {
+            throw new InvalidCredentialsException();
         }
         var normalisedNewEmail = Emails.normalise(newEmail);
         // Own current email isn't a "new" address, and a target already owned
@@ -254,7 +253,19 @@ public class AuthService {
         var outcome = emailChangeTokenStore.consume(rawToken);
         if (outcome instanceof EmailChangeConsumption.Consumed consumed) {
             var previousEmail = requireUser(consumed.userId()).email();
-            userStore.updateEmail(consumed.userId(), consumed.newEmail());
+            try {
+                userStore.updateEmail(consumed.userId(), consumed.newEmail());
+            } catch (UncategorizedSQLException e) {
+                if (!SqliteConstraintViolations.isConstraintViolation(e)) {
+                    throw e;
+                }
+                // Another account claimed the target address after this link
+                // was issued (the request-time check can't see a future
+                // race). The token above is already burned, so the link
+                // can't be retried either way — report it the same as any
+                // other dead link rather than a raw constraint-violation 500.
+                return new EmailChangeConsumption.Rejected();
+            }
             mailDispatcher.dispatch(EmailChangedMail.build(previousEmail, consumed.newEmail()));
             // No "current session" to except, unlike changePassword: the link is
             // opened as its own credential, not from within an authenticated

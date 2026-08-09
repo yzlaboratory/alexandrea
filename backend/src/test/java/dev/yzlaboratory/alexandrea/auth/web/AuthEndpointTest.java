@@ -710,6 +710,36 @@ class AuthEndpointTest {
     }
 
     @Test
+    void aTargetEmailClaimedByAnotherAccountAfterTheLinkWasIssuedRejectsOnConfirmAndLeavesTheEmailUnchanged()
+        throws Exception {
+        signup("racer@example.com", "the-current-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var sessionCookie = sessionCookieFrom(
+            login("racer@example.com", "the-current-password").andReturn());
+        mailSender.sent.clear();
+        changeEmail(sessionCookie, "the-current-password", "contested@example.com")
+            .andExpect(status().isAccepted());
+        var confirmToken = extractToken(mailSender.sent.getFirst());
+        mailSender.sent.clear();
+        // Someone else claims the same address after the link above was
+        // issued but before it's opened — the request-time uniqueness check
+        // can't see this.
+        signup("contested@example.com", "someone-elses-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        mailSender.sent.clear();
+
+        confirmEmailChange(confirmToken).andExpect(status().isGone());
+
+        mockMvc.perform(get("/api/auth/session").cookie(sessionCookie))
+            .andExpect(jsonPath("$.email").value("racer@example.com"));
+        login("contested@example.com", "someone-elses-password").andExpect(status().isOk());
+        // The token is burned regardless of the failed switch, same as any
+        // other single-use link — a second attempt is still rejected, not
+        // retried.
+        confirmEmailChange(confirmToken).andExpect(status().isGone());
+    }
+
+    @Test
     void requestingAChangeToYourOwnCurrentEmailIsANoOpAndSendsNoMail() throws Exception {
         signup("sameemail@example.com", "the-current-password");
         verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
