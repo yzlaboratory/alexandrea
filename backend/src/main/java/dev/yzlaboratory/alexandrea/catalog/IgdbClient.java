@@ -18,8 +18,10 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * Talks to IGDB's {@code /games} endpoint, sorted by {@code
- * total_rating_count desc}, and maps its response into the common
+ * Talks to IGDB's {@code /games} endpoint — sorted by {@code
+ * total_rating_count desc} for the popular feed, or with an Apicalypse
+ * {@code search "…"} clause for title search (ADR 0018's "nothing applied"
+ * and "text search active" rows) — and maps its response into the common
  * {@link CatalogItem} shape (ADR 0001). IGDB authenticates via a Twitch
  * client-credentials token: this client fetches one lazily on first use and
  * caches it in memory, refetching only on expiry or a 401 from {@code
@@ -54,7 +56,22 @@ public class IgdbClient {
     }
 
     public CatalogPageResult popularGames(int page) {
-        var games = fetchPopularGames(page, false);
+        return fetchPage(page, popularRequestBody(page));
+    }
+
+    // ADR 0018's "text search active" row: IGDB's search is an Apicalypse
+    // "search" clause on the same /games endpoint, not a separate one — and
+    // (per the ADR's "Behavior under active text search" section) cannot be
+    // combined with an explicit sort, so popularRequestBody's sort clause is
+    // dropped rather than reused here.
+    public CatalogPageResult search(String query, int page) {
+        return fetchPage(page, searchRequestBody(query, page));
+    }
+
+    // Shared by the popular feed and search: same 401-retry-once handling,
+    // same response mapping — only the Apicalypse request body differs.
+    private CatalogPageResult fetchPage(int page, String requestBody) {
+        var games = fetchGames(requestBody, false);
         var items = games.stream().map(this::toItem).toList();
         // IGDB's /games response carries no total-count field, so a full
         // page is the only available signal that more might follow, the
@@ -63,14 +80,14 @@ public class IgdbClient {
         return new CatalogPageResult(items, page, hasMore);
     }
 
-    private List<IgdbGame> fetchPopularGames(int page, boolean isRetryAfterUnauthorized) {
+    private List<IgdbGame> fetchGames(String requestBody, boolean isRetryAfterUnauthorized) {
         try {
             var response = gamesRestClient.post()
                 .uri("/games")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
                 .header(CLIENT_ID_HEADER, properties.igdb().clientId())
                 .contentType(MediaType.TEXT_PLAIN)
-                .body(requestBody(page))
+                .body(requestBody)
                 .retrieve()
                 .body(new ParameterizedTypeReference<List<IgdbGame>>() {});
             return response != null ? response : List.of();
@@ -80,13 +97,13 @@ public class IgdbClient {
             }
             LOG.info("IGDB rejected the cached Twitch token; fetching a fresh one and retrying once");
             invalidateToken();
-            return fetchPopularGames(page, true);
+            return fetchGames(requestBody, true);
         } catch (RestClientException e) {
             throw new CatalogUpstreamException(PROVIDER, e);
         }
     }
 
-    private static String requestBody(int page) {
+    private static String popularRequestBody(int page) {
         var offset = (page - 1) * PAGE_SIZE;
         return """
             fields name,cover.image_id,first_release_date,total_rating;
@@ -94,6 +111,22 @@ public class IgdbClient {
             limit %d;
             offset %d;
             """.formatted(PAGE_SIZE, offset);
+    }
+
+    private static String searchRequestBody(String query, int page) {
+        var offset = (page - 1) * PAGE_SIZE;
+        return """
+            search "%s";
+            fields name,cover.image_id,first_release_date,total_rating;
+            limit %d;
+            offset %d;
+            """.formatted(escapeApicalypseString(query), PAGE_SIZE, offset);
+    }
+
+    // A query containing a literal quote or backslash would otherwise break
+    // out of the Apicalypse string it's embedded in.
+    private static String escapeApicalypseString(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private CatalogItem toItem(IgdbGame game) {
