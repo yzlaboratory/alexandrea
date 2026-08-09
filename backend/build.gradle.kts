@@ -21,6 +21,12 @@ repositories {
     mavenCentral()
 }
 
+dependencyManagement {
+    imports {
+        mavenBom("software.amazon.awssdk:bom:2.46.7")
+    }
+}
+
 dependencies {
     // --- Web + actuator + validation -----------------------------------------
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -49,6 +55,12 @@ dependencies {
 
     // --- Structured JSON logs for Grafana Cloud Loki -------------------------
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
+
+    // --- SES send + SQS bounce/complaint feedback -----------------------------
+    // Versions come from the awssdk BOM above; credentials are the EC2
+    // instance profile in prod (ADR 0023) via the SDK's default chain.
+    implementation("software.amazon.awssdk:sesv2")
+    implementation("software.amazon.awssdk:sqs")
 
     // --- Tests ---------------------------------------------------------------
     testImplementation("org.springframework.boot:spring-boot-starter-test")
