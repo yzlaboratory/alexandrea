@@ -1,0 +1,118 @@
+package dev.yzlaboratory.alexandrea.catalog;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.time.Duration;
+import java.time.LocalDate;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+class CatalogCacheTest {
+
+    private static final CatalogEntry ENTRY =
+        new CatalogEntry("TMDB", "1", "movies", "Title", "cover", LocalDate.of(2024, 1, 1), 7.5, 10.0);
+    private static final CatalogPageResult PAGE = new CatalogPageResult(List.of(ENTRY), 1, true);
+
+    private MutableTicker ticker;
+    private CatalogCache cache;
+
+    @BeforeEach
+    void setUp() {
+        ticker = new MutableTicker();
+        cache = new CatalogCache(ticker);
+    }
+
+    @Test
+    void aPageKeyNeverWrittenIsAMiss() {
+        assertThat(cache.getPage("nope")).isEmpty();
+    }
+
+    @Test
+    void anEntryKeyNeverWrittenIsAMiss() {
+        assertThat(cache.getEntry("nope")).isEmpty();
+    }
+
+    @Test
+    void aStoredPageIsAHitImmediatelyAfterWrite() {
+        cache.putPage("key", PAGE);
+
+        assertThat(cache.getPage("key")).contains(PAGE);
+    }
+
+    @Test
+    void aStoredEntryIsAHitImmediatelyAfterWrite() {
+        var key = CatalogCache.entryKey("TMDB", "1", "movies");
+
+        cache.putEntry(key, ENTRY);
+
+        assertThat(cache.getEntry(key)).contains(ENTRY);
+    }
+
+    @Test
+    void aPageIsStillAHitJustBeforeTheSevenDayTtlElapses() {
+        cache.putPage("key", PAGE);
+
+        ticker.advance(Duration.ofDays(7).minusSeconds(1));
+
+        assertThat(cache.getPage("key")).contains(PAGE);
+    }
+
+    @Test
+    void aPageExpiresOnceTheSevenDayTtlElapses() {
+        cache.putPage("key", PAGE);
+
+        ticker.advance(Duration.ofDays(7).plusSeconds(1));
+
+        assertThat(cache.getPage("key")).isEmpty();
+    }
+
+    @Test
+    void anEntryExpiresOnceTheSevenDayTtlElapsesIndependentlyOfThePageCache() {
+        var key = CatalogCache.entryKey("TMDB", "1", "movies");
+        cache.putEntry(key, ENTRY);
+
+        ticker.advance(Duration.ofDays(7).plusSeconds(1));
+
+        assertThat(cache.getEntry(key)).isEmpty();
+    }
+
+    @Test
+    void theEntryAndPageCachesAreIndependentEvenWhenTheyShareAKeyString() {
+        cache.putPage("shared-key", PAGE);
+
+        assertThat(cache.getEntry("shared-key")).isEmpty();
+    }
+
+    @Test
+    void aReWriteResetsThatKeysTtlClock() {
+        cache.putPage("key", PAGE);
+        ticker.advance(Duration.ofDays(6));
+
+        cache.putPage("key", PAGE);
+        ticker.advance(Duration.ofDays(6));
+
+        // 12 days have passed in total, but the second write reset the clock
+        // 6 days ago — still well inside a fresh 7-day window.
+        assertThat(cache.getPage("key")).contains(PAGE);
+    }
+
+    @Test
+    void pageKeyJoinsAllSixDimensionsWithAPipeInOrder() {
+        assertThat(CatalogCache.pageKey("tmdb", "movies", "popular", "", "default", 3))
+            .isEqualTo("tmdb|movies|popular||default|3");
+    }
+
+    @Test
+    void entryKeyJoinsProviderExternalIdAndMediaTypeWithAPipe() {
+        assertThat(CatalogCache.entryKey("tmdb", "603692", "movies")).isEqualTo("tmdb|603692|movies");
+    }
+
+    @Test
+    void differentPagesOfTheSameFeedGetDifferentKeys() {
+        var pageOne = CatalogCache.pageKey("tmdb", "movies", "popular", "", "default", 1);
+        var pageTwo = CatalogCache.pageKey("tmdb", "movies", "popular", "", "default", 2);
+
+        assertThat(pageOne).isNotEqualTo(pageTwo);
+    }
+}
