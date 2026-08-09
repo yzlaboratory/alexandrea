@@ -92,8 +92,9 @@ public class TokenService {
     }
 
     private void invalidateActive(TokenKind kind, long userId) {
-        // Mark the prior live token consumed rather than deleting it, so the
-        // partial unique index frees up while the audit row survives.
+        // Marks the prior live token consumed rather than deleting it — a
+        // plain UPDATE frees the partial unique index without a DELETE; the
+        // row itself is transient, cleared later by deleteExpiredOrConsumed.
         jdbcClient
             .sql("""
                 UPDATE auth_tokens SET consumed_at = :now

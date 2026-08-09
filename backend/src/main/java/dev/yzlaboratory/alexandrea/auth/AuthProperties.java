@@ -39,8 +39,6 @@ public record AuthProperties(
         if (emailChangeUrlTemplate == null || emailChangeUrlTemplate.isBlank()) {
             emailChangeUrlTemplate = "http://localhost:5173/confirm-email-change?token={token}";
         }
-        // Defaults are the windows ADR 0024 names: ~10/15min for login, ~5/hour
-        // for every mail-sending endpoint.
         if (loginRateLimit == null) {
             loginRateLimit = new RateLimit(10, Duration.ofMinutes(15));
         }
