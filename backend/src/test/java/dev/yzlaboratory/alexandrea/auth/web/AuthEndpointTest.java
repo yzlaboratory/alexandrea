@@ -41,6 +41,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 
 /**
@@ -88,6 +89,7 @@ class AuthEndpointTest {
         jdbcClient.sql("DELETE FROM auth_tokens").update();
         jdbcClient.sql("DELETE FROM users").update();
         jdbcClient.sql("DELETE FROM SPRING_SESSION").update();
+        jdbcClient.sql("DELETE FROM rate_limit_buckets").update();
     }
 
     @Test
@@ -568,6 +570,81 @@ class AuthEndpointTest {
         resetSubmit(token, "tooshort").andExpect(status().isGone());
     }
 
+    @Test
+    void exceedingTheMailIpRateLimitStopsSendingMailButKeepsThe202Shape() throws Exception {
+        for (var i = 0; i < 4; i++) {
+            signup("throttle-ip-" + i + "@example.com", "a-good-long-password");
+        }
+        mailSender.sent.clear();
+
+        signup("throttle-ip-over@example.com", "a-good-long-password");
+
+        assertThat(mailSender.sent).isEmpty();
+    }
+
+    @Test
+    void exceedingTheMailEmailRateLimitStopsSendingMailEvenFromDifferentIps() throws Exception {
+        for (var i = 0; i < 4; i++) {
+            mockMvc.perform(post("/api/auth/signup")
+                    .with(csrf())
+                    .with(remoteAddr("10.0.0." + i))
+                    .contentType("application/json")
+                    .content("{\"email\":\"repeat@example.com\",\"password\":\"a-good-long-password\"}"))
+                .andExpect(status().isAccepted());
+        }
+        mailSender.sent.clear();
+
+        mockMvc.perform(post("/api/auth/signup")
+                .with(csrf())
+                .with(remoteAddr("10.0.0.99"))
+                .contentType("application/json")
+                .content("{\"email\":\"repeat@example.com\",\"password\":\"a-good-long-password\"}"))
+            .andExpect(status().isAccepted());
+
+        assertThat(mailSender.sent).isEmpty();
+    }
+
+    @Test
+    void exceedingTheLoginRateLimitReturnsTheIdenticalGenericRejectionEvenForTheCorrectPassword()
+        throws Exception {
+        signup("throttled-login@example.com", "the-real-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        var genuineRejection = login("throttled-login@example.com", "wrong-password")
+            .andExpect(status().isUnauthorized())
+            .andReturn();
+        for (var i = 0; i < 3; i++) {
+            login("throttled-login@example.com", "another-wrong-password").andExpect(status().isUnauthorized());
+        }
+
+        var throttledRejection = login("throttled-login@example.com", "the-real-password")
+            .andExpect(status().isUnauthorized())
+            .andReturn();
+
+        assertThat(throttledRejection.getResponse().getContentAsString())
+            .isEqualTo(genuineRejection.getResponse().getContentAsString());
+    }
+
+    @Test
+    void loginRateLimitAllowsRequestsAgainAfterTheWindowRollsOver() throws Exception {
+        signup("window-login@example.com", "the-real-password");
+        verify(extractToken(mailSender.sent.getFirst())).andExpect(status().isOk());
+        for (var i = 0; i < 4; i++) {
+            login("window-login@example.com", "wrong-password").andExpect(status().isUnauthorized());
+        }
+        login("window-login@example.com", "the-real-password").andExpect(status().isUnauthorized());
+
+        clock.advance(Duration.ofMinutes(15).plusSeconds(1));
+
+        login("window-login@example.com", "the-real-password").andExpect(status().isOk());
+    }
+
+    private static RequestPostProcessor remoteAddr(String ip) {
+        return request -> {
+            request.setRemoteAddr(ip);
+            return request;
+        };
+    }
+
     private ResultActions resetRequest(String email) throws Exception {
         return mockMvc.perform(post("/api/auth/forgot-password")
             .with(csrf())
@@ -678,13 +755,20 @@ class AuthEndpointTest {
             return new MutableClock(Instant.parse("2026-06-07T12:00:00Z"));
         }
 
-        /** Bind deterministic verification/reset URLs so token extraction is stable. */
+        /**
+         * Bind deterministic verification/reset URLs so token extraction is stable,
+         * and a rate-limit threshold small enough for a test to exceed in a handful
+         * of calls — comfortably above the busiest existing flow in this class
+         * (at most 3 mail or login calls sharing one IP/email in a single test).
+         */
         @Bean
         @Primary
         AuthProperties testAuthProperties() {
             return new AuthProperties(
                 Duration.ofHours(24), "http://localhost/verify?token={token}",
-                Duration.ofHours(1), "http://localhost/reset-password?token={token}");
+                Duration.ofHours(1), "http://localhost/reset-password?token={token}",
+                new AuthProperties.RateLimit(4, Duration.ofMinutes(15)),
+                new AuthProperties.RateLimit(4, Duration.ofHours(1)));
         }
     }
 
