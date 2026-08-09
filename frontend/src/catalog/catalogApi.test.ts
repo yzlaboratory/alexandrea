@@ -111,4 +111,70 @@ describe('catalogApi', () => {
     const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(path).toBe('/api/catalog/movies?page=12');
   });
+
+  it('appends a url-encoded search param when a search query is given', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1, 'blade runner');
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/catalog/movies?page=1&search=blade%20runner');
+  });
+
+  it('omits the search param entirely when no search is given', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1);
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/catalog/movies?page=1');
+  });
+
+  it('omits the search param when the search string is empty', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1, '');
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/catalog/movies?page=1');
+  });
+
+  it('resolves to an ok outcome carrying search results just like a popular-feed page', async () => {
+    const result: CatalogPageResult = {
+      items: [
+        {
+          provider: 'TMDB',
+          externalId: '78',
+          mediaType: 'movies',
+          title: 'Blade Runner',
+          coverUrl: null,
+          releaseDate: '1982-06-25',
+          externalRating: 7.9,
+          externalRatingScale: 10,
+        },
+      ],
+      page: 1,
+      hasMore: false,
+    };
+    fetchMock.mockResolvedValueOnce(response(200, result));
+
+    expect(await fetchCatalogPage('movies', 1, 'blade runner')).toEqual({
+      status: 'ok',
+      result,
+    });
+  });
+
+  it('resolves to an error outcome on a search upstream failure just like popular', async () => {
+    fetchMock.mockResolvedValueOnce(response(503));
+
+    expect(await fetchCatalogPage('movies', 1, 'blade runner')).toEqual({
+      status: 'error',
+    });
+  });
 });

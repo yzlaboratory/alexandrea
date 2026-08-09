@@ -17,7 +17,10 @@ function CatalogSurfaceRoute(): ReactNode {
   // rather than reaching CatalogGrid with a media type the backend
   // will 404 on.
   if (isMediaType(mediaType)) {
-    return <CatalogPage mediaType={mediaType} />;
+    // key={mediaType}: CatalogPage owns the transient search box (#41), and
+    // switching tabs without remounting would otherwise leak that text (and
+    // an in-flight search) from the old media type into the new one.
+    return <CatalogPage key={mediaType} mediaType={mediaType} />;
   }
   return <CatalogPlaceholder />;
 }

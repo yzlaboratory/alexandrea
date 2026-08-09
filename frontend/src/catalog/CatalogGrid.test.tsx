@@ -271,4 +271,181 @@ describe('CatalogGrid', () => {
     });
     await screen.findByText('A Movie');
   });
+
+  it('requests the given search query alongside the media type and page', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Blade Runner' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+
+    render(<CatalogGrid mediaType="movies" search="blade runner" />);
+
+    expect(await screen.findByText('Blade Runner')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      'blade runner',
+    );
+  });
+
+  it('carries the same search query into the next page fetch when the sentinel intersects', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ externalId: '1', title: 'Page One' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+    render(<CatalogGrid mediaType="movies" search="blade runner" />);
+    await screen.findByText('Page One');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ externalId: '2', title: 'Page Two' })],
+        page: 2,
+        hasMore: false,
+      },
+    });
+    lastObserver().trigger(true);
+
+    expect(await screen.findByText('Page Two')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(
+      2,
+      'movies',
+      2,
+      'blade runner',
+    );
+  });
+
+  it('reverts to the two-argument popular-feed call when search is empty', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [], page: 1, hasMore: false },
+    });
+
+    render(<CatalogGrid mediaType="movies" search="" />);
+
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenCalledWith('movies', 1);
+    });
+  });
+
+  it('shows a "no results" message with a clear-search affordance when a search page comes back empty', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [], page: 1, hasMore: false },
+    });
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        search="zzzznomatch"
+        onClearSearch={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(/no results for/i)).toBeInTheDocument();
+    expect(screen.getByText(/zzzznomatch/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /clear search/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('does not show the clear-search affordance on an empty popular-feed page', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [], page: 1, hasMore: false },
+    });
+
+    render(<CatalogGrid mediaType="movies" />);
+
+    expect(await screen.findByText('No items found.')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /clear search/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('invokes onClearSearch when the clear-search affordance is clicked', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [], page: 1, hasMore: false },
+    });
+    const onClearSearch = vi.fn();
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        search="zzzznomatch"
+        onClearSearch={onClearSearch}
+      />,
+    );
+    const user = (await import('@testing-library/user-event')).default.setup();
+    await user.click(
+      await screen.findByRole('button', { name: /clear search/i }),
+    );
+
+    expect(onClearSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an error with a retry action when a search page fails to load, just like the popular feed', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({ status: 'error' });
+
+    render(<CatalogGrid mediaType="movies" search="blade runner" />);
+
+    expect(
+      await screen.findByText(/temporarily unavailable/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('starts a fresh feed when remounted for a different search query, as CatalogPage does via key', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Popular Movie' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+    // CatalogPage renders <CatalogGrid key={`${mediaType}:${activeSearch}`}
+    // .../> — a changed key forces React to unmount the old instance and
+    // mount a new one, which is what actually resets state here (not an
+    // internal effect). Rerendering with a different `key` reproduces that
+    // from the test, mirroring the media-type remount test above.
+    const { rerender } = render(
+      <CatalogGrid key="movies:" mediaType="movies" search="" />,
+    );
+    await screen.findByText('Popular Movie');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Blade Runner' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+    rerender(
+      <CatalogGrid
+        key="movies:blade runner"
+        mediaType="movies"
+        search="blade runner"
+      />,
+    );
+
+    expect(await screen.findByText('Blade Runner')).toBeInTheDocument();
+    expect(screen.queryByText('Popular Movie')).not.toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(
+      2,
+      'movies',
+      1,
+      'blade runner',
+    );
+  });
 });

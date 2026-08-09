@@ -18,21 +18,33 @@ import CatalogTile from './CatalogTile';
 
 interface CatalogGridProps {
   mediaType: string;
+  // Undefined/empty means "no active search" — the popular feed. A present,
+  // non-empty value replaces it with title-search results (issue #41);
+  // never combined with sort/filter, which stay out of scope here.
+  search?: string;
+  // Only used to render the "clear search" affordance on a no-results
+  // search page — CatalogGrid doesn't own the search box itself, so
+  // clearing it is delegated back to whichever component does (CatalogPage).
+  onClearSearch?: () => void;
 }
 
 type LoadState = 'idle' | 'loading' | 'error';
 
 // Page/hasMore/in-flight state lives in refs, not useState: loadNextPage
-// only needs to change identity when mediaType changes (so the
+// only needs to change identity when mediaType or search changes (so the
 // IntersectionObserver effect below isn't torn down and rebuilt on every
 // single page load), while still always reading the latest page/hasMore.
 //
-// Switching media type is handled by CatalogPage rendering this component
-// with `key={mediaType}`, not by an internal reset effect: React unmounts
-// and remounts a fresh instance, which resets every ref and state variable
-// here for free and avoids a same-render cascade from calling setState
-// synchronously inside an effect.
-function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
+// Switching media type, or committing a new search, is handled by
+// CatalogPage rendering this component with a `key` covering both — not by
+// an internal reset effect: React unmounts and remounts a fresh instance,
+// which resets every ref and state variable here for free and avoids a
+// same-render cascade from calling setState synchronously inside an effect.
+function CatalogGrid({
+  mediaType,
+  search,
+  onClearSearch,
+}: CatalogGridProps): ReactNode {
   const [items, setItems] = useState<CatalogItem[]>([]);
   // Starts 'loading', not 'idle': the mount effect below always calls
   // loadNextPage unconditionally, so an 'idle' initial value would let the
@@ -49,7 +61,13 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
     if (loadingRef.current || !hasMoreRef.current) return;
     loadingRef.current = true;
     setStatus('loading');
-    const outcome = await fetchCatalogPage(mediaType, nextPageRef.current);
+    // Two distinct call shapes, not one call with search always passed
+    // (even as undefined/''), so a plain browse request looks identical on
+    // the wire to what it was before this issue — no incidental "search="
+    // param for the common no-search case.
+    const outcome = search
+      ? await fetchCatalogPage(mediaType, nextPageRef.current, search)
+      : await fetchCatalogPage(mediaType, nextPageRef.current);
     loadingRef.current = false;
     if (outcome.status === 'error') {
       setStatus('error');
@@ -71,7 +89,7 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
     nextPageRef.current = outcome.result.page + 1;
     hasMoreRef.current = outcome.result.hasMore;
     setStatus('idle');
-  }, [mediaType]);
+  }, [mediaType, search]);
 
   // Loads this instance's first page. loadNextPage's identity is stable for
   // the lifetime of one mounted instance (mediaType is fixed per instance —
@@ -140,7 +158,19 @@ function CatalogGrid({ mediaType }: CatalogGridProps): ReactNode {
           The catalog is temporarily unavailable. Please try again.
         </Alert>
       )}
-      {showEmptyMessage && (
+      {showEmptyMessage && search && (
+        <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
+          <Typography color="text.secondary">
+            No results for &ldquo;{search}&rdquo;.
+          </Typography>
+          {onClearSearch && (
+            <Button size="small" onClick={onClearSearch}>
+              Clear search
+            </Button>
+          )}
+        </Stack>
+      )}
+      {showEmptyMessage && !search && (
         <Typography color="text.secondary">No items found.</Typography>
       )}
       <div ref={sentinelRef} data-testid="catalog-grid-sentinel" />
