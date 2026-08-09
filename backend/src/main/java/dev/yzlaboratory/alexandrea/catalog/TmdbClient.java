@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -17,6 +19,8 @@ import org.springframework.web.client.RestClientException;
  */
 @Component
 public class TmdbClient {
+
+    private static final Logger LOG = LoggerFactory.getLogger(TmdbClient.class);
 
     private static final String PROVIDER = "TMDB";
     private static final String MOVIES_MEDIA_TYPE = "movies";
@@ -34,7 +38,14 @@ public class TmdbClient {
 
     public CatalogPageResult popularMovies(int page) {
         var response = fetchPopular(page);
-        var entries = response.results().stream().map(this::toEntry).toList();
+        // response itself is never null (fetchPopular falls back to
+        // TmdbPopularMoviesResponse.empty(page)), but a 200 whose body omits
+        // "results" (or sends it explicitly null) deserializes the field to
+        // null too — guard here rather than NPE outside fetchPopular's
+        // try/catch, which would surface as a bare 500 instead of the
+        // intended CatalogUpstreamException -> 503.
+        var results = response.results() != null ? response.results() : List.<TmdbMovie>of();
+        var entries = results.stream().map(this::toEntry).toList();
         var hasMore = page < response.totalPages();
         return new CatalogPageResult(entries, page, hasMore);
     }
@@ -84,7 +95,11 @@ public class TmdbClient {
         } catch (DateTimeParseException e) {
             // TMDB is not always consistent about this field's format on
             // unreleased/announced titles; treat it the same as "unknown"
-            // rather than failing the whole page over one bad date.
+            // rather than failing the whole page over one bad date. Logged
+            // (not silently dropped) so a systematic upstream format
+            // regression is visible in Loki instead of only ever showing up
+            // as an unexplained rise in null release dates.
+            LOG.warn("TMDB release_date {} did not parse as ISO-8601; treating as unknown", releaseDate);
             return null;
         }
     }

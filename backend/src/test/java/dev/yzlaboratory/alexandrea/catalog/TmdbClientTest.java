@@ -139,6 +139,19 @@ class TmdbClientTest {
     }
 
     @Test
+    void aNullResultsFieldMapsToAnEmptyListRatherThanThrowing() {
+        server.expect(requestTo(startsWith(BASE_URL + "/movie/popular")))
+            .andExpect(queryParam("page", "60"))
+            .andRespond(withSuccess("""
+                {"page": 60, "results": null, "total_pages": 60}
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.popularMovies(60);
+
+        assertThat(result.entries()).isEmpty();
+    }
+
+    @Test
     void anUpstream5xxIsWrappedAsACatalogUpstreamException() {
         expectPopularRequest().andRespond(withServerError());
 
