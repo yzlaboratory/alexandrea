@@ -34,7 +34,8 @@ public class SecurityConfig {
                 // Ahead of the broad /api/auth/** permitAll below: matchers are
                 // evaluated in order, so these must claim authenticated first
                 // or the broader rule would swallow them.
-                .requestMatchers("/api/auth/session", "/api/auth/media-type").authenticated()
+                .requestMatchers("/api/auth/session", "/api/auth/media-type", "/api/auth/change-password")
+                    .authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
                 .anyRequest().authenticated()
             )

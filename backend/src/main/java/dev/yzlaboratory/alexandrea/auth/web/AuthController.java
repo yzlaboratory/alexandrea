@@ -127,6 +127,18 @@ public class AuthController {
         authService.switchMediaType(principal.userId(), request.mediaType());
     }
 
+    @PostMapping("/change-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(
+        @Valid @RequestBody ChangePasswordRequest request,
+        @AuthenticationPrincipal AuthenticatedUser principal,
+        HttpServletRequest servletRequest
+    ) {
+        var currentSessionId = servletRequest.getSession(false).getId();
+        authService.changePassword(
+            principal.userId(), request.currentPassword(), request.newPassword(), currentSessionId);
+    }
+
     @PostMapping("/forgot-password")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void forgotPassword(
