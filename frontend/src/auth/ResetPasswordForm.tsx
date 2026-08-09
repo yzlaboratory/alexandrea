@@ -8,10 +8,13 @@ import {
   Typography,
 } from '@mui/material';
 import { type ResetPasswordOutcome } from './authApi';
-import { textField } from './forms';
-
-const MIN_PASSWORD_LENGTH = 12;
-const MAX_PASSWORD_LENGTH = 128;
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_LENGTH_ERROR,
+  PASSWORD_LENGTH_HINT,
+  textField,
+} from './forms';
 
 interface ResetPasswordFormProps {
   readonly token: string;
@@ -36,18 +39,22 @@ function ResetPasswordForm({
     async (_previous, formData) => {
       const newPassword = textField(formData, 'newPassword');
 
-      const outcome = await submit(token, newPassword);
-      switch (outcome.status) {
-        case 'reset':
-          onReset();
-          return null;
-        case 'rejected':
-          onRejected();
-          return null;
-        case 'invalid-password':
-          return `Password must be between ${String(MIN_PASSWORD_LENGTH)} and ${String(MAX_PASSWORD_LENGTH)} characters.`;
-        case 'error':
-          return 'Something went wrong. Please try again.';
+      try {
+        const outcome = await submit(token, newPassword);
+        switch (outcome.status) {
+          case 'reset':
+            onReset();
+            return null;
+          case 'rejected':
+            onRejected();
+            return null;
+          case 'invalid-password':
+            return PASSWORD_LENGTH_ERROR;
+          case 'error':
+            return 'Something went wrong. Please try again.';
+        }
+      } catch {
+        return 'Something went wrong. Please try again.';
       }
     },
     null,
@@ -75,7 +82,7 @@ function ResetPasswordForm({
             maxLength: MAX_PASSWORD_LENGTH,
           },
         }}
-        helperText={`At least ${String(MIN_PASSWORD_LENGTH)} characters.`}
+        helperText={PASSWORD_LENGTH_HINT}
         fullWidth
       />
 
