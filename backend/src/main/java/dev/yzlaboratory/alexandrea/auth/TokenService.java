@@ -81,6 +81,16 @@ public class TokenService {
         return new TokenConsumption.Consumed(token.userId());
     }
 
+    // Consumed rows only exist to free the partial-unique index (see
+    // invalidateActive below); nothing reads them back, so the cleanup sweep
+    // takes them too, alongside rows that simply outlived their TTL.
+    public int deleteExpiredOrConsumed() {
+        return jdbcClient
+            .sql("DELETE FROM auth_tokens WHERE expires_at <= :now OR consumed_at IS NOT NULL")
+            .param("now", clock.instant().toString())
+            .update();
+    }
+
     private void invalidateActive(TokenKind kind, long userId) {
         // Mark the prior live token consumed rather than deleting it, so the
         // partial unique index frees up while the audit row survives.
