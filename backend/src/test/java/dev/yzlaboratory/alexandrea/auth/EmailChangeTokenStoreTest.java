@@ -112,6 +112,41 @@ class EmailChangeTokenStoreTest {
             .isEqualTo(new EmailChangeConsumption.Consumed(otherUserId, "someone-elses-new@example.com"));
     }
 
+    @Test
+    void sweepingWithNothingToCleanIsANoOp() {
+        assertThat(store.deleteExpiredOrConsumed()).isZero();
+    }
+
+    @Test
+    void anExpiredUnconsumedTokenIsRemovedBySweep() {
+        store.issue(userId, "new@example.com");
+        clock.advance(Duration.ofHours(24).plusSeconds(1));
+
+        assertThat(store.deleteExpiredOrConsumed()).isOne();
+        assertThat(pendingChangeRowCount()).isZero();
+    }
+
+    @Test
+    void aConsumedTokenIsRemovedBySweepEvenBeforeItExpires() {
+        var rawToken = store.issue(userId, "new@example.com");
+        store.consume(rawToken);
+
+        assertThat(store.deleteExpiredOrConsumed()).isOne();
+        assertThat(pendingChangeRowCount()).isZero();
+    }
+
+    @Test
+    void aLiveUnexpiredUnconsumedTokenSurvivesSweep() {
+        store.issue(userId, "new@example.com");
+
+        assertThat(store.deleteExpiredOrConsumed()).isZero();
+        assertThat(pendingChangeRowCount()).isOne();
+    }
+
+    private int pendingChangeRowCount() {
+        return db.jdbcClient().sql("SELECT COUNT(*) FROM pending_email_changes").query(Integer.class).single();
+    }
+
     private static AuthProperties defaultProperties() {
         return new AuthProperties(
             null, null, null, null,
