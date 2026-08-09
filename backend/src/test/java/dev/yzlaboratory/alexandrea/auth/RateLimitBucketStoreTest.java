@@ -30,7 +30,8 @@ class RateLimitBucketStoreTest {
         var properties = new AuthProperties(
             null, null, null, null, null, null,
             new AuthProperties.RateLimit(10, LOGIN_WINDOW),
-            new AuthProperties.RateLimit(5, MAIL_WINDOW));
+            new AuthProperties.RateLimit(5, MAIL_WINDOW),
+            null);
         store = new RateLimitBucketStore(db.jdbcClient(), clock, properties);
     }
 

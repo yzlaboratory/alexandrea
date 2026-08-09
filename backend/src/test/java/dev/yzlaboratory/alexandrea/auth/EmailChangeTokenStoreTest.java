@@ -151,7 +151,7 @@ class EmailChangeTokenStoreTest {
         return new AuthProperties(
             null, null, null, null,
             Duration.ofHours(24), "http://localhost/confirm-email-change?token={token}",
-            null, null);
+            null, null, null);
     }
 
     private static long insertUser(JdbcClient jdbcClient, String email) {

@@ -17,6 +17,7 @@ alexandrea:
     mail-rate-limit:
       max-attempts: 5
       window: 1h
+    cleanup-interval: 1h
 
 spring:
   application:

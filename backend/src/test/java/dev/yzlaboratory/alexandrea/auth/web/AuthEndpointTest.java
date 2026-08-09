@@ -1029,7 +1029,8 @@ class AuthEndpointTest {
                 Duration.ofHours(1), "http://localhost/reset-password?token={token}",
                 Duration.ofHours(24), "http://localhost/confirm-email-change?token={token}",
                 new AuthProperties.RateLimit(4, Duration.ofMinutes(15)),
-                new AuthProperties.RateLimit(4, Duration.ofHours(1)));
+                new AuthProperties.RateLimit(4, Duration.ofHours(1)),
+                null);
         }
     }
 
