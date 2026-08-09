@@ -27,7 +27,7 @@ function ConfirmEmailChangePage(): ReactNode {
 }
 
 // Resolving a token on display is a genuine "fetch because shown" Effect (stack.md).
-function TokenConfirmation({ token }: { token: string }): ReactNode {
+function TokenConfirmation({ token }: { readonly token: string }): ReactNode {
   const [outcome, setOutcome] = useState<ConfirmEmailChangeOutcome | null>(
     null,
   );
