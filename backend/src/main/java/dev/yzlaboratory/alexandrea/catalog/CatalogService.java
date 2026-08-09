@@ -65,9 +65,16 @@ public class CatalogService {
             var fetched = fetchAndCache(page);
             circuitBreaker.recordSuccess(TMDB_PROVIDER);
             return fetched;
-        } catch (CatalogUpstreamException upstreamFailure) {
+        } catch (RuntimeException failure) {
+            // Any failure reaching the provider counts against the breaker,
+            // not just CatalogUpstreamException — narrowing this to just that
+            // type would leave the breaker's bookkeeping (and, if this call
+            // was the half-open probe, its claimed-probe state) never
+            // updated whenever some other failure mode slips through.
             circuitBreaker.recordFailure(TMDB_PROVIDER);
-            throw upstreamFailure;
+            throw failure instanceof CatalogUpstreamException
+                ? failure
+                : new CatalogUpstreamException(TMDB_PROVIDER, failure);
         }
     }
 

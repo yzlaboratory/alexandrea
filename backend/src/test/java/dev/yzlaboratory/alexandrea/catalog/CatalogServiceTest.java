@@ -213,6 +213,51 @@ class CatalogServiceTest {
         verify(tmdbClient, never()).popularMovies(401);
     }
 
+    @Test
+    void anUnexpectedExceptionFromTheProviderStillSurfacesAsUpstreamUnavailableRatherThanRaw() {
+        // TmdbClient is documented to wrap every failure as
+        // CatalogUpstreamException, but nothing enforces that for it or for a
+        // future provider client — the service itself must not assume it.
+        when(tmdbClient.popularMovies(1)).thenThrow(new IllegalStateException("unexpected"));
+
+        assertThatThrownBy(() -> service.browse("movies", 1)).isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void anUnexpectedExceptionFromTheProviderStillCountsTowardTheBreakerThreshold() {
+        var unexpected = new IllegalStateException("unexpected");
+        for (var page = 1; page <= 4; page++) {
+            var currentPage = page;
+            when(tmdbClient.popularMovies(currentPage)).thenThrow(unexpected);
+            assertThatThrownBy(() -> service.browse("movies", currentPage)).isInstanceOf(CatalogUpstreamException.class);
+        }
+        when(tmdbClient.popularMovies(5))
+            .thenThrow(new CatalogUpstreamException("TMDB", new RuntimeException("boom")));
+        assertThatThrownBy(() -> service.browse("movies", 5)).isInstanceOf(CatalogUpstreamException.class);
+
+        // The 5th failure (a mix of exception types) must still have opened
+        // the breaker — a 6th, never-cached page must not reach TmdbClient.
+        assertThatThrownBy(() -> service.browse("movies", 6)).isInstanceOf(CatalogUpstreamException.class);
+        verify(tmdbClient, never()).popularMovies(6);
+    }
+
+    @Test
+    void aProbeThatThrowsAnUnexpectedExceptionStillReopensRatherThanWedgingTheBreakerForever() {
+        failFivePages();
+        clock.advance(OPEN_WINDOW.plusSeconds(1));
+        when(tmdbClient.popularMovies(500)).thenThrow(new IllegalStateException("unexpected"));
+        assertThatThrownBy(() -> service.browse("movies", 500)).isInstanceOf(CatalogUpstreamException.class);
+
+        // Without recording this as a breaker failure, the claimed probe
+        // would never be released and every later call — no matter how much
+        // time passes — would short-circuit forever.
+        clock.advance(OPEN_WINDOW.plusSeconds(1));
+        var recovered = new CatalogPageResult(List.of(ITEM), 501, true);
+        when(tmdbClient.popularMovies(501)).thenReturn(recovered);
+
+        assertThat(service.browse("movies", 501)).isEqualTo(recovered);
+    }
+
     private void failFivePages() {
         failFivePages(1);
     }

@@ -203,6 +203,12 @@ class CatalogEndpointTest {
 
         mockMvc.perform(get("/api/catalog/movies").param("page", "16").with(loggedIn()))
             .andExpect(status().isServiceUnavailable());
+
+        // ProviderCircuitBreaker is a stateful singleton shared by every test
+        // in this class's cached Spring context. A breaker already open from
+        // unrelated failures would also surface as 503 without ever calling
+        // TMDB — this pins the assertion above to a genuine upstream failure.
+        assertThat(requestCount.get()).isEqualTo(1);
     }
 
     private static RequestPostProcessor loggedIn() {

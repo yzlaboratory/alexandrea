@@ -137,6 +137,35 @@ class ProviderCircuitBreakerTest {
     }
 
     @Test
+    void aStragglerFailureFromBeforeTheBreakerOpenedDoesNotExtendTheOpenWindow() {
+        failFiveTimes(); // the 5th failure opens the breaker at START
+
+        // A 6th call that was already in flight (admitted while still
+        // closed) finally fails too, after the breaker has already opened —
+        // it is not the half-open probe and must not push the window
+        // forward.
+        breaker.recordFailure(TMDB);
+
+        clock.advance(OPEN_WINDOW.minusSeconds(1));
+        assertThat(breaker.allowRequest(TMDB)).isFalse();
+
+        clock.advance(Duration.ofSeconds(2)); // now just past the ORIGINAL 60s window
+        assertThat(breaker.allowRequest(TMDB)).isTrue();
+    }
+
+    @Test
+    void aStragglerSuccessFromBeforeTheBreakerOpenedDoesNotCloseIt() {
+        failFiveTimes(); // opens the breaker
+
+        // A call admitted while still closed finally succeeds after the
+        // breaker has already opened — it is not the half-open probe
+        // succeeding, so the breaker must stay open.
+        breaker.recordSuccess(TMDB);
+
+        assertThat(breaker.allowRequest(TMDB)).isFalse();
+    }
+
+    @Test
     void oneProvidersFailuresDoNotAffectAnothers() {
         failFiveTimes();
 

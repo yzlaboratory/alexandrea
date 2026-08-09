@@ -45,7 +45,7 @@ public class ProviderCircuitBreaker {
      * caller has already claimed that probe.
      */
     public boolean allowRequest(String provider) {
-        return stateFor(provider).allowRequest(clock.instant());
+        return stateFor(provider).allowRequest(provider, clock.instant());
     }
 
     /** Reports that a request {@link #allowRequest} admitted succeeded. */
@@ -74,7 +74,7 @@ public class ProviderCircuitBreaker {
         private Instant openedAt;
         private boolean probeClaimed;
 
-        synchronized boolean allowRequest(Instant now) {
+        synchronized boolean allowRequest(String provider, Instant now) {
             if (openedAt == null) {
                 return true;
             }
@@ -85,10 +85,19 @@ public class ProviderCircuitBreaker {
                 return false;
             }
             probeClaimed = true;
+            LOG.info("Circuit breaker for {} half-open; admitting one probe", provider);
             return true;
         }
 
         synchronized void recordSuccess(String provider) {
+            // A closed-state call can still be in flight when a *different*
+            // concurrent failure trips the breaker open; if that straggler
+            // then succeeds, it is not the claimed half-open probe succeeding
+            // — ignore it rather than closing a breaker that is still
+            // rightfully open (openedAt != null but probeClaimed is false).
+            if (openedAt != null && !probeClaimed) {
+                return;
+            }
             var isClosingFromOpen = openedAt != null;
             consecutiveFailures = 0;
             openedAt = null;
@@ -100,9 +109,17 @@ public class ProviderCircuitBreaker {
 
         synchronized void recordFailure(String provider, Instant now) {
             if (openedAt != null) {
-                openedAt = now;
-                probeClaimed = false;
-                LOG.warn("Circuit breaker for {} re-opened after a failed probe", provider);
+                // Only the claimed half-open probe failing re-opens the
+                // window for another OPEN_DURATION. A straggler failure from
+                // a closed-state call that was already in flight when some
+                // other concurrent failure opened the breaker is not that
+                // probe (probeClaimed is false for it) and must not keep
+                // pushing the open window forward indefinitely.
+                if (probeClaimed) {
+                    openedAt = now;
+                    probeClaimed = false;
+                    LOG.warn("Circuit breaker for {} re-opened after a failed probe", provider);
+                }
                 return;
             }
             consecutiveFailures++;

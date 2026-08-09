@@ -12,7 +12,12 @@ package dev.yzlaboratory.alexandrea.catalog;
 public class CatalogUpstreamException extends RuntimeException {
 
     public CatalogUpstreamException(String provider) {
-        super(provider + " catalog is temporarily unavailable");
+        // No fault actually occurred here — the breaker short-circuited
+        // before any call was attempted — and this constructor runs on
+        // every request during an open window, so skip the stack-trace
+        // capture the default super(String) constructor would otherwise
+        // pay for on that path.
+        super(provider + " catalog is temporarily unavailable", null, false, false);
     }
 
     public CatalogUpstreamException(String provider, Throwable cause) {
