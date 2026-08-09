@@ -103,4 +103,28 @@ describe('ResetPasswordForm', () => {
       await screen.findByText(/something went wrong/i),
     ).toBeInTheDocument();
   });
+
+  it('shows a generic error and does not advance when submit rejects', async () => {
+    const onReset = vi.fn();
+    const onRejected = vi.fn();
+    const submit = vi.fn(
+      (): Promise<ResetPasswordOutcome> => Promise.reject(new Error('network')),
+    );
+    render(
+      <ResetPasswordForm
+        token="good-token"
+        onReset={onReset}
+        onRejected={onRejected}
+        submit={submit}
+      />,
+    );
+
+    await fillAndSubmit('a-brand-new-password');
+
+    expect(
+      await screen.findByText(/something went wrong/i),
+    ).toBeInTheDocument();
+    expect(onReset).not.toHaveBeenCalled();
+    expect(onRejected).not.toHaveBeenCalled();
+  });
 });

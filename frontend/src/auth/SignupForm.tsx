@@ -8,10 +8,13 @@ import {
   Typography,
 } from '@mui/material';
 import { type SignupOutcome } from './authApi';
-import { textField } from './forms';
-
-const MIN_PASSWORD_LENGTH = 12;
-const MAX_PASSWORD_LENGTH = 128;
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_LENGTH_ERROR,
+  PASSWORD_LENGTH_HINT,
+  textField,
+} from './forms';
 
 interface SignupFormProps {
   onAccepted: (email: string) => void;
@@ -33,7 +36,7 @@ function SignupForm({ onAccepted, submit }: SignupFormProps): ReactNode {
           onAccepted(email);
           return null;
         case 'invalid-password':
-          return `Password must be between ${String(MIN_PASSWORD_LENGTH)} and ${String(MAX_PASSWORD_LENGTH)} characters.`;
+          return PASSWORD_LENGTH_ERROR;
         case 'error':
           return 'Something went wrong. Please try again.';
       }
@@ -71,7 +74,7 @@ function SignupForm({ onAccepted, submit }: SignupFormProps): ReactNode {
             maxLength: MAX_PASSWORD_LENGTH,
           },
         }}
-        helperText={`At least ${String(MIN_PASSWORD_LENGTH)} characters.`}
+        helperText={PASSWORD_LENGTH_HINT}
         fullWidth
       />
 
