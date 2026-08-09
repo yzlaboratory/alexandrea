@@ -7,8 +7,15 @@ import org.springframework.stereotype.Service;
  * the right provider client, checks {@link CatalogCache} first (ADR 0007),
  * and falls through to the upstream call on a miss, caching both the page
  * and its items. Only "movies" is wired to a real provider for this slice
- * (#37) — every other media type is #39's job, and #38 adds the
- * stale-cache-on-failure fallback and circuit breaker this doesn't have yet.
+ * (#37/#38) — every other media type is #39's job.
+ *
+ * <p>A miss is gated by {@link ProviderCircuitBreaker} and, on any failure
+ * to reach the provider — whether the breaker is already open or the call
+ * itself fails — falls through to whatever stale page is still on hand
+ * (ADR 0015) before giving up with {@link CatalogUpstreamException}. ADR
+ * 0015 also mentions a best-effort background refresh queued alongside the
+ * stale response; this slice skips it; a synchronous fetch on the next
+ * request remains correct, just not pre-warmed.
  */
 @Service
 public class CatalogService {
@@ -26,10 +33,12 @@ public class CatalogService {
 
     private final TmdbClient tmdbClient;
     private final CatalogCache cache;
+    private final ProviderCircuitBreaker circuitBreaker;
 
-    public CatalogService(TmdbClient tmdbClient, CatalogCache cache) {
+    public CatalogService(TmdbClient tmdbClient, CatalogCache cache, ProviderCircuitBreaker circuitBreaker) {
         this.tmdbClient = tmdbClient;
         this.cache = cache;
+        this.circuitBreaker = circuitBreaker;
     }
 
     public CatalogPageResult browse(String mediaType, int page) {
@@ -41,7 +50,32 @@ public class CatalogService {
 
     private CatalogPageResult popularMovies(int page) {
         var key = CatalogCache.pageKey(TMDB_PROVIDER, MOVIES_MEDIA_TYPE, POPULAR_FEED, NO_FILTERS, DEFAULT_SORT, page);
-        return cache.getOrComputePage(key, () -> fetchAndCache(page));
+        try {
+            return cache.getOrComputePage(key, () -> fetchThroughBreaker(page));
+        } catch (CatalogUpstreamException upstreamFailure) {
+            return cache.getPageRegardlessOfTtl(key).orElseThrow(() -> upstreamFailure);
+        }
+    }
+
+    private CatalogPageResult fetchThroughBreaker(int page) {
+        if (!circuitBreaker.allowRequest(TMDB_PROVIDER)) {
+            throw new CatalogUpstreamException(TMDB_PROVIDER);
+        }
+        try {
+            var fetched = fetchAndCache(page);
+            circuitBreaker.recordSuccess(TMDB_PROVIDER);
+            return fetched;
+        } catch (RuntimeException failure) {
+            // Any failure reaching the provider counts against the breaker,
+            // not just CatalogUpstreamException — narrowing this to just that
+            // type would leave the breaker's bookkeeping (and, if this call
+            // was the half-open probe, its claimed-probe state) never
+            // updated whenever some other failure mode slips through.
+            circuitBreaker.recordFailure(TMDB_PROVIDER);
+            throw failure instanceof CatalogUpstreamException
+                ? failure
+                : new CatalogUpstreamException(TMDB_PROVIDER, failure);
+        }
     }
 
     private CatalogPageResult fetchAndCache(int page) {

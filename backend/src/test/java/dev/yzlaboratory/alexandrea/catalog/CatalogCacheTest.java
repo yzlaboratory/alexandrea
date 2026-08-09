@@ -169,5 +169,65 @@ class CatalogCacheTest {
         })).isInstanceOf(RuntimeException.class);
 
         assertThat(cache.getPage("key")).isEmpty();
+        assertThat(cache.getPageRegardlessOfTtl("key")).isEmpty();
+    }
+
+    @Test
+    void aPageKeyNeverWrittenIsAlsoAMissRegardlessOfTtl() {
+        assertThat(cache.getPageRegardlessOfTtl("nope")).isEmpty();
+    }
+
+    @Test
+    void anItemKeyNeverWrittenIsAlsoAMissRegardlessOfTtl() {
+        assertThat(cache.getItemRegardlessOfTtl("nope")).isEmpty();
+    }
+
+    @Test
+    void aPageIsStillRetrievableRegardlessOfTtlAfterItsFreshnessTtlElapses() {
+        cache.putPage("key", PAGE);
+
+        ticker.advance(Duration.ofDays(7).plusSeconds(1));
+
+        assertThat(cache.getPage("key")).isEmpty();
+        assertThat(cache.getPageRegardlessOfTtl("key")).contains(PAGE);
+    }
+
+    @Test
+    void anItemIsStillRetrievableRegardlessOfTtlAfterItsFreshnessTtlElapses() {
+        var key = CatalogCache.itemKey("TMDB", "1", "movies");
+        cache.putItem(key, ITEM);
+
+        ticker.advance(Duration.ofDays(7).plusSeconds(1));
+
+        assertThat(cache.getItem(key)).isEmpty();
+        assertThat(cache.getItemRegardlessOfTtl(key)).contains(ITEM);
+    }
+
+    @Test
+    void aPageRegardlessOfTtlIsStillAHitJustBeforeItsLongerPhysicalBoundElapses() {
+        cache.putPage("key", PAGE);
+
+        ticker.advance(Duration.ofDays(28).minusSeconds(1));
+
+        assertThat(cache.getPageRegardlessOfTtl("key")).contains(PAGE);
+    }
+
+    @Test
+    void aPageRegardlessOfTtlIsEvictedOnceItsLongerPhysicalBoundElapses() {
+        cache.putPage("key", PAGE);
+
+        ticker.advance(Duration.ofDays(28).plusSeconds(1));
+
+        assertThat(cache.getPageRegardlessOfTtl("key")).isEmpty();
+    }
+
+    @Test
+    void getOrComputePagePopulatesTheStaleFallbackOnASuccessfulComputeToo() {
+        cache.getOrComputePage("key", () -> PAGE);
+
+        ticker.advance(Duration.ofDays(7).plusSeconds(1));
+
+        assertThat(cache.getPage("key")).isEmpty();
+        assertThat(cache.getPageRegardlessOfTtl("key")).contains(PAGE);
     }
 }
