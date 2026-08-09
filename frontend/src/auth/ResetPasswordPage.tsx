@@ -1,7 +1,8 @@
 import { type ReactNode, useState } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router-dom';
-import { Container, Link, Stack, Typography } from '@mui/material';
+import { Container, Link, Typography } from '@mui/material';
 import { resetPassword } from './authApi';
+import AuthPanel from './AuthPanel';
 import ResetPasswordForm from './ResetPasswordForm';
 
 function ResetPasswordPage(): ReactNode {
@@ -49,10 +50,7 @@ function ResetFlow({ token }: { token: string }): ReactNode {
 
 function ResetPanel(): ReactNode {
   return (
-    <Stack spacing={3} sx={{ alignItems: 'flex-start' }}>
-      <Typography variant="h4" component="h1">
-        Password updated
-      </Typography>
+    <AuthPanel title="Password updated">
       <Typography>
         Your password has been changed and you&apos;ve been signed out of your
         other sessions. Log in with your new password.
@@ -60,24 +58,20 @@ function ResetPanel(): ReactNode {
       <Link component={RouterLink} to="/login">
         Go to log in
       </Link>
-    </Stack>
+    </AuthPanel>
   );
 }
 
 function RejectedPanel(): ReactNode {
   return (
-    <Stack spacing={3} sx={{ alignItems: 'flex-start' }}>
-      <Typography variant="h4" component="h1">
-        This link is no longer valid
-      </Typography>
+    <AuthPanel title="This link is no longer valid">
       <Typography>
-        Password reset links are single-use and expire after 1 hour. Request a
-        fresh one to try again.
+        Password reset links are single-use. Request a fresh one to try again.
       </Typography>
       <Link component={RouterLink} to="/forgot-password">
         Request a new link
       </Link>
-    </Stack>
+    </AuthPanel>
   );
 }
 
