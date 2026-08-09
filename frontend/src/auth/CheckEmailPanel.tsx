@@ -1,6 +1,7 @@
 import { type ReactNode, useActionState } from 'react';
-import { Alert, Button, Stack, Typography } from '@mui/material';
+import { Alert, Button, Typography } from '@mui/material';
 import { resendVerification } from './authApi';
+import AuthPanel from './AuthPanel';
 
 interface CheckEmailPanelProps {
   email: string;
@@ -22,10 +23,7 @@ function CheckEmailPanel({ email }: CheckEmailPanelProps): ReactNode {
   }, 'idle');
 
   return (
-    <Stack spacing={3} sx={{ alignItems: 'flex-start' }}>
-      <Typography variant="h4" component="h1">
-        Check your email
-      </Typography>
+    <AuthPanel title="Check your email">
       <Typography variant="body1">
         We sent a verification link to <strong>{email}</strong>. Open it to
         activate your account. The link is single-use and expires in 24 hours.
@@ -45,7 +43,7 @@ function CheckEmailPanel({ email }: CheckEmailPanelProps): ReactNode {
           {isResending ? 'Resending…' : 'Resend verification email'}
         </Button>
       </form>
-    </Stack>
+    </AuthPanel>
   );
 }
 

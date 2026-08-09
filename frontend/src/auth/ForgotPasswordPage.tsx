@@ -1,7 +1,8 @@
 import { type ReactNode, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { Container, Link, Stack, Typography } from '@mui/material';
+import { Container, Link, Typography } from '@mui/material';
 import { requestPasswordReset } from './authApi';
+import AuthPanel from './AuthPanel';
 import ForgotPasswordForm from './ForgotPasswordForm';
 
 function ForgotPasswordPage(): ReactNode {
@@ -23,18 +24,15 @@ function ForgotPasswordPage(): ReactNode {
 
 function RequestSentPanel({ email }: { email: string }): ReactNode {
   return (
-    <Stack spacing={3} sx={{ alignItems: 'flex-start' }}>
-      <Typography variant="h4" component="h1">
-        Check your email
-      </Typography>
+    <AuthPanel title="Check your email">
       <Typography>
         If <strong>{email}</strong> has an account, we&apos;ve sent a link to
-        reset your password. The link is single-use and expires in 1 hour.
+        reset your password. The link is single-use.
       </Typography>
       <Link component={RouterLink} to="/login">
         Back to log in
       </Link>
-    </Stack>
+    </AuthPanel>
   );
 }
 

@@ -17,6 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import { resendVerification, verify, type VerifyOutcome } from './authApi';
+import AuthPanel from './AuthPanel';
 import { textField } from './forms';
 
 type ResendState = 'idle' | 'sent' | 'error';
@@ -77,15 +78,12 @@ function TokenVerification({ token }: { token: string }): ReactNode {
 
 function VerifiedPanel(): ReactNode {
   return (
-    <Stack spacing={3} sx={{ alignItems: 'flex-start' }}>
-      <Typography variant="h4" component="h1">
-        Email verified
-      </Typography>
+    <AuthPanel title="Email verified">
       <Typography>Your account is active. You can now log in.</Typography>
       <Link component={RouterLink} to="/login">
         Go to log in
       </Link>
-    </Stack>
+    </AuthPanel>
   );
 }
 
@@ -105,10 +103,7 @@ function RejectedPanel(): ReactNode {
   }, 'idle');
 
   return (
-    <Stack spacing={3} sx={{ alignItems: 'flex-start' }}>
-      <Typography variant="h4" component="h1">
-        This link is no longer valid
-      </Typography>
+    <AuthPanel title="This link is no longer valid">
       <Typography>
         Verification links are single-use and expire after 24 hours. Enter your
         email to get a fresh one.
@@ -135,7 +130,7 @@ function RejectedPanel(): ReactNode {
           {isResending ? 'Resending…' : 'Resend link'}
         </Button>
       </Stack>
-    </Stack>
+    </AuthPanel>
   );
 }
 
