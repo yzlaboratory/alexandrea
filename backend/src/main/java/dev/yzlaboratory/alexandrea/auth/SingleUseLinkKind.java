@@ -17,6 +17,11 @@ public enum SingleUseLinkKind {
         "Password reset link is expired, already used, or unknown",
         "Password reset link expired or already used",
         "This password reset link is no longer valid.",
+        false),
+    EMAIL_CHANGE(
+        "Email change link is expired, already used, or unknown",
+        "Email change link expired or already used",
+        "This email change link is no longer valid.",
         false);
 
     private final String rejectionMessage;

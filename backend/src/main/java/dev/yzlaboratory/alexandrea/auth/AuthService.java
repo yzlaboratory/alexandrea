@@ -1,6 +1,8 @@
 package dev.yzlaboratory.alexandrea.auth;
 
 import dev.yzlaboratory.alexandrea.auth.mail.AlreadyRegisteredMail;
+import dev.yzlaboratory.alexandrea.auth.mail.EmailChangeMail;
+import dev.yzlaboratory.alexandrea.auth.mail.EmailChangedMail;
 import dev.yzlaboratory.alexandrea.auth.mail.MailDispatcher;
 import dev.yzlaboratory.alexandrea.auth.mail.PasswordResetMail;
 import dev.yzlaboratory.alexandrea.auth.mail.VerificationMail;
@@ -21,6 +23,7 @@ public class AuthService {
 
     private final UserStore userStore;
     private final TokenService tokenService;
+    private final EmailChangeTokenStore emailChangeTokenStore;
     private final SessionStore sessionStore;
     private final PasswordEncoder passwordEncoder;
     private final MailDispatcher mailDispatcher;
@@ -30,6 +33,7 @@ public class AuthService {
     public AuthService(
         UserStore userStore,
         TokenService tokenService,
+        EmailChangeTokenStore emailChangeTokenStore,
         SessionStore sessionStore,
         PasswordEncoder passwordEncoder,
         MailDispatcher mailDispatcher,
@@ -38,6 +42,7 @@ public class AuthService {
     ) {
         this.userStore = userStore;
         this.tokenService = tokenService;
+        this.emailChangeTokenStore = emailChangeTokenStore;
         this.sessionStore = sessionStore;
         this.passwordEncoder = passwordEncoder;
         this.mailDispatcher = mailDispatcher;
@@ -205,6 +210,56 @@ public class AuthService {
                 throw new PasswordPolicyViolationException();
             }
             userStore.updatePasswordHash(consumed.userId(), passwordEncoder.encode(newRawPassword));
+            sessionStore.invalidateAll(consumed.userId());
+        }
+        return outcome;
+    }
+
+    /**
+     * Unlike the other mail-sending flows, the password check runs before the
+     * rate-limit gate: this action is already session-gated, so a wrong
+     * password is reported as its own 401 (matching {@link #changePassword})
+     * rather than folded into the generic throttled/accepted response.
+     */
+    @Transactional
+    public void requestEmailChange(
+        long userId, String currentRawPassword, String newEmail, String clientIp
+    ) {
+        var user = requireUser(userId);
+        if (!passwordEncoder.matches(currentRawPassword, user.passwordHash())) {
+            throw new InvalidCredentialsException();
+        }
+        if (!rateLimiter.allowMailAction(clientIp, newEmail)) {
+            return;
+        }
+        var normalisedNewEmail = Emails.normalise(newEmail);
+        // Own current email isn't a "new" address, and a target already owned
+        // by any account — verified or not — must not leak a live link or
+        // silently reassign that account's identity to this one.
+        if (normalisedNewEmail.equals(user.email()) || userStore.findByEmail(newEmail).isPresent()) {
+            return;
+        }
+        var changeLink = issueEmailChangeLink(userId, normalisedNewEmail);
+        mailDispatcher.dispatch(
+            EmailChangeMail.build(normalisedNewEmail, changeLink, properties.emailChangeTokenTtl()));
+    }
+
+    private String issueEmailChangeLink(long userId, String newEmail) {
+        var rawToken = emailChangeTokenStore.issue(userId, newEmail);
+        return properties.emailChangeUrlTemplate().replace("{token}", rawToken);
+    }
+
+    @Transactional
+    public EmailChangeConsumption completeEmailChange(String rawToken) {
+        var outcome = emailChangeTokenStore.consume(rawToken);
+        if (outcome instanceof EmailChangeConsumption.Consumed consumed) {
+            var previousEmail = requireUser(consumed.userId()).email();
+            userStore.updateEmail(consumed.userId(), consumed.newEmail());
+            mailDispatcher.dispatch(EmailChangedMail.build(previousEmail, consumed.newEmail()));
+            // No "current session" to except, unlike changePassword: the link is
+            // opened as its own credential, not from within an authenticated
+            // request, and the old email is now stale in every session's
+            // security context regardless of which browser holds it.
             sessionStore.invalidateAll(consumed.userId());
         }
         return outcome;
