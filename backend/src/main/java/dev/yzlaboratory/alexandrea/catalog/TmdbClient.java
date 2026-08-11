@@ -43,6 +43,7 @@ public class TmdbClient {
     private static final String PAGE_PARAM = "page";
     private static final String QUERY_PARAM = "query";
     private static final String SORT_BY_PARAM = "sort_by";
+    private static final String WITH_GENRES_PARAM = "with_genres";
 
     private final RestClient restClient;
     private final CatalogProperties properties;
@@ -81,16 +82,25 @@ public class TmdbClient {
     }
 
     // ADR 0018's "filter/sort applied" row: /discover/* replaces /*/popular
-    // once a sort is chosen, since /movie/popular and /tv/popular accept no
-    // sort_by param of their own.
-    public CatalogPageResult discoverMovies(String sortKey, String direction, int page) {
-        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page,
-            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction)));
+    // once a sort or a genre filter is chosen, since /movie/popular and
+    // /tv/popular accept neither a sort_by nor a with_genres param of their
+    // own. genre is TMDB's native genre id (ADR 0013's "native enum" for
+    // Movies/TV) and is omitted from the request entirely when null.
+    public CatalogPageResult discoverMovies(String sortKey, String direction, String genre, int page) {
+        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page, withGenre(genre,
+            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction))));
     }
 
-    public CatalogPageResult discoverTv(String sortKey, String direction, int page) {
-        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page,
-            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction)));
+    public CatalogPageResult discoverTv(String sortKey, String direction, String genre, int page) {
+        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page, withGenre(genre,
+            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction))));
+    }
+
+    private static UnaryOperator<UriBuilder> withGenre(String genre, UnaryOperator<UriBuilder> sortParam) {
+        return uriBuilder -> {
+            var withSort = sortParam.apply(uriBuilder);
+            return genre != null ? withSort.queryParam(WITH_GENRES_PARAM, genre) : withSort;
+        };
     }
 
     // TMDB's sort_by accepts "<field>.<asc|desc>" for every field below in

@@ -67,16 +67,18 @@ public class IgdbClient {
 
     // IGDB's own default feed is already "sorted by popularity desc" (ADR
     // 0018's "nothing applied" row), so this is the same request discoverGames
-    // would build for that exact (sortKey, direction) pair.
+    // would build for that exact (sortKey, direction) pair with no genre.
     public CatalogPageResult popularGames(int page) {
-        return discoverGames(CatalogSort.POPULARITY, CatalogSort.DESCENDING, page);
+        return discoverGames(CatalogSort.POPULARITY, CatalogSort.DESCENDING, null, page);
     }
 
     // ADR 0018's "filter/sort applied" row: same /games endpoint as popular,
     // parameterized by the caller's chosen sort field/direction instead of
-    // the fixed total_rating_count desc.
-    public CatalogPageResult discoverGames(String sortKey, String direction, int page) {
-        return fetchPage(page, discoverRequestBody(sortKey, direction, page));
+    // the fixed total_rating_count desc, and an optional genre (IGDB's
+    // native genre id, ADR 0013's "native enum" for Games) added as a
+    // `where` clause when present.
+    public CatalogPageResult discoverGames(String sortKey, String direction, String genre, int page) {
+        return fetchPage(page, discoverRequestBody(sortKey, direction, genre, page));
     }
 
     // ADR 0018's "text search active" row: IGDB's search is an Apicalypse
@@ -135,14 +137,15 @@ public class IgdbClient {
         }
     }
 
-    private static String discoverRequestBody(String sortKey, String direction, int page) {
+    private static String discoverRequestBody(String sortKey, String direction, String genre, int page) {
         var offset = (page - 1) * PAGE_SIZE;
+        var whereClause = genre != null ? "where genres = (%s);\n".formatted(genre) : "";
         return """
             fields name,cover.image_id,first_release_date,total_rating;
-            sort %s %s;
+            %ssort %s %s;
             limit %d;
             offset %d;
-            """.formatted(igdbSortField(sortKey), direction, PAGE_SIZE, offset);
+            """.formatted(whereClause, igdbSortField(sortKey), direction, PAGE_SIZE, offset);
     }
 
     // ADR 0018 pins only the default direction's literal Apicalypse clause

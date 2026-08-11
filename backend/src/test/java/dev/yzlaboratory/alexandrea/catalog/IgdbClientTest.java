@@ -398,7 +398,7 @@ class IgdbClientTest {
                 """))
             .andRespond(emptyGamesResponse());
 
-        client.discoverGames("title", "asc", 1);
+        client.discoverGames("title", "asc", null, 1);
 
         gamesServer.verify();
     }
@@ -430,7 +430,7 @@ class IgdbClientTest {
             [{"id": 1942, "name": "The Witcher 3: Wild Hunt", "cover": {"id": 1, "image_id": "co1wyy"}, "first_release_date": 1431993600, "total_rating": 92.5}]
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.discoverGames("external_rating", "desc", 1);
+        var result = client.discoverGames("external_rating", "desc", null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("The Witcher 3: Wild Hunt");
@@ -441,8 +441,43 @@ class IgdbClientTest {
         expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
         expectGamesRequest().andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.discoverGames("popularity", "desc", 1))
+        assertThatThrownBy(() -> client.discoverGames("popularity", "desc", null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void discoverGamesAddsAWhereGenresClauseWhenAGenreIsGiven() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))
+            .andExpect(content().string("""
+                fields name,cover.image_id,first_release_date,total_rating;
+                where genres = (5);
+                sort total_rating_count desc;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.discoverGames("popularity", "desc", "5", 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void discoverGamesOmitsTheWhereClauseEntirelyWhenNoGenreIsGiven() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))
+            .andExpect(content().string("""
+                fields name,cover.image_id,first_release_date,total_rating;
+                sort total_rating_count desc;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.discoverGames("popularity", "desc", null, 1);
+
+        gamesServer.verify();
     }
 
     @Test
@@ -530,7 +565,7 @@ class IgdbClientTest {
                 """.formatted(expectedField)))
             .andRespond(emptyGamesResponse());
 
-        client.discoverGames(sortKey, "desc", 1);
+        client.discoverGames(sortKey, "desc", null, 1);
     }
 
     private org.springframework.test.web.client.ResponseActions expectTokenRequest() {

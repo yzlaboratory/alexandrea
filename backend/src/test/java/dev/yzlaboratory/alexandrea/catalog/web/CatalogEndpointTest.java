@@ -73,6 +73,23 @@ class CatalogEndpointTest {
 
     private static final AtomicReference<String> nextTvDiscoverResponseBody = new AtomicReference<>();
     private static final AtomicInteger tvDiscoverRequestCount = new AtomicInteger();
+    private static final AtomicReference<String> lastTvDiscoverQuery = new AtomicReference<>();
+
+    // GenreVocabulary caches its result for the process lifetime (by
+    // design — TMDB/IGDB genre enums are near-static), so these fixture
+    // bodies are set once and never change across this class's tests,
+    // unlike every other response body above: whichever test happens to
+    // run first and warm the cache must see the same vocabulary every
+    // other test also expects.
+    private static final AtomicReference<String> movieGenreListResponseBody = new AtomicReference<>("""
+        {"genres": [{"id": 28, "name": "Action"}, {"id": 35, "name": "Comedy"}]}
+        """);
+    private static final AtomicReference<String> tvGenreListResponseBody = new AtomicReference<>("""
+        {"genres": [{"id": 10759, "name": "Action & Adventure"}]}
+        """);
+    private static final AtomicReference<String> igdbGenreListResponseBody = new AtomicReference<>("""
+        [{"id": 5, "name": "Shooter"}, {"id": 12, "name": "Role-playing (RPG)"}]
+        """);
 
     private static HttpServer openLibraryServer;
     private static final AtomicReference<String> nextOpenLibraryResponseBody = new AtomicReference<>();
@@ -87,6 +104,7 @@ class CatalogEndpointTest {
     private static final AtomicReference<String> nextIgdbGamesResponseBody = new AtomicReference<>();
     private static final AtomicReference<Integer> nextIgdbGamesResponseStatus = new AtomicReference<>(200);
     private static final AtomicInteger igdbGamesRequestCount = new AtomicInteger();
+    private static final AtomicReference<String> lastIgdbGamesRequestBody = new AtomicReference<>();
 
     private static HttpServer igdbTwitchServer;
     private static final AtomicInteger igdbTokenRequestCount = new AtomicInteger();
@@ -125,8 +143,11 @@ class CatalogEndpointTest {
         });
         tmdbServer.createContext("/discover/tv", exchange -> {
             tvDiscoverRequestCount.incrementAndGet();
+            lastTvDiscoverQuery.set(exchange.getRequestURI().getQuery());
             respond(exchange, 200, nextTvDiscoverResponseBody.get());
         });
+        tmdbServer.createContext("/genre/movie/list", exchange -> respond(exchange, 200, movieGenreListResponseBody.get()));
+        tmdbServer.createContext("/genre/tv/list", exchange -> respond(exchange, 200, tvGenreListResponseBody.get()));
         tmdbServer.start();
         var tmdbPort = tmdbServer.getAddress().getPort();
         registry.add("alexandrea.catalog.tmdb.base-url", () -> "http://localhost:" + tmdbPort);
@@ -148,8 +169,10 @@ class CatalogEndpointTest {
         igdbGamesServer = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         igdbGamesServer.createContext("/games", exchange -> {
             igdbGamesRequestCount.incrementAndGet();
+            lastIgdbGamesRequestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             respond(exchange, nextIgdbGamesResponseStatus.get(), nextIgdbGamesResponseBody.get());
         });
+        igdbGamesServer.createContext("/genres", exchange -> respond(exchange, 200, igdbGenreListResponseBody.get()));
         igdbGamesServer.start();
         var igdbGamesPort = igdbGamesServer.getAddress().getPort();
         registry.add("alexandrea.catalog.igdb.base-url", () -> "http://localhost:" + igdbGamesPort);
@@ -200,7 +223,8 @@ class CatalogEndpointTest {
     // IGNORE keeps this idempotent across every test method sharing the
     // one class-level database.
     private static final long DEFAULT_TEST_USER_ID = 1L;
-    private static final List<Long> TEST_USER_IDS = List.of(DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L);
+    private static final List<Long> TEST_USER_IDS =
+        List.of(DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L);
 
     @BeforeEach
     void seedTestUsers() {
@@ -252,6 +276,7 @@ class CatalogEndpointTest {
             """);
 
         tvDiscoverRequestCount.set(0);
+        lastTvDiscoverQuery.set(null);
         nextTvDiscoverResponseBody.set("""
             {"page": 1, "results": [], "total_pages": 1}
             """);
@@ -271,6 +296,7 @@ class CatalogEndpointTest {
         igdbGamesRequestCount.set(0);
         nextIgdbGamesResponseStatus.set(200);
         nextIgdbGamesResponseBody.set("[]");
+        lastIgdbGamesRequestBody.set(null);
         igdbTokenRequestCount.set(0);
     }
 
@@ -743,44 +769,45 @@ class CatalogEndpointTest {
     }
 
     @Test
-    void changingSortPersistsImmediatelyAndIsReadBackFromTheSortPreferenceEndpoint() throws Exception {
+    void changingSortPersistsImmediatelyAndIsReadBackFromThePreferenceEndpoint() throws Exception {
         mockMvc.perform(get("/api/catalog/movies").param("sort", "title").param("direction", "asc")
                 .param("page", "1").with(loggedIn()))
             .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/catalog/movies/sort-preference").with(loggedIn()))
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedIn()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("title"))
             .andExpect(jsonPath("$.sortDirection").value("asc"));
     }
 
     @Test
-    void theSortPreferenceEndpointReturnsNullFieldsWhenTheUserHasNeverSortedThisMediaType() throws Exception {
+    void thePreferenceEndpointReturnsNullFieldsWhenTheUserHasNeverSetAnyForThisMediaType() throws Exception {
         // A userId no other test in this class ever writes a preference
         // for — every test method shares one Spring context and one SQLite
         // database, so asserting "nothing stored" against the common
         // loggedIn() userId would be order-dependent on whichever other
-        // sort-writing test happened to run first.
-        mockMvc.perform(get("/api/catalog/games/sort-preference").with(loggedInAs(9001L)))
+        // preference-writing test happened to run first.
+        mockMvc.perform(get("/api/catalog/games/preference").with(loggedInAs(9001L)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").doesNotExist())
-            .andExpect(jsonPath("$.sortDirection").doesNotExist());
+            .andExpect(jsonPath("$.sortDirection").doesNotExist())
+            .andExpect(jsonPath("$.genre").doesNotExist());
     }
 
     @Test
-    void theSortPreferenceEndpointIsPerMediaTypeNotSharedAcrossThem() throws Exception {
+    void thePreferenceEndpointIsPerMediaTypeNotSharedAcrossThem() throws Exception {
         mockMvc.perform(get("/api/catalog/movies").param("sort", "popularity").param("direction", "desc")
                 .param("page", "60").with(loggedInAs(9002L)))
             .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/catalog/tv/sort-preference").with(loggedInAs(9002L)))
+        mockMvc.perform(get("/api/catalog/tv/preference").with(loggedInAs(9002L)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").doesNotExist());
     }
 
     @Test
-    void anAnonymousSortPreferenceRequestIsRejected() throws Exception {
-        mockMvc.perform(get("/api/catalog/movies/sort-preference")).andExpect(status().isUnauthorized());
+    void anAnonymousPreferenceRequestIsRejected() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies/preference")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -792,9 +819,148 @@ class CatalogEndpointTest {
                 .param("page", "61").with(loggedInAs(9003L)))
             .andExpect(status().isServiceUnavailable());
 
-        mockMvc.perform(get("/api/catalog/movies/sort-preference").with(loggedInAs(9003L)))
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9003L)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").doesNotExist());
+    }
+
+    @Test
+    void theBrowseResponseListsTheMovieGenreVocabularyAsAnAvailableFilter() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("page", "80").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.genre[0].value").value("28"))
+            .andExpect(jsonPath("$.availableFilters.genre[0].label").value("Action"))
+            .andExpect(jsonPath("$.availableFilters.genre[1].value").value("35"))
+            .andExpect(jsonPath("$.availableFilters.genre[1].label").value("Comedy"));
+    }
+
+    @Test
+    void theBrowseResponseListsTheTvGenreVocabularyAsAnAvailableFilter() throws Exception {
+        mockMvc.perform(get("/api/catalog/tv").param("page", "81").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.genre[0].value").value("10759"))
+            .andExpect(jsonPath("$.availableFilters.genre[0].label").value("Action & Adventure"));
+    }
+
+    @Test
+    void theBrowseResponseListsTheGamesGenreVocabularyAsAnAvailableFilter() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("page", "82").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.genre[0].value").value("5"))
+            .andExpect(jsonPath("$.availableFilters.genre[0].label").value("Shooter"));
+    }
+
+    @Test
+    void theBrowseResponseOmitsGenreFromAvailableFiltersForBooksSinceItsNotBuiltYet() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("page", "83").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.genre").doesNotExist());
+    }
+
+    @Test
+    void aGenreParamRoutesMoviesToDiscoverWithTheGivenTmdbGenreId() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "28").param("page", "84").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(discoverRequestCount.get()).isEqualTo(1);
+        assertThat(requestCount.get()).isZero();
+        assertThat(lastDiscoverQuery.get()).contains("with_genres=28");
+    }
+
+    @Test
+    void aGenreParamRoutesTvToDiscoverTvWithTheGivenTmdbGenreId() throws Exception {
+        mockMvc.perform(get("/api/catalog/tv").param("genre", "10759").param("page", "85").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(tvDiscoverRequestCount.get()).isEqualTo(1);
+        assertThat(tvRequestCount.get()).isZero();
+        assertThat(lastTvDiscoverQuery.get()).contains("with_genres=10759");
+    }
+
+    @Test
+    void aGenreParamRoutesGamesToIgdbWithAWhereGenresClause() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("genre", "5").param("page", "86").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(igdbGamesRequestCount.get()).isEqualTo(1);
+        assertThat(lastIgdbGamesRequestBody.get()).contains("where genres = (5);");
+    }
+
+    @Test
+    void anInvalidGenreValueIsDroppedAndFallsBackToThePopularFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "not-a-real-tmdb-genre-id").param("page", "87").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(requestCount.get()).isEqualTo(1);
+        assertThat(discoverRequestCount.get()).isZero();
+    }
+
+    @Test
+    void aGenreOnBooksIsDroppedSinceBooksHasNoGenreVocabularyYet() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("genre", "science-fiction").param("page", "88").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(openLibraryRequestCount.get()).isEqualTo(1);
+        assertThat(openLibrarySearchRequestCount.get()).isZero();
+    }
+
+    @Test
+    void aGenreSelectionPersistsAndIsReadBackFromThePreferenceEndpointAlongsideSort() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "title").param("direction", "asc")
+                .param("genre", "28").param("page", "89").with(loggedInAs(9004L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9004L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").value("title"))
+            .andExpect(jsonPath("$.sortDirection").value("asc"))
+            .andExpect(jsonPath("$.genre").value("28"));
+    }
+
+    @Test
+    void applyingOnlyAGenreAfterASortWasAlreadyPersistedDoesNotClobberTheSort() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "title").param("direction", "asc")
+                .param("page", "90").with(loggedInAs(9005L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "28").param("page", "91").with(loggedInAs(9005L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9005L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").value("title"))
+            .andExpect(jsonPath("$.sortDirection").value("asc"))
+            .andExpect(jsonPath("$.genre").value("28"));
+    }
+
+    @Test
+    void changingOnlyTheSortAfterAGenreWasAlreadyPersistedDoesNotClobberTheGenre() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "28").param("page", "92").with(loggedInAs(9006L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "release_date").param("direction", "desc")
+                .param("page", "93").with(loggedInAs(9006L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9006L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").value("release_date"))
+            .andExpect(jsonPath("$.sortDirection").value("desc"))
+            .andExpect(jsonPath("$.genre").value("28"));
+    }
+
+    @Test
+    void selectingADifferentGenreReplacesRatherThanCombiningWithThePrevious() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "28").param("page", "94").with(loggedInAs(9007L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "35").param("page", "95").with(loggedInAs(9007L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastDiscoverQuery.get()).contains("with_genres=35").doesNotContain("with_genres=28");
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9007L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.genre").value("35"));
     }
 
     private static RequestPostProcessor loggedIn() {

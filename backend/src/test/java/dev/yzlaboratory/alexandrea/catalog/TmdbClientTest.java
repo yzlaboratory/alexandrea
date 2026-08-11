@@ -364,7 +364,7 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverMovies("popularity", "desc", 1);
+        client.discoverMovies("popularity", "desc", null, 1);
 
         server.verify();
     }
@@ -417,7 +417,7 @@ class TmdbClientTest {
                 }
                 """, MediaType.APPLICATION_JSON));
 
-        var result = client.discoverMovies("popularity", "desc", 1);
+        var result = client.discoverMovies("popularity", "desc", null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("John Wick: Chapter 4");
@@ -427,8 +427,36 @@ class TmdbClientTest {
     void anUpstream5xxOnDiscoverMoviesIsWrappedAsACatalogUpstreamException() {
         server.expect(requestTo(startsWith(BASE_URL + "/discover/movie"))).andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.discoverMovies("popularity", "desc", 1))
+        assertThatThrownBy(() -> client.discoverMovies("popularity", "desc", null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void discoverMoviesAddsAWithGenresParamWhenAGenreIsGiven() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(queryParam("sort_by", "popularity.desc"))
+            .andExpect(queryParam("with_genres", "28"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", "28", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesOmitsWithGenresEntirelyWhenNoGenreIsGiven() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(queryParam("sort_by", "popularity.desc"))
+            .andExpect(request -> assertThat(request.getURI().toString()).doesNotContain("with_genres"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", null, 1);
+
+        server.verify();
     }
 
     @Test
@@ -445,7 +473,7 @@ class TmdbClientTest {
                 }
                 """, MediaType.APPLICATION_JSON));
 
-        var result = client.discoverTv("external_rating", "desc", 1);
+        var result = client.discoverTv("external_rating", "desc", null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().mediaType()).isEqualTo("tv");
@@ -456,8 +484,22 @@ class TmdbClientTest {
     void anUpstream5xxOnDiscoverTvIsWrappedAsACatalogUpstreamException() {
         server.expect(requestTo(startsWith(BASE_URL + "/discover/tv"))).andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.discoverTv("popularity", "desc", 1))
+        assertThatThrownBy(() -> client.discoverTv("popularity", "desc", null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void discoverTvAddsAWithGenresParamWhenAGenreIsGiven() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/tv")))
+            .andExpect(queryParam("sort_by", "popularity.desc"))
+            .andExpect(queryParam("with_genres", "16"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverTv("popularity", "desc", "16", 1);
+
+        server.verify();
     }
 
     @Test
@@ -520,6 +562,6 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverMovies(sortKey, direction, 1);
+        client.discoverMovies(sortKey, direction, null, 1);
     }
 }

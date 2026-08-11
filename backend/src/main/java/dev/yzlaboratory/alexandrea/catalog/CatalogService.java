@@ -2,11 +2,17 @@ package dev.yzlaboratory.alexandrea.catalog;
 
 import dev.yzlaboratory.alexandrea.surface.SurfacePreference;
 import dev.yzlaboratory.alexandrea.surface.SurfacePreferenceStore;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * The facade {@code CatalogController} calls: resolves {@code media_type} to
@@ -25,6 +31,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class CatalogService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(CatalogService.class);
+
     private static final String POPULAR_FEED = "popular";
     // Prefixed rather than the bare query text: a popular-feed key's
     // feed/query slot (ADR 0007) is always exactly the literal "popular", so
@@ -34,6 +42,10 @@ public class CatalogService {
     private static final String NO_FILTERS = "";
     private static final String DEFAULT_SORT = "default";
     private static final String CATALOG_SURFACE = "catalog";
+    private static final String GENRE_FIELD = "genre";
+    private static final Set<String> SUPPORTED_MEDIA_TYPES = Set.of(
+        TmdbClient.MOVIES_MEDIA_TYPE, TmdbClient.TV_MEDIA_TYPE, OpenLibraryClient.BOOKS_MEDIA_TYPE, IgdbClient.GAMES_MEDIA_TYPE
+    );
     // ADR 0018: all four sorts are available for all four media types, so
     // (unlike filters) sort needs no per-media-type capability table — just
     // this one shared valid-key/valid-direction check.
@@ -48,6 +60,8 @@ public class CatalogService {
     private final CatalogCache cache;
     private final ProviderCircuitBreaker circuitBreaker;
     private final SurfacePreferenceStore surfacePreferenceStore;
+    private final GenreVocabulary genreVocabulary;
+    private final ObjectMapper objectMapper;
 
     public CatalogService(
         TmdbClient tmdbClient,
@@ -55,7 +69,9 @@ public class CatalogService {
         IgdbClient igdbClient,
         CatalogCache cache,
         ProviderCircuitBreaker circuitBreaker,
-        SurfacePreferenceStore surfacePreferenceStore
+        SurfacePreferenceStore surfacePreferenceStore,
+        GenreVocabulary genreVocabulary,
+        ObjectMapper objectMapper
     ) {
         this.tmdbClient = tmdbClient;
         this.openLibraryClient = openLibraryClient;
@@ -63,6 +79,8 @@ public class CatalogService {
         this.cache = cache;
         this.circuitBreaker = circuitBreaker;
         this.surfacePreferenceStore = surfacePreferenceStore;
+        this.genreVocabulary = genreVocabulary;
+        this.objectMapper = objectMapper;
     }
 
     /** Popular-feed convenience overload — equivalent to {@code browse(mediaType, null, page)}. */
@@ -82,44 +100,141 @@ public class CatalogService {
     }
 
     /**
-     * The sort-aware overload the Catalog controller calls: routes to the
-     * search feed exactly as {@link #browse(String, String, int)} does, and
-     * ignores {@code sortKey}/{@code sortDirection} while a search is active
-     * — TMDB's and IGDB's search endpoints cannot honor an explicit sort at
-     * all (ADR 0018's "Behavior under active text search"), and this issue
-     * does not wire OpenLibrary's own ability to combine the two. Current
-     * search is therefore preserved untouched across a sort change, and vice
-     * versa. An unrecognised sort key or direction is dropped rather than
-     * passed through (falls back to the popular feed), matching the same
-     * "callers validate, invalid drops rather than errors" rule ADR 0025
-     * sets for filters. A recognised sort persists to {@link
-     * SurfacePreferenceStore} only once the page it produced was actually
-     * served — an upstream failure or unsupported media type must not
-     * persist a sort choice its own request never proved works.
+     * The sort- and filter-aware overload the Catalog controller calls:
+     * routes to the search feed exactly as {@link #browse(String, String,
+     * int)} does, and ignores {@code sortKey}/{@code sortDirection}/{@code
+     * genre} while a search is active — TMDB's and IGDB's search endpoints
+     * cannot honor an explicit sort or {@code with_genres}/{@code where
+     * genres} at all (ADR 0018's "Behavior under active text search"), and
+     * this issue does not wire OpenLibrary's own ability to combine the two.
+     * Current search is therefore preserved untouched across a sort or
+     * filter change, and vice versa.
+     *
+     * <p>An unrecognised sort key/direction or an unrecognised (or
+     * currently-unverifiable) genre value for this media type is dropped
+     * rather than passed through — but, unlike a plain drop-to-popular,
+     * whichever of the two this request didn't validly supply falls back to
+     * what's already persisted for the other, so that a request changing
+     * only the sort can't silently clobber a previously-chosen genre and
+     * vice versa (the read-merge-write ADR 0025's store Javadoc requires,
+     * since {@link SurfacePreferenceStore#upsert} replaces the whole row).
+     * The combined row that results — real or persisted-fallback sort, real
+     * or persisted-fallback genre — is what actually gets upserted and what
+     * the page is fetched with.
      */
     public CatalogPageResult browse(
-        String mediaType, String search, String sortKey, String sortDirection, long userId, int page
+        String mediaType, String search, String sortKey, String sortDirection, String genre, long userId, int page
     ) {
         var query = normalizeSearch(search);
         if (query != null) {
             return searchFeedFor(mediaType, query, page);
         }
-        if (!isValidSort(sortKey, sortDirection)) {
+        if (!SUPPORTED_MEDIA_TYPES.contains(mediaType)) {
+            throw new UnsupportedCatalogMediaTypeException(mediaType);
+        }
+        if (!isValidSort(sortKey, sortDirection) && !isValidGenre(mediaType, genre)) {
             return popularFeedFor(mediaType, page);
         }
-        var result = sortedFeedFor(mediaType, sortKey, sortDirection, page);
-        surfacePreferenceStore.upsert(userId, CATALOG_SURFACE, mediaType, sortKey, sortDirection, null);
+
+        var existing = surfacePreferenceStore.get(userId, CATALOG_SURFACE, mediaType);
+        var resolvedSort = resolveSort(sortKey, sortDirection, existing);
+        var resolvedGenre = resolveGenre(mediaType, genre, existing);
+        var fetchSortKey = resolvedSort.key() != null ? resolvedSort.key() : CatalogSort.POPULARITY;
+        var fetchSortDirection = resolvedSort.direction() != null ? resolvedSort.direction() : CatalogSort.DESCENDING;
+
+        var result = filteredFeedFor(mediaType, fetchSortKey, fetchSortDirection, resolvedGenre, page);
+        surfacePreferenceStore.upsert(
+            userId, CATALOG_SURFACE, mediaType, resolvedSort.key(), resolvedSort.direction(), encodeFilters(resolvedGenre)
+        );
         return result;
     }
 
-    /** The current user's persisted Catalog sort for this media type, if they've ever set one (ADR 0025). */
-    public Optional<SurfacePreference> sortPreference(long userId, String mediaType) {
-        return surfacePreferenceStore.get(userId, CATALOG_SURFACE, mediaType);
+    /** The current user's persisted Catalog sort and genre filter for this media type, if ever set (ADR 0025). */
+    public CatalogPreference preference(long userId, String mediaType) {
+        var stored = surfacePreferenceStore.get(userId, CATALOG_SURFACE, mediaType);
+        var genre = stored.map(SurfacePreference::filters).map(this::decodeGenre)
+            .filter(value -> isValidGenre(mediaType, value))
+            .orElse(null);
+        return new CatalogPreference(
+            stored.map(SurfacePreference::sortKey).orElse(null),
+            stored.map(SurfacePreference::sortDirection).orElse(null),
+            genre
+        );
+    }
+
+    /**
+     * Which filters {@code FilterControls} should offer for this media type
+     * right now (ADR 0018's per-type capability table) — currently just
+     * genre, keyed so #43 can add a Books entry to this same map without
+     * the frontend or this method's callers changing shape. Omits genre
+     * (rather than failing the whole browse response) when the vocabulary
+     * is temporarily unreachable.
+     */
+    public Map<String, List<CatalogFilterOption>> availableFilters(String mediaType) {
+        if (!genreVocabulary.supports(mediaType)) {
+            return Map.of();
+        }
+        try {
+            return Map.of(GENRE_FIELD, genreVocabulary.genresFor(mediaType));
+        } catch (CatalogUpstreamException e) {
+            LOG.warn("Genre vocabulary temporarily unavailable for {}; omitting it from the capability payload", mediaType, e);
+            return Map.of();
+        }
+    }
+
+    private record ResolvedSort(String key, String direction) {
+        static final ResolvedSort NONE = new ResolvedSort(null, null);
+    }
+
+    private ResolvedSort resolveSort(String sortKey, String sortDirection, Optional<SurfacePreference> existing) {
+        if (isValidSort(sortKey, sortDirection)) {
+            return new ResolvedSort(sortKey, sortDirection);
+        }
+        return existing
+            .filter(preference -> isValidSort(preference.sortKey(), preference.sortDirection()))
+            .map(preference -> new ResolvedSort(preference.sortKey(), preference.sortDirection()))
+            .orElse(ResolvedSort.NONE);
+    }
+
+    private String resolveGenre(String mediaType, String genre, Optional<SurfacePreference> existing) {
+        if (isValidGenre(mediaType, genre)) {
+            return genre;
+        }
+        var persistedGenre = existing.map(SurfacePreference::filters).map(this::decodeGenre).orElse(null);
+        return isValidGenre(mediaType, persistedGenre) ? persistedGenre : null;
     }
 
     private static boolean isValidSort(String sortKey, String sortDirection) {
         return sortKey != null && VALID_SORT_KEYS.contains(sortKey)
             && sortDirection != null && VALID_DIRECTIONS.contains(sortDirection);
+    }
+
+    private boolean isValidGenre(String mediaType, String genre) {
+        if (genre == null || genre.isBlank() || !genreVocabulary.supports(mediaType)) {
+            return false;
+        }
+        try {
+            return genreVocabulary.genresFor(mediaType).stream().anyMatch(option -> option.value().equals(genre));
+        } catch (CatalogUpstreamException e) {
+            LOG.warn("Could not verify genre {} for {} against a temporarily-unavailable vocabulary; dropping it", genre, mediaType, e);
+            return false;
+        }
+    }
+
+    private String encodeFilters(String genre) {
+        if (genre == null) {
+            return null;
+        }
+        return objectMapper.createObjectNode().put(GENRE_FIELD, genre).toString();
+    }
+
+    private String decodeGenre(String filtersJson) {
+        try {
+            return objectMapper.readTree(filtersJson).path(GENRE_FIELD).asString(null);
+        } catch (JacksonException e) {
+            LOG.warn("Could not parse persisted catalog filters {}; treating as none", filtersJson, e);
+            return null;
+        }
     }
 
     // Lowercased and whitespace-collapsed, not just trimmed: "Blade Runner",
@@ -149,23 +264,26 @@ public class CatalogService {
         };
     }
 
-    private CatalogPageResult sortedFeedFor(String mediaType, String sortKey, String sortDirection, int page) {
+    private CatalogPageResult filteredFeedFor(String mediaType, String sortKey, String sortDirection, String genre, int page) {
         return switch (mediaType) {
-            case TmdbClient.MOVIES_MEDIA_TYPE -> sortedFeed(
-                TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, sortKey, sortDirection,
-                pageToFetch -> tmdbClient.discoverMovies(sortKey, sortDirection, pageToFetch), page
+            case TmdbClient.MOVIES_MEDIA_TYPE -> filteredFeed(
+                TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, sortKey, sortDirection, genre,
+                pageToFetch -> tmdbClient.discoverMovies(sortKey, sortDirection, genre, pageToFetch), page
             );
-            case TmdbClient.TV_MEDIA_TYPE -> sortedFeed(
-                TmdbClient.PROVIDER, TmdbClient.TV_MEDIA_TYPE, sortKey, sortDirection,
-                pageToFetch -> tmdbClient.discoverTv(sortKey, sortDirection, pageToFetch), page
+            case TmdbClient.TV_MEDIA_TYPE -> filteredFeed(
+                TmdbClient.PROVIDER, TmdbClient.TV_MEDIA_TYPE, sortKey, sortDirection, genre,
+                pageToFetch -> tmdbClient.discoverTv(sortKey, sortDirection, genre, pageToFetch), page
             );
-            case OpenLibraryClient.BOOKS_MEDIA_TYPE -> sortedFeed(
-                OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, sortKey, sortDirection,
+            // Books has no genre entry in GenreVocabulary yet (#43), so
+            // resolveGenre never produces a non-null value for this
+            // media type — sortedBooks needs no genre param of its own.
+            case OpenLibraryClient.BOOKS_MEDIA_TYPE -> filteredFeed(
+                OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, sortKey, sortDirection, genre,
                 pageToFetch -> openLibraryClient.sortedBooks(sortKey, sortDirection, pageToFetch), page
             );
-            case IgdbClient.GAMES_MEDIA_TYPE -> sortedFeed(
-                IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, sortKey, sortDirection,
-                pageToFetch -> igdbClient.discoverGames(sortKey, sortDirection, pageToFetch), page
+            case IgdbClient.GAMES_MEDIA_TYPE -> filteredFeed(
+                IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, sortKey, sortDirection, genre,
+                pageToFetch -> igdbClient.discoverGames(sortKey, sortDirection, genre, pageToFetch), page
             );
             default -> throw new UnsupportedCatalogMediaTypeException(mediaType);
         };
@@ -202,17 +320,20 @@ public class CatalogService {
         return cachedFeed(provider, key, fetchPage, page);
     }
 
-    // A "popular sorted by X" page is cached separately from both the plain
-    // popular feed and any search — it shares the "popular" feed/query slot
-    // (it's still the unfiltered, unsearched browse) but carries the real
-    // sort in the slot popularFeed always fills with the DEFAULT_SORT
-    // placeholder, so choosing a sort can never collide with — or be served
-    // by — the default popular page's cache entry.
-    private CatalogPageResult sortedFeed(
-        String provider, String mediaType, String sortKey, String sortDirection,
+    // A "popular sorted by X, optionally filtered by genre Y" page is cached
+    // separately from both the plain popular feed and any search — it
+    // shares the "popular" feed/query slot (it's still the unfiltered-by-
+    // search browse) but carries the real sort and genre in the slots
+    // popularFeed always fills with DEFAULT_SORT/NO_FILTERS, so choosing a
+    // sort or a genre can never collide with — or be served by — the
+    // default popular page's cache entry, and a genre change is its own
+    // distinct cache entry from the same sort with no genre.
+    private CatalogPageResult filteredFeed(
+        String provider, String mediaType, String sortKey, String sortDirection, String genre,
         IntFunction<CatalogPageResult> fetchPage, int page
     ) {
-        var key = CatalogCache.pageKey(provider, mediaType, POPULAR_FEED, NO_FILTERS, sortKey + ":" + sortDirection, page);
+        var filters = genre != null ? GENRE_FIELD + ":" + genre : NO_FILTERS;
+        var key = CatalogCache.pageKey(provider, mediaType, POPULAR_FEED, filters, sortKey + ":" + sortDirection, page);
         return cachedFeed(provider, key, fetchPage, page);
     }
 
