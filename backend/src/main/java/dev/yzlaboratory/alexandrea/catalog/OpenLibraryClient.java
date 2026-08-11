@@ -26,6 +26,12 @@ public class OpenLibraryClient {
     private static final double OPEN_LIBRARY_RATING_SCALE = 5.0;
     private static final int PAGE_SIZE = 20;
     private static final String WORK_KEY_PREFIX = "/works/";
+    private static final String EXTERNAL_RATING_SORT_KEY = "external_rating";
+    // Explicitly requested only on the sorted/discover path: /trending/daily.json
+    // and /search.json's plain q= responses never carry ratings_average (see
+    // toItem's rationale below), so the field must be asked for by name here to
+    // get it back at all.
+    private static final String SORTED_FIELDS = "key,title,cover_i,first_publish_year,ratings_average";
 
     private final RestClient restClient;
     private final CatalogProperties properties;
@@ -45,6 +51,27 @@ public class OpenLibraryClient {
         var response = fetchSearch(query, page);
         var docs = response.docs() != null ? response.docs() : List.<OpenLibraryWork>of();
         return toPageResult(docs, page);
+    }
+
+    // ADR 0018's "filter/sort applied" row: /search.json replaces
+    // /trending/daily.json once a sort is chosen, with q=* matching every
+    // work (the same Solr "match everything" idiom as an empty query) since
+    // no text search is active.
+    public CatalogPageResult sortedBooks(String sortKey, String direction, int page) {
+        var response = fetchSorted(sortKey, direction, page);
+        var docs = response.docs() != null ? response.docs() : List.<OpenLibraryWork>of();
+        var keyedDocs = docs.stream().filter(work -> work.key() != null).toList();
+        // hasMore reflects the upstream page's own fullness, computed before
+        // the external_rating null-filter below — a page that upstream filled
+        // but whose books happen to be mostly unrated must not look like the
+        // end of the feed (ADR 0006's shrink is a display concern, not a
+        // pagination one).
+        var hasMore = keyedDocs.size() >= PAGE_SIZE;
+        var items = keyedDocs.stream().map(this::toSortedItem).toList();
+        if (EXTERNAL_RATING_SORT_KEY.equals(sortKey)) {
+            items = items.stream().filter(item -> item.externalRating() != null).toList();
+        }
+        return new CatalogPageResult(items, page, hasMore);
     }
 
     // Shared by the trending feed and search: /search.json's "docs" entries
@@ -98,7 +125,65 @@ public class OpenLibraryClient {
         }
     }
 
+    private OpenLibrarySearchResponse fetchSorted(String sortKey, String direction, int page) {
+        try {
+            var response = restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                    .path("/search.json")
+                    .queryParam("q", "*")
+                    .queryParam("sort", sortParam(sortKey, direction))
+                    .queryParam("fields", SORTED_FIELDS)
+                    .queryParam("limit", PAGE_SIZE)
+                    .queryParam("offset", (page - 1) * PAGE_SIZE)
+                    .build())
+                .retrieve()
+                .body(OpenLibrarySearchResponse.class);
+            return response != null ? response : OpenLibrarySearchResponse.empty();
+        } catch (RestClientException e) {
+            throw new CatalogUpstreamException(PROVIDER, e);
+        }
+    }
+
+    // ADR 0018 pins only the literal sort= value for each sort's default
+    // direction ("trending", "new", "title", "rating"). The opposite
+    // direction is requested by appending the explicit direction keyword to
+    // that same preset — the parenthetical raw-field detail the ADR gives
+    // for title ("title_sort asc") and rating ("ratings_sortable desc")
+    // confirms each preset is itself a field+direction pair under the hood,
+    // so suffixing the reverse keyword flips it the same way TMDB's and
+    // IGDB's own sort params do.
+    private static String sortParam(String sortKey, String direction) {
+        var preset = switch (sortKey) {
+            case "popularity" -> "trending";
+            case "release_date" -> "new";
+            case "title" -> "title";
+            case EXTERNAL_RATING_SORT_KEY -> "rating";
+            default -> throw new IllegalArgumentException("Unsupported sort key: " + sortKey);
+        };
+        var defaultDirection = "title".equals(sortKey) ? "asc" : "desc";
+        return direction.equals(defaultDirection) ? preset : preset + " " + direction;
+    }
+
     private CatalogItem toItem(OpenLibraryWork work) {
+        // /trending/daily.json and /search.json's plain (non-sorted)
+        // responses carry no rating field at all (verified against the live
+        // endpoint — earlier code here read a "ratings_average" field that
+        // doesn't exist in either response, so externalRating was silently
+        // always null rather than null-when-absent per ADR 0006). The real
+        // community rating lives behind a per-work /works/{id}/ratings.json
+        // call; wiring that into these two feeds is deferred to #48 rather
+        // than costing one extra upstream round trip per book on every page
+        // load. sortedBooks's own mapping (toSortedItem) reads the field
+        // directly instead, since sortParam's "external_rating" path
+        // explicitly requests it via SORTED_FIELDS.
+        return toItem(work, null);
+    }
+
+    private CatalogItem toSortedItem(OpenLibraryWork work) {
+        return toItem(work, work.ratingsAverage());
+    }
+
+    private CatalogItem toItem(OpenLibraryWork work, Double externalRating) {
         return new CatalogItem(
             PROVIDER,
             externalId(work.key()),
@@ -106,15 +191,7 @@ public class OpenLibraryClient {
             work.title(),
             coverUrl(work.coverId()),
             firstPublishDate(work.firstPublishYear()),
-            // /trending/daily.json carries no rating field at all (verified
-            // against the live endpoint — earlier code here read a
-            // "ratings_average" field that doesn't exist in the real
-            // response, so externalRating was silently always null rather
-            // than null-when-absent per ADR 0006). The real community
-            // rating lives behind a per-work /works/{id}/ratings.json call;
-            // wiring that in is deferred to #48 rather than costing one
-            // extra upstream round trip per book on every page load.
-            null,
+            externalRating,
             OPEN_LIBRARY_RATING_SCALE
         );
     }
@@ -157,6 +234,7 @@ public class OpenLibraryClient {
         String key,
         String title,
         @JsonProperty("cover_i") Long coverId,
-        @JsonProperty("first_publish_year") Integer firstPublishYear
+        @JsonProperty("first_publish_year") Integer firstPublishYear,
+        @JsonProperty("ratings_average") Double ratingsAverage
     ) {}
 }
