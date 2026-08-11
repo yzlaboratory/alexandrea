@@ -56,6 +56,16 @@ public class TmdbClient {
         return fetchPage("/movie/popular", MOVIES_MEDIA_TYPE, page, UnaryOperator.identity());
     }
 
+    /** TMDB's native Movies genre enum (ADR 0013), for {@link GenreVocabulary} to cache. */
+    public List<CatalogFilterOption> movieGenres() {
+        return genreList("/genre/movie/list");
+    }
+
+    /** TMDB's native TV genre enum (ADR 0013), for {@link GenreVocabulary} to cache. */
+    public List<CatalogFilterOption> tvGenres() {
+        return genreList("/genre/tv/list");
+    }
+
     public CatalogPageResult popularTv(int page) {
         return fetchPage("/tv/popular", TV_MEDIA_TYPE, page, UnaryOperator.identity());
     }
@@ -149,6 +159,19 @@ public class TmdbClient {
         );
     }
 
+    private List<CatalogFilterOption> genreList(String path) {
+        try {
+            var response = restClient.get()
+                .uri(uriBuilder -> uriBuilder.path(path).queryParam(API_KEY_PARAM, properties.tmdb().apiKey()).build())
+                .retrieve()
+                .body(TmdbGenreListResponse.class);
+            var genres = response != null && response.genres() != null ? response.genres() : List.<TmdbGenre>of();
+            return genres.stream().map(genre -> new CatalogFilterOption(String.valueOf(genre.id()), genre.name())).toList();
+        } catch (RestClientException e) {
+            throw new CatalogUpstreamException(PROVIDER, e);
+        }
+    }
+
     private String coverUrl(String posterPath) {
         if (posterPath == null || posterPath.isBlank()) {
             return null;
@@ -193,4 +216,10 @@ public class TmdbClient {
         @JsonProperty("first_air_date") String firstAirDate,
         @JsonProperty("vote_average") Double voteAverage
     ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record TmdbGenreListResponse(List<TmdbGenre> genres) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record TmdbGenre(long id, String name) {}
 }

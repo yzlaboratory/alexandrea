@@ -465,6 +465,60 @@ class IgdbClientTest {
         gamesServer.verify();
     }
 
+    @Test
+    void genresMapsTheNativeIgdbEnumIntoCatalogFilterOptions() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/genres"))
+            .andExpect(method(HttpMethod.POST))
+            .andExpect(content().string("""
+                fields name;
+                limit 500;
+                sort name asc;
+                """))
+            .andRespond(withSuccess("""
+                [{"id": 5, "name": "Shooter"}, {"id": 12, "name": "Role-playing (RPG)"}]
+                """, MediaType.APPLICATION_JSON));
+
+        var genres = client.genres();
+
+        assertThat(genres).containsExactly(
+            new CatalogFilterOption("5", "Shooter"),
+            new CatalogFilterOption("12", "Role-playing (RPG)"));
+        gamesServer.verify();
+    }
+
+    @Test
+    void anEmptyGenresResponseMapsToAnEmptyListRatherThanThrowing() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/genres")).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+        assertThat(client.genres()).isEmpty();
+    }
+
+    @Test
+    void aFourZeroOneOnGenresForcesOneTokenRefetchAndRetryJustLikeGames() {
+        expectTokenRequest().andRespond(tokenResponse("stale-token", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/genres"))
+            .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer stale-token"))
+            .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+        expectTokenRequest().andRespond(tokenResponse("fresh-token", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/genres"))
+            .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer fresh-token"))
+            .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+        assertThat(client.genres()).isEmpty();
+        gamesServer.verify();
+        twitchServer.verify();
+    }
+
+    @Test
+    void anUpstream5xxOnGenresIsWrappedAsACatalogUpstreamException() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/genres")).andRespond(withServerError());
+
+        assertThatThrownBy(client::genres).isInstanceOf(CatalogUpstreamException.class);
+    }
+
     private void assertDiscoverGamesSortField(String sortKey, String expectedField) {
         expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
         gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))

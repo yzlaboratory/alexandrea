@@ -460,6 +460,59 @@ class TmdbClientTest {
             .isInstanceOf(CatalogUpstreamException.class);
     }
 
+    @Test
+    void movieGenresMapsTheNativeTmdbEnumIntoCatalogFilterOptions() {
+        server.expect(requestTo(startsWith(BASE_URL + "/genre/movie/list")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("api_key", "test-key"))
+            .andRespond(withSuccess("""
+                {"genres": [{"id": 28, "name": "Action"}, {"id": 35, "name": "Comedy"}]}
+                """, MediaType.APPLICATION_JSON));
+
+        var genres = client.movieGenres();
+
+        assertThat(genres).containsExactly(
+            new CatalogFilterOption("28", "Action"),
+            new CatalogFilterOption("35", "Comedy"));
+    }
+
+    @Test
+    void aNullGenresFieldOnMovieGenresMapsToAnEmptyListRatherThanThrowing() {
+        server.expect(requestTo(startsWith(BASE_URL + "/genre/movie/list")))
+            .andRespond(withSuccess("""
+                {"genres": null}
+                """, MediaType.APPLICATION_JSON));
+
+        assertThat(client.movieGenres()).isEmpty();
+    }
+
+    @Test
+    void anUpstream5xxOnMovieGenresIsWrappedAsACatalogUpstreamException() {
+        server.expect(requestTo(startsWith(BASE_URL + "/genre/movie/list"))).andRespond(withServerError());
+
+        assertThatThrownBy(client::movieGenres).isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void tvGenresRequestsTheTvGenreListPathNotTheMoviesOne() {
+        server.expect(requestTo(startsWith(BASE_URL + "/genre/tv/list")))
+            .andExpect(method(HttpMethod.GET))
+            .andRespond(withSuccess("""
+                {"genres": [{"id": 10759, "name": "Action & Adventure"}]}
+                """, MediaType.APPLICATION_JSON));
+
+        var genres = client.tvGenres();
+
+        assertThat(genres).containsExactly(new CatalogFilterOption("10759", "Action & Adventure"));
+    }
+
+    @Test
+    void anUpstream5xxOnTvGenresIsWrappedAsACatalogUpstreamException() {
+        server.expect(requestTo(startsWith(BASE_URL + "/genre/tv/list"))).andRespond(withServerError());
+
+        assertThatThrownBy(client::tvGenres).isInstanceOf(CatalogUpstreamException.class);
+    }
+
     private void assertDiscoverMoviesSortBy(String sortKey, String direction, String expectedSortBy) {
         server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
             .andExpect(queryParam("sort_by", expectedSortBy))

@@ -43,6 +43,13 @@ public class IgdbClient {
     private static final int PAGE_SIZE = 20;
     private static final String CLIENT_ID_HEADER = "Client-ID";
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}");
+    private static final ParameterizedTypeReference<List<IgdbGame>> GAME_LIST_TYPE = new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<List<IgdbGenre>> GENRE_LIST_TYPE = new ParameterizedTypeReference<>() {};
+    private static final String GENRE_LIST_REQUEST_BODY = """
+        fields name;
+        limit 500;
+        sort name asc;
+        """;
 
     private final RestClient gamesRestClient;
     private final RestClient twitchRestClient;
@@ -81,10 +88,16 @@ public class IgdbClient {
         return fetchPage(page, searchRequestBody(query, page));
     }
 
+    /** IGDB's native genre enum (ADR 0013), for {@link GenreVocabulary} to cache. */
+    public List<CatalogFilterOption> genres() {
+        var genres = postApicalypse("/genres", GENRE_LIST_REQUEST_BODY, GENRE_LIST_TYPE, false);
+        return genres.stream().map(genre -> new CatalogFilterOption(String.valueOf(genre.id()), genre.name())).toList();
+    }
+
     // Shared by the popular feed and search: same 401-retry-once handling,
     // same response mapping — only the Apicalypse request body differs.
     private CatalogPageResult fetchPage(int page, String requestBody) {
-        var games = fetchGames(requestBody, false);
+        var games = postApicalypse("/games", requestBody, GAME_LIST_TYPE, false);
         var items = games.stream().map(this::toItem).toList();
         // IGDB's /games response carries no total-count field, so a full
         // page is the only available signal that more might follow, the
@@ -93,16 +106,22 @@ public class IgdbClient {
         return new CatalogPageResult(items, page, hasMore);
     }
 
-    private List<IgdbGame> fetchGames(String requestBody, boolean isRetryAfterUnauthorized) {
+    // Shared by every Apicalypse endpoint this client calls (/games,
+    // /genres): same 401-retry-once handling, same "empty body on a genuine
+    // 200" tolerance — only the path, request body, and response element
+    // type differ per call site.
+    private <T> List<T> postApicalypse(
+        String path, String requestBody, ParameterizedTypeReference<List<T>> responseType, boolean isRetryAfterUnauthorized
+    ) {
         try {
             var response = gamesRestClient.post()
-                .uri("/games")
+                .uri(path)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
                 .header(CLIENT_ID_HEADER, properties.igdb().clientId())
                 .contentType(MediaType.TEXT_PLAIN)
                 .body(requestBody)
                 .retrieve()
-                .body(new ParameterizedTypeReference<List<IgdbGame>>() {});
+                .body(responseType);
             return response != null ? response : List.of();
         } catch (HttpClientErrorException.Unauthorized unauthorized) {
             if (isRetryAfterUnauthorized) {
@@ -110,7 +129,7 @@ public class IgdbClient {
             }
             LOG.info("IGDB rejected the cached Twitch token; fetching a fresh one and retrying once");
             invalidateToken();
-            return fetchGames(requestBody, true);
+            return postApicalypse(path, requestBody, responseType, true);
         } catch (RestClientException e) {
             throw new CatalogUpstreamException(PROVIDER, e);
         }
@@ -263,4 +282,7 @@ public class IgdbClient {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record IgdbCover(@JsonProperty("image_id") String imageId) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record IgdbGenre(long id, String name) {}
 }
