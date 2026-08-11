@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -64,6 +65,14 @@ class CatalogEndpointTest {
     private static final AtomicReference<String> nextTvSearchResponseBody = new AtomicReference<>();
     private static final AtomicReference<Integer> nextTvSearchResponseStatus = new AtomicReference<>(200);
     private static final AtomicInteger tvSearchRequestCount = new AtomicInteger();
+
+    private static final AtomicReference<String> nextDiscoverResponseBody = new AtomicReference<>();
+    private static final AtomicReference<Integer> nextDiscoverResponseStatus = new AtomicReference<>(200);
+    private static final AtomicInteger discoverRequestCount = new AtomicInteger();
+    private static final AtomicReference<String> lastDiscoverQuery = new AtomicReference<>();
+
+    private static final AtomicReference<String> nextTvDiscoverResponseBody = new AtomicReference<>();
+    private static final AtomicInteger tvDiscoverRequestCount = new AtomicInteger();
 
     private static HttpServer openLibraryServer;
     private static final AtomicReference<String> nextOpenLibraryResponseBody = new AtomicReference<>();
@@ -108,6 +117,15 @@ class CatalogEndpointTest {
         tmdbServer.createContext("/search/tv", exchange -> {
             tvSearchRequestCount.incrementAndGet();
             respond(exchange, nextTvSearchResponseStatus.get(), nextTvSearchResponseBody.get());
+        });
+        tmdbServer.createContext("/discover/movie", exchange -> {
+            discoverRequestCount.incrementAndGet();
+            lastDiscoverQuery.set(exchange.getRequestURI().getQuery());
+            respond(exchange, nextDiscoverResponseStatus.get(), nextDiscoverResponseBody.get());
+        });
+        tmdbServer.createContext("/discover/tv", exchange -> {
+            tvDiscoverRequestCount.incrementAndGet();
+            respond(exchange, 200, nextTvDiscoverResponseBody.get());
         });
         tmdbServer.start();
         var tmdbPort = tmdbServer.getAddress().getPort();
@@ -170,6 +188,34 @@ class CatalogEndpointTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private JdbcClient jdbcClient;
+
+    // loggedIn()/loggedInAs() fabricate a Spring Security principal directly
+    // rather than going through real signup — cheap for every other test in
+    // this class, but surface_preferences.user_id carries a real FK to
+    // users(id) (ADR 0025's store cascades on account deletion like every
+    // other per-user table), so a sort-persisting request 500s with a
+    // foreign-key violation unless a matching row actually exists. INSERT OR
+    // IGNORE keeps this idempotent across every test method sharing the
+    // one class-level database.
+    private static final long DEFAULT_TEST_USER_ID = 1L;
+    private static final List<Long> TEST_USER_IDS = List.of(DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L);
+
+    @BeforeEach
+    void seedTestUsers() {
+        for (var userId : TEST_USER_IDS) {
+            jdbcClient
+                .sql("""
+                    INSERT OR IGNORE INTO users (id, email, password_hash, verified, created_at, updated_at)
+                    VALUES (:id, :email, 'hash', 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')
+                    """)
+                .param("id", userId)
+                .param("email", "reader" + userId + "@example.com")
+                .update();
+        }
+    }
+
     @BeforeEach
     void resetState() {
         requestCount.set(0);
@@ -195,6 +241,18 @@ class CatalogEndpointTest {
         tvSearchRequestCount.set(0);
         nextTvSearchResponseStatus.set(200);
         nextTvSearchResponseBody.set("""
+            {"page": 1, "results": [], "total_pages": 1}
+            """);
+
+        discoverRequestCount.set(0);
+        lastDiscoverQuery.set(null);
+        nextDiscoverResponseStatus.set(200);
+        nextDiscoverResponseBody.set("""
+            {"page": 1, "results": [], "total_pages": 1}
+            """);
+
+        tvDiscoverRequestCount.set(0);
+        nextTvDiscoverResponseBody.set("""
             {"page": 1, "results": [], "total_pages": 1}
             """);
 
@@ -585,8 +643,166 @@ class CatalogEndpointTest {
         assertThat(igdbGamesRequestCount.get()).isEqualTo(1);
     }
 
+    @Test
+    void aSortParamRoutesMoviesToDiscoverRatherThanThePopularFeed() throws Exception {
+        nextDiscoverResponseBody.set("""
+            {
+              "page": 1,
+              "results": [
+                {"id": 5, "title": "Discovered Movie", "poster_path": "/d.jpg", "release_date": "2022-01-01", "vote_average": 6.5}
+              ],
+              "total_pages": 1
+            }
+            """);
+
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "popularity").param("direction", "desc")
+                .param("page", "50").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].title").value("Discovered Movie"));
+
+        assertThat(discoverRequestCount.get()).isEqualTo(1);
+        assertThat(requestCount.get()).isZero();
+        assertThat(lastDiscoverQuery.get()).contains("sort_by=popularity.desc");
+    }
+
+    @Test
+    void aSortParamRoutesTvToDiscoverTv() throws Exception {
+        mockMvc.perform(get("/api/catalog/tv").param("sort", "title").param("direction", "asc")
+                .param("page", "51").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(tvDiscoverRequestCount.get()).isEqualTo(1);
+        assertThat(tvRequestCount.get()).isZero();
+    }
+
+    @Test
+    void aSortParamRoutesGamesToIgdbWithTheChosenSortField() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("sort", "external_rating").param("direction", "desc")
+                .param("page", "1").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(igdbGamesRequestCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    void aSortParamRoutesBooksToOpenLibrarySearchRatherThanTrending() throws Exception {
+        nextOpenLibrarySearchResponseBody.set("""
+            {
+              "docs": [
+                {"key": "/works/OL1W", "title": "Sorted Book", "ratings_average": 4.5}
+              ]
+            }
+            """);
+
+        mockMvc.perform(get("/api/catalog/books").param("sort", "external_rating").param("direction", "desc")
+                .param("page", "1").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].title").value("Sorted Book"))
+            .andExpect(jsonPath("$.items[0].externalRating").value(4.5));
+
+        assertThat(openLibrarySearchRequestCount.get()).isEqualTo(1);
+        assertThat(openLibraryRequestCount.get()).isZero();
+    }
+
+    @Test
+    void sortingBooksByExternalRatingExcludesEntriesWithNoOpenLibraryRating() throws Exception {
+        nextOpenLibrarySearchResponseBody.set("""
+            {
+              "docs": [
+                {"key": "/works/OL1W", "title": "Rated Book", "ratings_average": 4.5},
+                {"key": "/works/OL2W", "title": "Unrated Book"}
+              ]
+            }
+            """);
+
+        mockMvc.perform(get("/api/catalog/books").param("sort", "external_rating").param("direction", "desc")
+                .param("page", "2").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].title").value("Rated Book"));
+    }
+
+    @Test
+    void anUnrecognisedSortKeyFallsBackToThePopularFeedRatherThanErroring() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "release_year").param("direction", "desc")
+                .param("page", "52").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(requestCount.get()).isEqualTo(1);
+        assertThat(discoverRequestCount.get()).isZero();
+    }
+
+    @Test
+    void aSortAlongsideAnActiveSearchIsIgnoredAndSearchWins() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("search", "blade runner")
+                .param("sort", "popularity").param("direction", "desc").param("page", "53").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(searchRequestCount.get()).isEqualTo(1);
+        assertThat(discoverRequestCount.get()).isZero();
+    }
+
+    @Test
+    void changingSortPersistsImmediatelyAndIsReadBackFromTheSortPreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "title").param("direction", "asc")
+                .param("page", "1").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies/sort-preference").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").value("title"))
+            .andExpect(jsonPath("$.sortDirection").value("asc"));
+    }
+
+    @Test
+    void theSortPreferenceEndpointReturnsNullFieldsWhenTheUserHasNeverSortedThisMediaType() throws Exception {
+        // A userId no other test in this class ever writes a preference
+        // for — every test method shares one Spring context and one SQLite
+        // database, so asserting "nothing stored" against the common
+        // loggedIn() userId would be order-dependent on whichever other
+        // sort-writing test happened to run first.
+        mockMvc.perform(get("/api/catalog/games/sort-preference").with(loggedInAs(9001L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").doesNotExist())
+            .andExpect(jsonPath("$.sortDirection").doesNotExist());
+    }
+
+    @Test
+    void theSortPreferenceEndpointIsPerMediaTypeNotSharedAcrossThem() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "popularity").param("direction", "desc")
+                .param("page", "60").with(loggedInAs(9002L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/tv/sort-preference").with(loggedInAs(9002L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").doesNotExist());
+    }
+
+    @Test
+    void anAnonymousSortPreferenceRequestIsRejected() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies/sort-preference")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void anUpstreamFailureDuringASortedFetchSurfacesAsServiceUnavailableAndDoesNotPersist() throws Exception {
+        nextDiscoverResponseStatus.set(500);
+        nextDiscoverResponseBody.set("Internal Server Error");
+
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "popularity").param("direction", "desc")
+                .param("page", "61").with(loggedInAs(9003L)))
+            .andExpect(status().isServiceUnavailable());
+
+        mockMvc.perform(get("/api/catalog/movies/sort-preference").with(loggedInAs(9003L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").doesNotExist());
+    }
+
     private static RequestPostProcessor loggedIn() {
+        return loggedInAs(1L);
+    }
+
+    private static RequestPostProcessor loggedInAs(long userId) {
         return authentication(new UsernamePasswordAuthenticationToken(
-            new AuthenticatedUser(1L, "reader@example.com"), null, List.of()));
+            new AuthenticatedUser(userId, "reader" + userId + "@example.com"), null, List.of()));
     }
 }
