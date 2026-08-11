@@ -30,6 +30,7 @@ export type FetchCatalogPageOutcome =
 export async function fetchCatalogPage(
   mediaType: string,
   page: number,
+  search?: string,
 ): Promise<FetchCatalogPageOutcome> {
   // fetch() itself rejects on a network-level failure (offline, DNS,
   // connection reset) rather than resolving with a non-ok Response. Without
@@ -37,8 +38,9 @@ export async function fetchCatalogPage(
   // past the point where it resets loadingRef/sets status to 'error',
   // leaving the grid stuck in a permanent loading spinner with no visible
   // way to retry.
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
   const response = await fetch(
-    `/api/catalog/${mediaType}?page=${String(page)}`,
+    `/api/catalog/${mediaType}?page=${String(page)}${searchParam}`,
     { credentials: 'same-origin' },
   ).catch(() => null);
   if (!response?.ok) return { status: 'error' };

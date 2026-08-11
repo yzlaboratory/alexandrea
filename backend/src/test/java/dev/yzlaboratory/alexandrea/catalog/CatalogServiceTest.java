@@ -2,6 +2,7 @@ package dev.yzlaboratory.alexandrea.catalog;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -360,6 +361,226 @@ class CatalogServiceTest {
         // TMDB backs both movies and tv, and ProviderCircuitBreaker is keyed
         // by provider name alone — five tv failures must open the same
         // breaker a movies request would hit.
+        assertThatThrownBy(() -> service.browse("movies", 999)).isInstanceOf(CatalogUpstreamException.class);
+        verify(tmdbClient, never()).popularMovies(999);
+    }
+
+    @Test
+    void searchingMoviesRoutesToTmdbSearchMoviesWithTheGivenQuery() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+
+        var result = service.browse("movies", "blade runner", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+        verify(tmdbClient, never()).popularMovies(anyInt());
+    }
+
+    @Test
+    void searchingTvRoutesToTmdbSearchTv() {
+        var tvItem = new CatalogItem("TMDB", "2", "tv", "A Series", "cover", LocalDate.of(2020, 1, 1), 8.0, 10.0);
+        var page = new CatalogPageResult(List.of(tvItem), 1, false);
+        when(tmdbClient.searchTv("stranger things", 1)).thenReturn(page);
+
+        var result = service.browse("tv", "stranger things", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).searchTv("stranger things", 1);
+        verify(tmdbClient, never()).popularTv(anyInt());
+    }
+
+    @Test
+    void searchingBooksRoutesToOpenLibrarySearch() {
+        var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Book", "cover", null, 4.2, 5.0);
+        var page = new CatalogPageResult(List.of(bookItem), 1, false);
+        when(openLibraryClient.search("dune", 1)).thenReturn(page);
+
+        var result = service.browse("books", "dune", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(openLibraryClient, times(1)).search("dune", 1);
+        verify(openLibraryClient, never()).trendingBooks(anyInt());
+    }
+
+    @Test
+    void searchingGamesRoutesToIgdbSearch() {
+        var gameItem = new CatalogItem("IGDB", "42", "games", "A Game", "cover", null, 84.0, 100.0);
+        var page = new CatalogPageResult(List.of(gameItem), 1, false);
+        when(igdbClient.search("witcher", 1)).thenReturn(page);
+
+        var result = service.browse("games", "witcher", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(igdbClient, times(1)).search("witcher", 1);
+        verify(igdbClient, never()).popularGames(anyInt());
+    }
+
+    @Test
+    void aNullSearchFallsThroughToThePopularFeed() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+
+        var result = service.browse("movies", null, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, never()).searchMovies(any(), anyInt());
+    }
+
+    @Test
+    void anEmptySearchFallsThroughToThePopularFeed() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+
+        var result = service.browse("movies", "", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, never()).searchMovies(any(), anyInt());
+    }
+
+    @Test
+    void aWhitespaceOnlySearchFallsThroughToThePopularFeed() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+
+        var result = service.browse("movies", "   ", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, never()).searchMovies(any(), anyInt());
+    }
+
+    @Test
+    void anUnsupportedMediaTypeWithASearchIsRejectedWithoutCallingAnyProvider() {
+        assertThatThrownBy(() -> service.browse("podcasts", "anything", 1))
+            .isInstanceOf(UnsupportedCatalogMediaTypeException.class);
+
+        verifyNoInteractions(tmdbClient, openLibraryClient, igdbClient);
+    }
+
+    @Test
+    void aMixedCaseSearchIsLowercasedBeforeReachingTheProvider() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+
+        var result = service.browse("movies", "Blade Runner", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+    }
+
+    @Test
+    void searchesDifferingOnlyByCaseShareOneCacheEntry() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+
+        assertThat(service.browse("movies", "Blade Runner", 1)).isEqualTo(page);
+        assertThat(service.browse("movies", "BLADE RUNNER", 1)).isEqualTo(page);
+        assertThat(service.browse("movies", "blade runner", 1)).isEqualTo(page);
+
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+    }
+
+    @Test
+    void searchesDifferingOnlyByExtraInternalWhitespaceShareOneCacheEntry() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+
+        assertThat(service.browse("movies", "blade   runner", 1)).isEqualTo(page);
+        assertThat(service.browse("movies", "blade runner", 1)).isEqualTo(page);
+
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+    }
+
+    @Test
+    void popularAndSearchPagesForTheSamePageNumberAreCachedIndependently() {
+        var popularPage = new CatalogPageResult(List.of(ITEM), 1, true);
+        var searchPage = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.popularMovies(1)).thenReturn(popularPage);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(searchPage);
+
+        var popularResult = service.browse("movies", 1);
+        var searchResult = service.browse("movies", "blade runner", 1);
+        // Re-requesting each must not cost a second upstream call — proves
+        // they landed in distinct cache entries rather than one clobbering
+        // the other.
+        var popularAgain = service.browse("movies", 1);
+        var searchAgain = service.browse("movies", "blade runner", 1);
+
+        assertThat(popularResult).isEqualTo(popularPage);
+        assertThat(searchResult).isEqualTo(searchPage);
+        assertThat(popularAgain).isEqualTo(popularPage);
+        assertThat(searchAgain).isEqualTo(searchPage);
+        verify(tmdbClient, times(1)).popularMovies(1);
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+    }
+
+    @Test
+    void searchingTheLiteralWordPopularDoesNotCollideWithThePopularFeedCache() {
+        var popularPage = new CatalogPageResult(List.of(ITEM), 1, true);
+        var searchItem = new CatalogItem("TMDB", "99", "movies", "Popular (the film)", "cover", LocalDate.of(2024, 1, 1), 6.0, 10.0);
+        var searchPage = new CatalogPageResult(List.of(searchItem), 1, false);
+        when(tmdbClient.popularMovies(1)).thenReturn(popularPage);
+        when(tmdbClient.searchMovies("popular", 1)).thenReturn(searchPage);
+
+        var popularResult = service.browse("movies", 1);
+        var searchResult = service.browse("movies", "popular", 1);
+
+        assertThat(popularResult).isEqualTo(popularPage);
+        assertThat(searchResult).isEqualTo(searchPage);
+    }
+
+    @Test
+    void twoDifferentSearchQueriesForTheSameMediaTypeAreCachedIndependently() {
+        var firstPage = new CatalogPageResult(List.of(ITEM), 1, false);
+        var secondItem = new CatalogItem("TMDB", "5", "movies", "Another Movie", "cover", LocalDate.of(2024, 1, 1), 6.0, 10.0);
+        var secondPage = new CatalogPageResult(List.of(secondItem), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(firstPage);
+        when(tmdbClient.searchMovies("dune", 1)).thenReturn(secondPage);
+
+        assertThat(service.browse("movies", "blade runner", 1)).isEqualTo(firstPage);
+        assertThat(service.browse("movies", "dune", 1)).isEqualTo(secondPage);
+        // Re-requesting the first query must not cost a second upstream call.
+        assertThat(service.browse("movies", "blade runner", 1)).isEqualTo(firstPage);
+
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+        verify(tmdbClient, times(1)).searchMovies("dune", 1);
+    }
+
+    @Test
+    void aColdSearchMissOnUpstreamFailureThrowsRatherThanFabricatingAResult() {
+        when(tmdbClient.searchMovies("blade runner", 1))
+            .thenThrow(new CatalogUpstreamException("TMDB", new RuntimeException("boom")));
+
+        assertThatThrownBy(() -> service.browse("movies", "blade runner", 1)).isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void aWarmButExpiredSearchPageIsServedStaleOnAnUpstreamFailureJustLikePopular() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+        service.browse("movies", "blade runner", 1);
+        ticker.advance(Duration.ofDays(7).plusSeconds(1));
+        when(tmdbClient.searchMovies("blade runner", 1))
+            .thenThrow(new CatalogUpstreamException("TMDB", new RuntimeException("boom")));
+
+        var result = service.browse("movies", "blade runner", 1);
+
+        assertThat(result).isEqualTo(page);
+    }
+
+    @Test
+    void fiveSearchFailuresOpenTheSharedTmdbBreakerAndAlsoBlockPopular() {
+        var failure = new CatalogUpstreamException("TMDB", new RuntimeException("boom"));
+        for (var page = 1; page <= 5; page++) {
+            var currentPage = page;
+            when(tmdbClient.searchMovies("blade runner", currentPage)).thenThrow(failure);
+            assertThatThrownBy(() -> service.browse("movies", "blade runner", currentPage))
+                .isInstanceOf(CatalogUpstreamException.class);
+        }
+
+        // TMDB's breaker is shared across popular and search (keyed by
+        // provider name alone, per ProviderCircuitBreaker) — five search
+        // failures must open the same breaker a popular-feed request hits.
         assertThatThrownBy(() -> service.browse("movies", 999)).isInstanceOf(CatalogUpstreamException.class);
         verify(tmdbClient, never()).popularMovies(999);
     }

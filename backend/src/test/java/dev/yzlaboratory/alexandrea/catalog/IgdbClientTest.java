@@ -261,6 +261,130 @@ class IgdbClientTest {
         gamesServer.verify();
     }
 
+    @Test
+    void searchMapsAMatchingResponseIntoCatalogItemsJustLikePopularGames() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest()
+            .andExpect(content().string("""
+                search "witcher";
+                fields name,cover.image_id,first_release_date,total_rating;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(withSuccess("""
+                [
+                  {
+                    "id": 1942,
+                    "name": "The Witcher 3: Wild Hunt",
+                    "cover": {"id": 89386, "image_id": "co1wyy"},
+                    "first_release_date": 1431993600,
+                    "total_rating": 92.5
+                  }
+                ]
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.search("witcher", 1);
+
+        assertThat(result.items()).hasSize(1);
+        var item = result.items().getFirst();
+        assertThat(item.provider()).isEqualTo("IGDB");
+        assertThat(item.mediaType()).isEqualTo("games");
+        assertThat(item.title()).isEqualTo("The Witcher 3: Wild Hunt");
+        gamesServer.verify();
+    }
+
+    @Test
+    void searchWithNoMatchesMapsToAnEmptyPageRatherThanAnError() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest().andRespond(emptyGamesResponse());
+
+        var result = client.search("zzzznomatch", 1);
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.hasMore()).isFalse();
+    }
+
+    @Test
+    void searchEscapesAQuoteInTheQueryRatherThanBreakingTheApicalypseClause() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest()
+            .andExpect(content().string("""
+                search "the \\"witcher\\"";
+                fields name,cover.image_id,first_release_date,total_rating;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.search("the \"witcher\"", 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void searchStripsControlCharactersFromTheQueryRatherThanEmbeddingThemRaw() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest()
+            .andExpect(content().string("""
+                search "witcher3";
+                fields name,cover.image_id,first_release_date,total_rating;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        // A raw newline or NUL byte has no legitimate role in a title
+        // search and, left unescaped, could otherwise break out of the
+        // quoted Apicalypse string it's embedded in.
+        client.search("witcher\n3", 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void searchRequestsLimitAndOffsetComputedFromThePage() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))
+            .andExpect(method(HttpMethod.POST))
+            .andExpect(content().string("""
+                search "witcher";
+                fields name,cover.image_id,first_release_date,total_rating;
+                limit 20;
+                offset 40;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.search("witcher", 3);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void anUpstream5xxOnSearchIsWrappedAsACatalogUpstreamException() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest().andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.search("witcher", 1)).isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void aFourZeroOneOnSearchForcesOneTokenRefetchAndRetryJustLikePopular() {
+        expectTokenRequest().andRespond(tokenResponse("stale-token", 5_000_000));
+        expectGamesRequest()
+            .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer stale-token"))
+            .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+        expectTokenRequest().andRespond(tokenResponse("fresh-token", 5_000_000));
+        expectGamesRequest()
+            .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer fresh-token"))
+            .andRespond(emptyGamesResponse());
+
+        var result = client.search("witcher", 1);
+
+        assertThat(result.items()).isEmpty();
+        gamesServer.verify();
+        twitchServer.verify();
+    }
+
     private org.springframework.test.web.client.ResponseActions expectTokenRequest() {
         return twitchServer.expect(requestTo(org.hamcrest.Matchers.startsWith(TWITCH_BASE_URL + "/oauth2/token")))
             .andExpect(method(HttpMethod.POST));

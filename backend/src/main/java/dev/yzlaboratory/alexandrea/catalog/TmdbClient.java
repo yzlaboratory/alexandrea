@@ -5,18 +5,21 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.util.UriBuilder;
 
 /**
- * Talks to TMDB's {@code /movie/popular} and {@code /tv/popular} endpoints
- * and maps each response into the common {@link CatalogItem} shape
- * (ADR 0001). TMDB already paginates at 20 results per page, so the
- * page-number contract this app exposes to the frontend needs no offset math
- * for this provider.
+ * Talks to TMDB's {@code /movie/popular}/{@code /tv/popular} and {@code
+ * /search/movie}/{@code /search/tv} endpoints (ADR 0018's "nothing applied"
+ * and "text search active" rows) and maps each response into the common
+ * {@link CatalogItem} shape (ADR 0001). TMDB already paginates at 20 results
+ * per page, so the page-number contract this app exposes to the frontend
+ * needs no offset math for this provider.
  *
  * <p>{@code /tv/popular} already returns one row per series — TMDB has no
  * per-season entry in this feed — so {@link #popularTv(int)} needs no extra
@@ -37,6 +40,7 @@ public class TmdbClient {
     private static final double TMDB_RATING_SCALE = 10.0;
     private static final String API_KEY_PARAM = "api_key";
     private static final String PAGE_PARAM = "page";
+    private static final String QUERY_PARAM = "query";
 
     private final RestClient restClient;
     private final CatalogProperties properties;
@@ -47,19 +51,33 @@ public class TmdbClient {
     }
 
     public CatalogPageResult popularMovies(int page) {
-        return popular("/movie/popular", MOVIES_MEDIA_TYPE, page);
+        return fetchPage("/movie/popular", MOVIES_MEDIA_TYPE, page, UnaryOperator.identity());
     }
 
     public CatalogPageResult popularTv(int page) {
-        return popular("/tv/popular", TV_MEDIA_TYPE, page);
+        return fetchPage("/tv/popular", TV_MEDIA_TYPE, page, UnaryOperator.identity());
     }
 
-    private CatalogPageResult popular(String path, String mediaType, int page) {
-        var response = fetchPopular(path, page);
-        // response itself is never null (fetchPopular falls back to
+    // TMDB has no query filter on /discover — search is its own endpoint
+    // pair, per ADR 0018's "text search active" row.
+    public CatalogPageResult searchMovies(String query, int page) {
+        return fetchPage("/search/movie", MOVIES_MEDIA_TYPE, page, uriBuilder -> uriBuilder.queryParam(QUERY_PARAM, query));
+    }
+
+    public CatalogPageResult searchTv(String query, int page) {
+        return fetchPage("/search/tv", TV_MEDIA_TYPE, page, uriBuilder -> uriBuilder.queryParam(QUERY_PARAM, query));
+    }
+
+    // Shared by the popular feed and search: TMDB returns the identical
+    // {page, results, total_pages} shape for both, so the same page/hasMore
+    // math and CatalogItem mapping apply either way — only the path and
+    // (for search) the extra "query" param differ.
+    private CatalogPageResult fetchPage(String path, String mediaType, int page, UnaryOperator<UriBuilder> extraParams) {
+        var response = fetchResponse(path, page, extraParams);
+        // response itself is never null (fetchResponse falls back to
         // TmdbPopularResponse.empty(page)), but a 200 whose body omits
         // "results" (or sends it explicitly null) deserializes the field to
-        // null too — guard here rather than NPE outside fetchPopular's
+        // null too — guard here rather than NPE outside fetchResponse's
         // try/catch, which would surface as a bare 500 instead of the
         // intended CatalogUpstreamException -> 503.
         var results = response.results() != null ? response.results() : List.<TmdbTitle>of();
@@ -68,13 +86,13 @@ public class TmdbClient {
         return new CatalogPageResult(items, page, hasMore);
     }
 
-    private TmdbPopularResponse fetchPopular(String path, int page) {
+    private TmdbPopularResponse fetchResponse(String path, int page, UnaryOperator<UriBuilder> extraParams) {
         try {
             var response = restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                    .path(path)
-                    .queryParam(API_KEY_PARAM, properties.tmdb().apiKey())
-                    .queryParam(PAGE_PARAM, page)
+                .uri(uriBuilder -> extraParams.apply(
+                        uriBuilder.path(path)
+                            .queryParam(API_KEY_PARAM, properties.tmdb().apiKey())
+                            .queryParam(PAGE_PARAM, page))
                     .build())
                 .retrieve()
                 .body(TmdbPopularResponse.class);

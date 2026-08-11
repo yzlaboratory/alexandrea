@@ -31,8 +31,9 @@ public class CatalogController {
     @GetMapping("/{media_type}")
     public CatalogPageResult browse(
         @PathVariable("media_type") String mediaType,
+        @RequestParam(required = false) String search,
         @RequestParam(name = "page", defaultValue = "1") @Min(1) int page
     ) {
-        return catalogService.browse(mediaType, page);
+        return catalogService.browse(mediaType, search, page);
     }
 }

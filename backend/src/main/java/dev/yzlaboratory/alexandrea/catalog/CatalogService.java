@@ -1,5 +1,6 @@
 package dev.yzlaboratory.alexandrea.catalog;
 
+import java.util.Locale;
 import java.util.function.IntFunction;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +22,11 @@ import org.springframework.stereotype.Service;
 public class CatalogService {
 
     private static final String POPULAR_FEED = "popular";
+    // Prefixed rather than the bare query text: a popular-feed key's
+    // feed/query slot (ADR 0007) is always exactly the literal "popular", so
+    // no search query — however a user spells it, even literally "popular"
+    // — can ever collide with it under this prefix.
+    private static final String SEARCH_FEED_PREFIX = "search:";
     private static final String NO_FILTERS = "";
     private static final String DEFAULT_SORT = "default";
 
@@ -44,11 +50,35 @@ public class CatalogService {
         this.circuitBreaker = circuitBreaker;
     }
 
-    // The one dispatch point routing media_type to its provider and popular
-    // feed (ADR 0018's "nothing applied" row) — every media type shares the
-    // exact same cache + circuit-breaker path below, so this stays one small
-    // switch rather than four near-identical service classes.
+    /** Popular-feed convenience overload — equivalent to {@code browse(mediaType, null, page)}. */
     public CatalogPageResult browse(String mediaType, int page) {
+        return browse(mediaType, null, page);
+    }
+
+    // The one dispatch point routing media_type (and, when present, a text
+    // search) to its provider and the right endpoint per ADR 0018's
+    // "nothing applied" / "text search active" rows — every media type
+    // shares the exact same cache + circuit-breaker path below, so this
+    // stays two small switches rather than four near-identical service
+    // classes per state.
+    public CatalogPageResult browse(String mediaType, String search, int page) {
+        var query = normalizeSearch(search);
+        return query != null ? searchFeedFor(mediaType, query, page) : popularFeedFor(mediaType, page);
+    }
+
+    // Lowercased and whitespace-collapsed, not just trimmed: "Blade Runner",
+    // "blade runner", and "blade   runner" are the same search to a user,
+    // and without this they'd fall into three distinct cache entries (and
+    // cost three separate upstream calls) for one search. All three
+    // providers' search relevance is already case-insensitive, so this
+    // changes nothing about which results come back.
+    private static String normalizeSearch(String search) {
+        if (search == null) return null;
+        var normalized = search.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private CatalogPageResult popularFeedFor(String mediaType, int page) {
         return switch (mediaType) {
             case TmdbClient.MOVIES_MEDIA_TYPE ->
                 popularFeed(TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, tmdbClient::popularMovies, page);
@@ -63,8 +93,38 @@ public class CatalogService {
         };
     }
 
+    private CatalogPageResult searchFeedFor(String mediaType, String query, int page) {
+        return switch (mediaType) {
+            case TmdbClient.MOVIES_MEDIA_TYPE -> searchFeed(
+                TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, query, pageToFetch -> tmdbClient.searchMovies(query, pageToFetch), page
+            );
+            case TmdbClient.TV_MEDIA_TYPE -> searchFeed(
+                TmdbClient.PROVIDER, TmdbClient.TV_MEDIA_TYPE, query, pageToFetch -> tmdbClient.searchTv(query, pageToFetch), page
+            );
+            case OpenLibraryClient.BOOKS_MEDIA_TYPE -> searchFeed(
+                OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, query,
+                pageToFetch -> openLibraryClient.search(query, pageToFetch), page
+            );
+            case IgdbClient.GAMES_MEDIA_TYPE -> searchFeed(
+                IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, query, pageToFetch -> igdbClient.search(query, pageToFetch), page
+            );
+            default -> throw new UnsupportedCatalogMediaTypeException(mediaType);
+        };
+    }
+
     private CatalogPageResult popularFeed(String provider, String mediaType, IntFunction<CatalogPageResult> fetchPage, int page) {
         var key = CatalogCache.pageKey(provider, mediaType, POPULAR_FEED, NO_FILTERS, DEFAULT_SORT, page);
+        return cachedFeed(provider, key, fetchPage, page);
+    }
+
+    private CatalogPageResult searchFeed(
+        String provider, String mediaType, String query, IntFunction<CatalogPageResult> fetchPage, int page
+    ) {
+        var key = CatalogCache.pageKey(provider, mediaType, SEARCH_FEED_PREFIX + query, NO_FILTERS, DEFAULT_SORT, page);
+        return cachedFeed(provider, key, fetchPage, page);
+    }
+
+    private CatalogPageResult cachedFeed(String provider, String key, IntFunction<CatalogPageResult> fetchPage, int page) {
         try {
             return cache.getOrComputePage(key, () -> fetchThroughBreaker(provider, fetchPage, page));
         } catch (CatalogUpstreamException upstreamFailure) {
