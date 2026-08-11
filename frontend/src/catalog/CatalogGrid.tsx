@@ -36,15 +36,17 @@ interface CatalogGridProps {
 type LoadState = 'idle' | 'loading' | 'error';
 
 // Page/hasMore/in-flight state lives in refs, not useState: loadNextPage
-// only needs to change identity when mediaType or search changes (so the
-// IntersectionObserver effect below isn't torn down and rebuilt on every
-// single page load), while still always reading the latest page/hasMore.
+// only needs to change identity when mediaType, search, sort, or direction
+// changes (so the IntersectionObserver effect below isn't torn down and
+// rebuilt on every single page load), while still always reading the
+// latest page/hasMore.
 //
-// Switching media type, or committing a new search, is handled by
-// CatalogPage rendering this component with a `key` covering both — not by
-// an internal reset effect: React unmounts and remounts a fresh instance,
-// which resets every ref and state variable here for free and avoids a
-// same-render cascade from calling setState synchronously inside an effect.
+// Switching media type, committing a new search, or changing the sort is
+// handled by CatalogPage rendering this component with a `key` covering
+// all of them — not by an internal reset effect: React unmounts and
+// remounts a fresh instance, which resets every ref and state variable
+// here for free and avoids a same-render cascade from calling setState
+// synchronously inside an effect.
 function CatalogGrid({
   mediaType,
   search,
