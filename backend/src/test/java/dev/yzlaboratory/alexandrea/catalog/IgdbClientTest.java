@@ -322,6 +322,26 @@ class IgdbClientTest {
     }
 
     @Test
+    void searchStripsControlCharactersFromTheQueryRatherThanEmbeddingThemRaw() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest()
+            .andExpect(content().string("""
+                search "witcher3";
+                fields name,cover.image_id,first_release_date,total_rating;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        // A raw newline or NUL byte has no legitimate role in a title
+        // search and, left unescaped, could otherwise break out of the
+        // quoted Apicalypse string it's embedded in.
+        client.search("witcher\n3", 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
     void searchRequestsLimitAndOffsetComputedFromThePage() {
         expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
         gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))

@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -40,6 +41,7 @@ public class IgdbClient {
     private static final double IGDB_RATING_SCALE = 100.0;
     private static final int PAGE_SIZE = 20;
     private static final String CLIENT_ID_HEADER = "Client-ID";
+    private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}");
 
     private final RestClient gamesRestClient;
     private final RestClient twitchRestClient;
@@ -124,9 +126,13 @@ public class IgdbClient {
     }
 
     // A query containing a literal quote or backslash would otherwise break
-    // out of the Apicalypse string it's embedded in.
+    // out of the Apicalypse string it's embedded in; a raw control character
+    // (e.g. a stray NUL or ESC byte that CatalogService's own whitespace
+    // collapse wouldn't catch) has no legitimate role in a title search and
+    // is stripped rather than escaped.
     private static String escapeApicalypseString(String value) {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+        var withoutControlCharacters = CONTROL_CHARACTERS.matcher(value).replaceAll("");
+        return withoutControlCharacters.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private CatalogItem toItem(IgdbGame game) {
