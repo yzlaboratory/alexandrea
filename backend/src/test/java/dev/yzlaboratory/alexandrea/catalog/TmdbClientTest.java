@@ -354,4 +354,119 @@ class TmdbClientTest {
 
         assertThatThrownBy(() -> client.searchTv("stranger things", 1)).isInstanceOf(CatalogUpstreamException.class);
     }
+
+    @Test
+    void discoverMoviesRequestsThePopularityDescendingSortByValueFromAdr0018() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("sort_by", "popularity.desc"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesMapsReleaseDateSortToPrimaryReleaseDateDescending() {
+        assertDiscoverMoviesSortBy("release_date", "desc", "primary_release_date.desc");
+    }
+
+    @Test
+    void discoverMoviesMapsTitleSortToOriginalTitleAscending() {
+        assertDiscoverMoviesSortBy("title", "asc", "original_title.asc");
+    }
+
+    @Test
+    void discoverMoviesMapsExternalRatingSortToVoteAverageDescending() {
+        assertDiscoverMoviesSortBy("external_rating", "desc", "vote_average.desc");
+    }
+
+    @Test
+    void discoverMoviesHonorsAscendingPopularityAsTheOppositeOfTheAdr0018Default() {
+        assertDiscoverMoviesSortBy("popularity", "asc", "popularity.asc");
+    }
+
+    @Test
+    void discoverMoviesHonorsAscendingReleaseDateAsTheOppositeOfTheAdr0018Default() {
+        assertDiscoverMoviesSortBy("release_date", "asc", "primary_release_date.asc");
+    }
+
+    @Test
+    void discoverMoviesHonorsDescendingTitleAsTheOppositeOfTheAdr0018Default() {
+        assertDiscoverMoviesSortBy("title", "desc", "original_title.desc");
+    }
+
+    @Test
+    void discoverMoviesHonorsAscendingExternalRatingAsTheOppositeOfTheAdr0018Default() {
+        assertDiscoverMoviesSortBy("external_rating", "asc", "vote_average.asc");
+    }
+
+    @Test
+    void discoverMoviesMapsAResponseIntoCatalogItemsJustLikePopular() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andRespond(withSuccess("""
+                {
+                  "page": 1,
+                  "results": [
+                    {"id": 603692, "title": "John Wick: Chapter 4", "poster_path": "/x.jpg", "release_date": "2023-03-22", "vote_average": 7.8}
+                  ],
+                  "total_pages": 1
+                }
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.discoverMovies("popularity", "desc", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("John Wick: Chapter 4");
+    }
+
+    @Test
+    void anUpstream5xxOnDiscoverMoviesIsWrappedAsACatalogUpstreamException() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie"))).andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.discoverMovies("popularity", "desc", 1))
+            .isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void discoverTvRequestsTheDiscoverTvPathNotDiscoverMovie() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/tv")))
+            .andExpect(queryParam("sort_by", "vote_average.desc"))
+            .andRespond(withSuccess("""
+                {
+                  "page": 1,
+                  "results": [
+                    {"id": 66732, "name": "Stranger Things", "poster_path": "/st.jpg", "first_air_date": "2016-07-15", "vote_average": 8.6}
+                  ],
+                  "total_pages": 1
+                }
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.discoverTv("external_rating", "desc", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().mediaType()).isEqualTo("tv");
+        assertThat(result.items().getFirst().title()).isEqualTo("Stranger Things");
+    }
+
+    @Test
+    void anUpstream5xxOnDiscoverTvIsWrappedAsACatalogUpstreamException() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/tv"))).andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.discoverTv("popularity", "desc", 1))
+            .isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    private void assertDiscoverMoviesSortBy(String sortKey, String direction, String expectedSortBy) {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(queryParam("sort_by", expectedSortBy))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies(sortKey, direction, 1);
+    }
 }

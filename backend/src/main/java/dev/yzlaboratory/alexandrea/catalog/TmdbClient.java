@@ -41,6 +41,7 @@ public class TmdbClient {
     private static final String API_KEY_PARAM = "api_key";
     private static final String PAGE_PARAM = "page";
     private static final String QUERY_PARAM = "query";
+    private static final String SORT_BY_PARAM = "sort_by";
 
     private final RestClient restClient;
     private final CatalogProperties properties;
@@ -66,6 +67,34 @@ public class TmdbClient {
 
     public CatalogPageResult searchTv(String query, int page) {
         return fetchPage("/search/tv", TV_MEDIA_TYPE, page, uriBuilder -> uriBuilder.queryParam(QUERY_PARAM, query));
+    }
+
+    // ADR 0018's "filter/sort applied" row: /discover/* replaces /*/popular
+    // once a sort is chosen, since /movie/popular and /tv/popular accept no
+    // sort_by param of their own.
+    public CatalogPageResult discoverMovies(String sortKey, String direction, int page) {
+        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page,
+            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction)));
+    }
+
+    public CatalogPageResult discoverTv(String sortKey, String direction, int page) {
+        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page,
+            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction)));
+    }
+
+    // TMDB's sort_by accepts "<field>.<asc|desc>" for every field below in
+    // either direction (ADR 0018 pins only the default direction's literal
+    // value, e.g. "popularity.desc" — the opposite direction is the same
+    // mechanism with the suffix flipped).
+    private static String sortByValue(String sortKey, String direction) {
+        var field = switch (sortKey) {
+            case "popularity" -> "popularity";
+            case "release_date" -> "primary_release_date";
+            case "title" -> "original_title";
+            case "external_rating" -> "vote_average";
+            default -> throw new IllegalArgumentException("Unsupported sort key: " + sortKey);
+        };
+        return field + "." + direction;
     }
 
     // Shared by the popular feed and search: TMDB returns the identical
