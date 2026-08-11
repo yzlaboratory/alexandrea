@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchCatalogPage,
-  fetchSortPreference,
+  fetchCatalogPreference,
   type CatalogPageResult,
 } from './catalogApi';
 
@@ -229,9 +229,76 @@ describe('catalogApi', () => {
       await fetchCatalogPage('movies', 1, undefined, 'title', 'asc'),
     ).toEqual({ status: 'ok', result });
   });
+
+  it('appends a url-encoded genre param when a genre is given', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1, undefined, undefined, undefined, '28');
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/catalog/movies?page=1&genre=28');
+  });
+
+  it('omits the genre param entirely when no genre is given', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1);
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/catalog/movies?page=1');
+  });
+
+  it('combines sort, direction, and genre params in one request', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1, undefined, 'popularity', 'desc', '28');
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe(
+      '/api/catalog/movies?page=1&sort=popularity&direction=desc&genre=28',
+    );
+  });
+
+  it('resolves to an ok outcome carrying a genre-filtered page just like a popular-feed page', async () => {
+    const result: CatalogPageResult = {
+      items: [
+        {
+          provider: 'TMDB',
+          externalId: '9',
+          mediaType: 'movies',
+          title: 'An Action Movie',
+          coverUrl: null,
+          releaseDate: '2024-01-01',
+          externalRating: 7,
+          externalRatingScale: 10,
+        },
+      ],
+      page: 1,
+      hasMore: false,
+      availableFilters: { genre: [{ value: '28', label: 'Action' }] },
+    };
+    fetchMock.mockResolvedValueOnce(response(200, result));
+
+    expect(
+      await fetchCatalogPage(
+        'movies',
+        1,
+        undefined,
+        undefined,
+        undefined,
+        '28',
+      ),
+    ).toEqual({ status: 'ok', result });
+  });
 });
 
-describe('fetchSortPreference', () => {
+describe('fetchCatalogPreference', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -243,55 +310,75 @@ describe('fetchSortPreference', () => {
     vi.unstubAllGlobals();
   });
 
-  it('requests the sort preference for the given media type with same-origin credentials', async () => {
+  it('requests the preference for the given media type with same-origin credentials', async () => {
     fetchMock.mockResolvedValueOnce(
-      response(200, { sortKey: 'title', sortDirection: 'asc' }),
+      response(200, { sortKey: 'title', sortDirection: 'asc', genre: null }),
     );
 
-    await fetchSortPreference('books');
+    await fetchCatalogPreference('books');
 
     const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(path).toBe('/api/catalog/books/sort-preference');
+    expect(path).toBe('/api/catalog/books/preference');
     expect(init.credentials).toBe('same-origin');
   });
 
-  it('resolves to the stored sort key and direction on a 200', async () => {
+  it('resolves to the stored sort key, direction, and genre on a 200', async () => {
     fetchMock.mockResolvedValueOnce(
-      response(200, { sortKey: 'external_rating', sortDirection: 'desc' }),
+      response(200, {
+        sortKey: 'external_rating',
+        sortDirection: 'desc',
+        genre: '28',
+      }),
     );
 
-    expect(await fetchSortPreference('books')).toEqual({
+    expect(await fetchCatalogPreference('books')).toEqual({
       sortKey: 'external_rating',
       sortDirection: 'desc',
+      genre: '28',
     });
   });
 
   it('resolves to null fields when nothing is stored', async () => {
     fetchMock.mockResolvedValueOnce(
-      response(200, { sortKey: null, sortDirection: null }),
+      response(200, { sortKey: null, sortDirection: null, genre: null }),
     );
 
-    expect(await fetchSortPreference('movies')).toEqual({
+    expect(await fetchCatalogPreference('movies')).toEqual({
       sortKey: null,
       sortDirection: null,
+      genre: null,
+    });
+  });
+
+  it('resolves to a stored genre with no sort chosen yet', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { sortKey: null, sortDirection: null, genre: '28' }),
+    );
+
+    expect(await fetchCatalogPreference('movies')).toEqual({
+      sortKey: null,
+      sortDirection: null,
+      genre: '28',
     });
   });
 
   it('degrades to null fields rather than rejecting on a non-2xx response', async () => {
     fetchMock.mockResolvedValueOnce(response(401));
 
-    expect(await fetchSortPreference('movies')).toEqual({
+    expect(await fetchCatalogPreference('movies')).toEqual({
       sortKey: null,
       sortDirection: null,
+      genre: null,
     });
   });
 
   it('degrades to null fields rather than rejecting when fetch itself fails', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
-    await expect(fetchSortPreference('movies')).resolves.toEqual({
+    await expect(fetchCatalogPreference('movies')).resolves.toEqual({
       sortKey: null,
       sortDirection: null,
+      genre: null,
     });
   });
 
@@ -302,9 +389,10 @@ describe('fetchSortPreference', () => {
       json: () => Promise.reject(new Error('not json')),
     });
 
-    expect(await fetchSortPreference('movies')).toEqual({
+    expect(await fetchCatalogPreference('movies')).toEqual({
       sortKey: null,
       sortDirection: null,
+      genre: null,
     });
   });
 });
