@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -11,10 +12,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import dev.yzlaboratory.alexandrea.auth.MutableClock;
+import dev.yzlaboratory.alexandrea.surface.SurfacePreference;
+import dev.yzlaboratory.alexandrea.surface.SurfacePreferenceStore;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +41,9 @@ class CatalogServiceTest {
     @Mock
     private IgdbClient igdbClient;
 
+    @Mock
+    private SurfacePreferenceStore surfacePreferenceStore;
+
     private MutableTicker ticker;
     private MutableClock clock;
     private CatalogService service;
@@ -47,7 +54,7 @@ class CatalogServiceTest {
         clock = new MutableClock(Instant.parse("2026-06-07T12:00:00Z"));
         var cache = new CatalogCache(ticker);
         var circuitBreaker = new ProviderCircuitBreaker(clock);
-        service = new CatalogService(tmdbClient, openLibraryClient, igdbClient, cache, circuitBreaker);
+        service = new CatalogService(tmdbClient, openLibraryClient, igdbClient, cache, circuitBreaker, surfacePreferenceStore);
     }
 
     @Test
@@ -583,6 +590,189 @@ class CatalogServiceTest {
         // failures must open the same breaker a popular-feed request hits.
         assertThatThrownBy(() -> service.browse("movies", 999)).isInstanceOf(CatalogUpstreamException.class);
         verify(tmdbClient, never()).popularMovies(999);
+    }
+
+    @Test
+    void sortedMoviesRoutesToTmdbDiscoverMoviesWithTheGivenSortAndDirection() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.discoverMovies("title", "asc", 1)).thenReturn(page);
+
+        var result = service.browse("movies", null, "title", "asc", 7L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).discoverMovies("title", "asc", 1);
+        verify(tmdbClient, never()).popularMovies(anyInt());
+    }
+
+    @Test
+    void sortedTvRoutesToTmdbDiscoverTv() {
+        var tvItem = new CatalogItem("TMDB", "2", "tv", "A Series", "cover", LocalDate.of(2020, 1, 1), 8.0, 10.0);
+        var page = new CatalogPageResult(List.of(tvItem), 1, true);
+        when(tmdbClient.discoverTv("release_date", "desc", 1)).thenReturn(page);
+
+        var result = service.browse("tv", null, "release_date", "desc", 7L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).discoverTv("release_date", "desc", 1);
+    }
+
+    @Test
+    void sortedBooksRoutesToOpenLibrarySortedBooks() {
+        var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Book", "cover", null, 4.2, 5.0);
+        var page = new CatalogPageResult(List.of(bookItem), 1, true);
+        when(openLibraryClient.sortedBooks("external_rating", "desc", 1)).thenReturn(page);
+
+        var result = service.browse("books", null, "external_rating", "desc", 7L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(openLibraryClient, times(1)).sortedBooks("external_rating", "desc", 1);
+        verify(openLibraryClient, never()).trendingBooks(anyInt());
+    }
+
+    @Test
+    void sortedGamesRoutesToIgdbDiscoverGames() {
+        var gameItem = new CatalogItem("IGDB", "42", "games", "A Game", "cover", null, 84.0, 100.0);
+        var page = new CatalogPageResult(List.of(gameItem), 1, true);
+        when(igdbClient.discoverGames("popularity", "asc", 1)).thenReturn(page);
+
+        var result = service.browse("games", null, "popularity", "asc", 7L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(igdbClient, times(1)).discoverGames("popularity", "asc", 1);
+    }
+
+    @Test
+    void aSuccessfulSortedFetchPersistsTheChoiceToTheSurfacePreferenceStore() {
+        when(tmdbClient.discoverMovies("popularity", "desc", 1))
+            .thenReturn(new CatalogPageResult(List.of(ITEM), 1, true));
+
+        service.browse("movies", null, "popularity", "desc", 42L, 1);
+
+        verify(surfacePreferenceStore, times(1)).upsert(42L, "catalog", "movies", "popularity", "desc", null);
+    }
+
+    @Test
+    void anUnrecognisedSortKeyFallsBackToThePopularFeedWithoutPersisting() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+
+        var result = service.browse("movies", null, "release_year", "desc", 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, never()).discoverMovies(any(), any(), anyInt());
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void anUnrecognisedDirectionFallsBackToThePopularFeedWithoutPersisting() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+
+        var result = service.browse("movies", null, "popularity", "sideways", 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, never()).discoverMovies(any(), any(), anyInt());
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aSortKeyWithNoDirectionFallsBackToThePopularFeedWithoutPersisting() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+
+        var result = service.browse("movies", null, "popularity", null, 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aSortIsIgnoredAndNotPersistedWhileASearchIsActive() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+
+        var result = service.browse("movies", "blade runner", "popularity", "desc", 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+        verify(tmdbClient, never()).discoverMovies(any(), any(), anyInt());
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void anUpstreamFailureDuringASortedFetchDoesNotPersistTheUnprovenSort() {
+        when(tmdbClient.discoverMovies("popularity", "desc", 1))
+            .thenThrow(new CatalogUpstreamException("TMDB", new RuntimeException("boom")));
+
+        assertThatThrownBy(() -> service.browse("movies", null, "popularity", "desc", 42L, 1))
+            .isInstanceOf(CatalogUpstreamException.class);
+
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void anUnsupportedMediaTypeWithASortIsRejectedWithoutCallingAnyProviderOrPersisting() {
+        assertThatThrownBy(() -> service.browse("podcasts", null, "popularity", "desc", 42L, 1))
+            .isInstanceOf(UnsupportedCatalogMediaTypeException.class);
+
+        verifyNoInteractions(tmdbClient, openLibraryClient, igdbClient, surfacePreferenceStore);
+    }
+
+    @Test
+    void theSortedFeedIsCachedSeparatelyFromThePlainPopularFeedForTheSamePage() {
+        var popularPage = new CatalogPageResult(List.of(ITEM), 1, true);
+        var sortedItem = new CatalogItem("TMDB", "9", "movies", "Sorted Title", "cover", LocalDate.of(2024, 1, 1), 5.0, 10.0);
+        var sortedPage = new CatalogPageResult(List.of(sortedItem), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(popularPage);
+        when(tmdbClient.discoverMovies("title", "asc", 1)).thenReturn(sortedPage);
+
+        var popular = service.browse("movies", 1);
+        var sorted = service.browse("movies", null, "title", "asc", 42L, 1);
+        // Re-requesting each must not cost a second upstream call — proves
+        // they landed in distinct cache entries rather than one clobbering
+        // the other.
+        var popularAgain = service.browse("movies", 1);
+        var sortedAgain = service.browse("movies", null, "title", "asc", 42L, 1);
+
+        assertThat(popular).isEqualTo(popularPage);
+        assertThat(sorted).isEqualTo(sortedPage);
+        assertThat(popularAgain).isEqualTo(popularPage);
+        assertThat(sortedAgain).isEqualTo(sortedPage);
+        verify(tmdbClient, times(1)).popularMovies(1);
+        verify(tmdbClient, times(1)).discoverMovies("title", "asc", 1);
+    }
+
+    @Test
+    void twoDifferentSortDirectionsForTheSameKeyAreCachedIndependently() {
+        var ascItem = new CatalogItem("TMDB", "1", "movies", "A Title", "cover", LocalDate.of(2024, 1, 1), 5.0, 10.0);
+        var descItem = new CatalogItem("TMDB", "2", "movies", "Z Title", "cover", LocalDate.of(2024, 1, 1), 5.0, 10.0);
+        when(tmdbClient.discoverMovies("title", "asc", 1)).thenReturn(new CatalogPageResult(List.of(ascItem), 1, true));
+        when(tmdbClient.discoverMovies("title", "desc", 1)).thenReturn(new CatalogPageResult(List.of(descItem), 1, true));
+
+        var asc = service.browse("movies", null, "title", "asc", 42L, 1);
+        var desc = service.browse("movies", null, "title", "desc", 42L, 1);
+
+        assertThat(asc.items()).containsExactly(ascItem);
+        assertThat(desc.items()).containsExactly(descItem);
+        verify(tmdbClient, times(1)).discoverMovies("title", "asc", 1);
+        verify(tmdbClient, times(1)).discoverMovies("title", "desc", 1);
+    }
+
+    @Test
+    void sortPreferenceDelegatesToTheSurfacePreferenceStoreUnderTheCatalogSurface() {
+        var stored = new SurfacePreference(42L, "catalog", "movies", "title", "asc", null, clock.instant());
+        when(surfacePreferenceStore.get(42L, "catalog", "movies")).thenReturn(Optional.of(stored));
+
+        var result = service.sortPreference(42L, "movies");
+
+        assertThat(result).contains(stored);
+    }
+
+    @Test
+    void sortPreferenceReturnsEmptyWhenTheUserHasNeverSetOne() {
+        when(surfacePreferenceStore.get(42L, "catalog", "books")).thenReturn(Optional.empty());
+
+        assertThat(service.sortPreference(42L, "books")).isEmpty();
     }
 
     private void failFivePages() {
