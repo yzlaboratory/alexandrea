@@ -14,12 +14,13 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriBuilder;
 
 /**
- * Talks to TMDB's {@code /movie/popular}/{@code /tv/popular} and {@code
- * /search/movie}/{@code /search/tv} endpoints (ADR 0018's "nothing applied"
- * and "text search active" rows) and maps each response into the common
- * {@link CatalogItem} shape (ADR 0001). TMDB already paginates at 20 results
- * per page, so the page-number contract this app exposes to the frontend
- * needs no offset math for this provider.
+ * Talks to TMDB's {@code /movie/popular}/{@code /tv/popular}, {@code
+ * /discover/movie}/{@code /discover/tv}, and {@code /search/movie}/{@code
+ * /search/tv} endpoints (ADR 0018's "nothing applied", "filter/sort
+ * applied", and "text search active" rows) and maps each response into the
+ * common {@link CatalogItem} shape (ADR 0001). TMDB already paginates at 20
+ * results per page, so the page-number contract this app exposes to the
+ * frontend needs no offset math for this provider.
  *
  * <p>{@code /tv/popular} already returns one row per series — TMDB has no
  * per-season entry in this feed — so {@link #popularTv(int)} needs no extra
@@ -88,10 +89,10 @@ public class TmdbClient {
     // mechanism with the suffix flipped).
     private static String sortByValue(String sortKey, String direction) {
         var field = switch (sortKey) {
-            case "popularity" -> "popularity";
-            case "release_date" -> "primary_release_date";
-            case "title" -> "original_title";
-            case "external_rating" -> "vote_average";
+            case CatalogSort.POPULARITY -> "popularity";
+            case CatalogSort.RELEASE_DATE -> "primary_release_date";
+            case CatalogSort.TITLE -> "original_title";
+            case CatalogSort.EXTERNAL_RATING -> "vote_average";
             default -> throw new IllegalArgumentException("Unsupported sort key: " + sortKey);
         };
         return field + "." + direction;

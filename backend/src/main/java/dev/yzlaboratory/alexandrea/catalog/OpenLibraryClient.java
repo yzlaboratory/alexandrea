@@ -10,10 +10,11 @@ import org.springframework.web.client.RestClientException;
 
 /**
  * Talks to OpenLibrary's {@code /trending/daily.json} and {@code
- * /search.json} endpoints (ADR 0018's "nothing applied" and "text search
- * active" rows) and maps their responses into the common {@link CatalogItem}
- * shape (ADR 0001). Needs no API key — OpenLibrary is a public,
- * unauthenticated API.
+ * /search.json} endpoints — the latter for both title search and, with an
+ * explicit {@code sort=}, the sorted/discover feed (ADR 0018's "nothing
+ * applied", "filter/sort applied", and "text search active" rows) — and
+ * maps their responses into the common {@link CatalogItem} shape (ADR 0001).
+ * Needs no API key — OpenLibrary is a public, unauthenticated API.
  */
 @Component
 public class OpenLibraryClient {
@@ -26,7 +27,6 @@ public class OpenLibraryClient {
     private static final double OPEN_LIBRARY_RATING_SCALE = 5.0;
     private static final int PAGE_SIZE = 20;
     private static final String WORK_KEY_PREFIX = "/works/";
-    private static final String EXTERNAL_RATING_SORT_KEY = "external_rating";
     // Explicitly requested only on the sorted/discover path: /trending/daily.json
     // and /search.json's plain q= responses never carry ratings_average (see
     // toItem's rationale below), so the field must be asked for by name here to
@@ -68,7 +68,7 @@ public class OpenLibraryClient {
         // pagination one).
         var hasMore = keyedDocs.size() >= PAGE_SIZE;
         var items = keyedDocs.stream().map(this::toSortedItem).toList();
-        if (EXTERNAL_RATING_SORT_KEY.equals(sortKey)) {
+        if (CatalogSort.EXTERNAL_RATING.equals(sortKey)) {
             items = items.stream().filter(item -> item.externalRating() != null).toList();
         }
         return new CatalogPageResult(items, page, hasMore);
@@ -154,13 +154,13 @@ public class OpenLibraryClient {
     // IGDB's own sort params do.
     private static String sortParam(String sortKey, String direction) {
         var preset = switch (sortKey) {
-            case "popularity" -> "trending";
-            case "release_date" -> "new";
-            case "title" -> "title";
-            case EXTERNAL_RATING_SORT_KEY -> "rating";
+            case CatalogSort.POPULARITY -> "trending";
+            case CatalogSort.RELEASE_DATE -> "new";
+            case CatalogSort.TITLE -> "title";
+            case CatalogSort.EXTERNAL_RATING -> "rating";
             default -> throw new IllegalArgumentException("Unsupported sort key: " + sortKey);
         };
-        var defaultDirection = "title".equals(sortKey) ? "asc" : "desc";
+        var defaultDirection = CatalogSort.TITLE.equals(sortKey) ? CatalogSort.ASCENDING : CatalogSort.DESCENDING;
         return direction.equals(defaultDirection) ? preset : preset + " " + direction;
     }
 

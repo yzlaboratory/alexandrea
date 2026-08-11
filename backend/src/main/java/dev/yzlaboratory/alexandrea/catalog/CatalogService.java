@@ -37,9 +37,10 @@ public class CatalogService {
     // ADR 0018: all four sorts are available for all four media types, so
     // (unlike filters) sort needs no per-media-type capability table — just
     // this one shared valid-key/valid-direction check.
-    private static final Set<String> VALID_SORT_KEYS =
-        Set.of("popularity", "release_date", "title", "external_rating");
-    private static final Set<String> VALID_DIRECTIONS = Set.of("asc", "desc");
+    private static final Set<String> VALID_SORT_KEYS = Set.of(
+        CatalogSort.POPULARITY, CatalogSort.RELEASE_DATE, CatalogSort.TITLE, CatalogSort.EXTERNAL_RATING
+    );
+    private static final Set<String> VALID_DIRECTIONS = Set.of(CatalogSort.ASCENDING, CatalogSort.DESCENDING);
 
     private final TmdbClient tmdbClient;
     private final OpenLibraryClient openLibraryClient;

@@ -20,13 +20,14 @@ import org.springframework.web.client.RestClientException;
 
 /**
  * Talks to IGDB's {@code /games} endpoint — sorted by {@code
- * total_rating_count desc} for the popular feed, or with an Apicalypse
- * {@code search "…"} clause for title search (ADR 0018's "nothing applied"
- * and "text search active" rows) — and maps its response into the common
- * {@link CatalogItem} shape (ADR 0001). IGDB authenticates via a Twitch
- * client-credentials token: this client fetches one lazily on first use and
- * caches it in memory, refetching only on expiry or a 401 from {@code
- * /games} — there is no scheduled refresh job.
+ * total_rating_count desc} for the popular feed, by the caller's chosen
+ * field/direction for the sorted/discover feed, or with an Apicalypse
+ * {@code search "…"} clause for title search (ADR 0018's "nothing applied",
+ * "filter/sort applied", and "text search active" rows) — and maps its
+ * response into the common {@link CatalogItem} shape (ADR 0001). IGDB
+ * authenticates via a Twitch client-credentials token: this client fetches
+ * one lazily on first use and caches it in memory, refetching only on
+ * expiry or a 401 from {@code /games} — there is no scheduled refresh job.
  */
 @Component
 public class IgdbClient {
@@ -42,8 +43,6 @@ public class IgdbClient {
     private static final int PAGE_SIZE = 20;
     private static final String CLIENT_ID_HEADER = "Client-ID";
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}");
-    private static final String POPULARITY_SORT_KEY = "popularity";
-    private static final String DESCENDING = "desc";
 
     private final RestClient gamesRestClient;
     private final RestClient twitchRestClient;
@@ -63,7 +62,7 @@ public class IgdbClient {
     // 0018's "nothing applied" row), so this is the same request discoverGames
     // would build for that exact (sortKey, direction) pair.
     public CatalogPageResult popularGames(int page) {
-        return discoverGames(POPULARITY_SORT_KEY, DESCENDING, page);
+        return discoverGames(CatalogSort.POPULARITY, CatalogSort.DESCENDING, page);
     }
 
     // ADR 0018's "filter/sort applied" row: same /games endpoint as popular,
@@ -133,10 +132,10 @@ public class IgdbClient {
     // direction is the same mechanism with the keyword flipped.
     private static String igdbSortField(String sortKey) {
         return switch (sortKey) {
-            case POPULARITY_SORT_KEY -> "total_rating_count";
-            case "release_date" -> "first_release_date";
-            case "title" -> "name";
-            case "external_rating" -> "total_rating";
+            case CatalogSort.POPULARITY -> "total_rating_count";
+            case CatalogSort.RELEASE_DATE -> "first_release_date";
+            case CatalogSort.TITLE -> "name";
+            case CatalogSort.EXTERNAL_RATING -> "total_rating";
             default -> throw new IllegalArgumentException("Unsupported sort key: " + sortKey);
         };
     }
