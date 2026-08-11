@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchCatalogPage, type CatalogPageResult } from './catalogApi';
+import {
+  fetchCatalogPage,
+  fetchSortPreference,
+  type CatalogPageResult,
+} from './catalogApi';
 
 function response(status: number, body?: unknown): Response {
   return {
@@ -175,6 +179,132 @@ describe('catalogApi', () => {
 
     expect(await fetchCatalogPage('movies', 1, 'blade runner')).toEqual({
       status: 'error',
+    });
+  });
+
+  it('appends sort and direction params when a sort is given', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1, undefined, 'popularity', 'desc');
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe(
+      '/api/catalog/movies?page=1&sort=popularity&direction=desc',
+    );
+  });
+
+  it('omits the sort and direction params entirely when no sort is given', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1);
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/catalog/movies?page=1');
+  });
+
+  it('resolves to an ok outcome carrying a sorted page just like a popular-feed page', async () => {
+    const result: CatalogPageResult = {
+      items: [
+        {
+          provider: 'TMDB',
+          externalId: '1',
+          mediaType: 'movies',
+          title: 'A Title',
+          coverUrl: null,
+          releaseDate: '2024-01-01',
+          externalRating: 5,
+          externalRatingScale: 10,
+        },
+      ],
+      page: 1,
+      hasMore: false,
+    };
+    fetchMock.mockResolvedValueOnce(response(200, result));
+
+    expect(
+      await fetchCatalogPage('movies', 1, undefined, 'title', 'asc'),
+    ).toEqual({ status: 'ok', result });
+  });
+});
+
+describe('fetchSortPreference', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('requests the sort preference for the given media type with same-origin credentials', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { sortKey: 'title', sortDirection: 'asc' }),
+    );
+
+    await fetchSortPreference('books');
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/catalog/books/sort-preference');
+    expect(init.credentials).toBe('same-origin');
+  });
+
+  it('resolves to the stored sort key and direction on a 200', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { sortKey: 'external_rating', sortDirection: 'desc' }),
+    );
+
+    expect(await fetchSortPreference('books')).toEqual({
+      sortKey: 'external_rating',
+      sortDirection: 'desc',
+    });
+  });
+
+  it('resolves to null fields when nothing is stored', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { sortKey: null, sortDirection: null }),
+    );
+
+    expect(await fetchSortPreference('movies')).toEqual({
+      sortKey: null,
+      sortDirection: null,
+    });
+  });
+
+  it('degrades to null fields rather than rejecting on a non-2xx response', async () => {
+    fetchMock.mockResolvedValueOnce(response(401));
+
+    expect(await fetchSortPreference('movies')).toEqual({
+      sortKey: null,
+      sortDirection: null,
+    });
+  });
+
+  it('degrades to null fields rather than rejecting when fetch itself fails', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    await expect(fetchSortPreference('movies')).resolves.toEqual({
+      sortKey: null,
+      sortDirection: null,
+    });
+  });
+
+  it('degrades to null fields when the body is not valid JSON', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new Error('not json')),
+    });
+
+    expect(await fetchSortPreference('movies')).toEqual({
+      sortKey: null,
+      sortDirection: null,
     });
   });
 });
