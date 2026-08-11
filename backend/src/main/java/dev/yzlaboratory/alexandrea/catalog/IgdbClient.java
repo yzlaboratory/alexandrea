@@ -20,13 +20,14 @@ import org.springframework.web.client.RestClientException;
 
 /**
  * Talks to IGDB's {@code /games} endpoint — sorted by {@code
- * total_rating_count desc} for the popular feed, or with an Apicalypse
- * {@code search "…"} clause for title search (ADR 0018's "nothing applied"
- * and "text search active" rows) — and maps its response into the common
- * {@link CatalogItem} shape (ADR 0001). IGDB authenticates via a Twitch
- * client-credentials token: this client fetches one lazily on first use and
- * caches it in memory, refetching only on expiry or a 401 from {@code
- * /games} — there is no scheduled refresh job.
+ * total_rating_count desc} for the popular feed, by the caller's chosen
+ * field/direction for the sorted/discover feed, or with an Apicalypse
+ * {@code search "…"} clause for title search (ADR 0018's "nothing applied",
+ * "filter/sort applied", and "text search active" rows) — and maps its
+ * response into the common {@link CatalogItem} shape (ADR 0001). IGDB
+ * authenticates via a Twitch client-credentials token: this client fetches
+ * one lazily on first use and caches it in memory, refetching only on
+ * expiry or a 401 from {@code /games} — there is no scheduled refresh job.
  */
 @Component
 public class IgdbClient {
@@ -57,14 +58,24 @@ public class IgdbClient {
         this.clock = clock;
     }
 
+    // IGDB's own default feed is already "sorted by popularity desc" (ADR
+    // 0018's "nothing applied" row), so this is the same request discoverGames
+    // would build for that exact (sortKey, direction) pair.
     public CatalogPageResult popularGames(int page) {
-        return fetchPage(page, popularRequestBody(page));
+        return discoverGames(CatalogSort.POPULARITY, CatalogSort.DESCENDING, page);
+    }
+
+    // ADR 0018's "filter/sort applied" row: same /games endpoint as popular,
+    // parameterized by the caller's chosen sort field/direction instead of
+    // the fixed total_rating_count desc.
+    public CatalogPageResult discoverGames(String sortKey, String direction, int page) {
+        return fetchPage(page, discoverRequestBody(sortKey, direction, page));
     }
 
     // ADR 0018's "text search active" row: IGDB's search is an Apicalypse
     // "search" clause on the same /games endpoint, not a separate one — and
     // (per the ADR's "Behavior under active text search" section) cannot be
-    // combined with an explicit sort, so popularRequestBody's sort clause is
+    // combined with an explicit sort, so discoverRequestBody's sort clause is
     // dropped rather than reused here.
     public CatalogPageResult search(String query, int page) {
         return fetchPage(page, searchRequestBody(query, page));
@@ -105,14 +116,28 @@ public class IgdbClient {
         }
     }
 
-    private static String popularRequestBody(int page) {
+    private static String discoverRequestBody(String sortKey, String direction, int page) {
         var offset = (page - 1) * PAGE_SIZE;
         return """
             fields name,cover.image_id,first_release_date,total_rating;
-            sort total_rating_count desc;
+            sort %s %s;
             limit %d;
             offset %d;
-            """.formatted(PAGE_SIZE, offset);
+            """.formatted(igdbSortField(sortKey), direction, PAGE_SIZE, offset);
+    }
+
+    // ADR 0018 pins only the default direction's literal Apicalypse clause
+    // (e.g. "sort total_rating_count desc") — Apicalypse's own sort syntax
+    // accepts either direction keyword for any field, so the opposite
+    // direction is the same mechanism with the keyword flipped.
+    private static String igdbSortField(String sortKey) {
+        return switch (sortKey) {
+            case CatalogSort.POPULARITY -> "total_rating_count";
+            case CatalogSort.RELEASE_DATE -> "first_release_date";
+            case CatalogSort.TITLE -> "name";
+            case CatalogSort.EXTERNAL_RATING -> "total_rating";
+            default -> throw new IllegalArgumentException("Unsupported sort key: " + sortKey);
+        };
     }
 
     private static String searchRequestBody(String query, int page) {

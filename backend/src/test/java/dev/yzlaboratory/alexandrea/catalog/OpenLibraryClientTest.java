@@ -290,6 +290,214 @@ class OpenLibraryClientTest {
         server.verify();
     }
 
+    @Test
+    void sortedBooksRequestsAWildcardQueryWithTheGivenSortAndTheRatingsAverageField() {
+        expectSortedRequest("trending").andRespond(withSuccess("""
+            {"docs": []}
+            """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksMapsReleaseDateDescendingToNew() {
+        assertSortedBooksSortParam("release_date", "desc", "new");
+    }
+
+    @Test
+    void sortedBooksMapsTitleAscendingToTitle() {
+        assertSortedBooksSortParam("title", "asc", "title");
+    }
+
+    @Test
+    void sortedBooksMapsExternalRatingDescendingToRating() {
+        assertSortedBooksSortParam("external_rating", "desc", "rating");
+    }
+
+    @Test
+    void sortedBooksHonorsAscendingPopularityAsTheOppositeOfTheAdr0018Default() {
+        assertSortedBooksSortParam("popularity", "asc", "trending%20asc");
+    }
+
+    @Test
+    void sortedBooksHonorsAscendingReleaseDateAsTheOppositeOfTheAdr0018Default() {
+        assertSortedBooksSortParam("release_date", "asc", "new%20asc");
+    }
+
+    @Test
+    void sortedBooksHonorsDescendingTitleAsTheOppositeOfTheAdr0018Default() {
+        assertSortedBooksSortParam("title", "desc", "title%20desc");
+    }
+
+    @Test
+    void sortedBooksHonorsAscendingExternalRatingAsTheOppositeOfTheAdr0018Default() {
+        assertSortedBooksSortParam("external_rating", "asc", "rating%20asc");
+    }
+
+    @Test
+    void sortedBooksRequestsLimitAndOffsetComputedFromThePageNumber() {
+        server.expect(requestTo(BASE_URL + "/search.json?q=*&sort=trending&fields=key,title,cover_i,first_publish_year,ratings_average&limit=20&offset=40"))
+            .andExpect(method(HttpMethod.GET))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", 3);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksMapsAMatchingDocIntoCatalogItemsJustLikeTrending() {
+        expectSortedRequest("title").andRespond(withSuccess("""
+            {
+              "docs": [
+                {"key": "/works/OL262758W", "title": "Ready Player One", "cover_i": 8235116, "first_publish_year": 2011}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("title", "asc", 1);
+
+        assertThat(result.items()).hasSize(1);
+        var item = result.items().getFirst();
+        assertThat(item.provider()).isEqualTo("OpenLibrary");
+        assertThat(item.externalId()).isEqualTo("OL262758W");
+        assertThat(item.mediaType()).isEqualTo("books");
+        assertThat(item.title()).isEqualTo("Ready Player One");
+        assertThat(item.coverUrl()).isEqualTo("https://covers.openlibrary.org/b/id/8235116-M.jpg");
+        assertThat(item.releaseDate()).isEqualTo(LocalDate.of(2011, 1, 1));
+    }
+
+    @Test
+    void sortedBooksExcludesKeylessDocsJustLikeTrending() {
+        expectSortedRequest("trending").andRespond(withSuccess("""
+            {
+              "docs": [
+                {"title": "No Key Book"},
+                {"key": "/works/OL9W", "title": "Has A Key"}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("popularity", "desc", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("Has A Key");
+    }
+
+    @Test
+    void sortedBooksByAnythingOtherThanExternalRatingKeepsEntriesWithNoRating() {
+        expectSortedRequest("trending").andRespond(withSuccess("""
+            {
+              "docs": [
+                {"key": "/works/OL1W", "title": "Unrated Book"}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("popularity", "desc", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().externalRating()).isNull();
+    }
+
+    @Test
+    void sortedBooksByExternalRatingExcludesEntriesWithNoRatingRatherThanSinkingOrZeroingThem() {
+        expectSortedRequest("rating").andRespond(withSuccess("""
+            {
+              "docs": [
+                {"key": "/works/OL1W", "title": "Rated Book", "ratings_average": 4.2},
+                {"key": "/works/OL2W", "title": "Unrated Book"}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("external_rating", "desc", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("Rated Book");
+        assertThat(result.items().getFirst().externalRating()).isEqualTo(4.2);
+    }
+
+    @Test
+    void sortedBooksByExternalRatingReturningOnlyUnratedEntriesProducesAnEmptyPageRatherThanAnError() {
+        expectSortedRequest("rating").andRespond(withSuccess("""
+            {
+              "docs": [
+                {"key": "/works/OL1W", "title": "Unrated One"},
+                {"key": "/works/OL2W", "title": "Unrated Two"}
+              ]
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("external_rating", "desc", 1);
+
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void sortedBooksByExternalRatingStillReportsMoreAvailableWhenTheFullUpstreamPageWasFilteredToEmpty() {
+        expectSortedRequest("rating").andRespond(withSuccess(fullPageOfUnratedDocsJson(), MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("external_rating", "desc", 1);
+
+        // The upstream page was full (20 keyed docs) even though every one of
+        // them lacked a rating and got filtered out — hasMore must reflect
+        // the former, not collapse to false just because this page's visible
+        // result set emptied out (ADR 0006's shrink is a display concern,
+        // not a pagination one).
+        assertThat(result.items()).isEmpty();
+        assertThat(result.hasMore()).isTrue();
+    }
+
+    @Test
+    void aNullDocsFieldOnSortedBooksMapsToAnEmptyListRatherThanThrowing() {
+        expectSortedRequest("trending").andRespond(withSuccess("""
+            {"docs": null}
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("popularity", "desc", 1);
+
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void anUpstream5xxOnSortedBooksIsWrappedAsACatalogUpstreamException() {
+        expectSortedRequest("trending").andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", 1))
+            .isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    private void assertSortedBooksSortParam(String sortKey, String direction, String expectedSortParam) {
+        expectSortedRequest(expectedSortParam).andRespond(withSuccess("""
+            {"docs": []}
+            """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks(sortKey, direction, 1);
+    }
+
+    private static String fullPageOfUnratedDocsJson() {
+        var docs = new StringBuilder();
+        for (var i = 1; i <= 20; i++) {
+            if (i > 1) {
+                docs.append(',');
+            }
+            docs.append("{\"key\": \"/works/OL").append(i).append("W\", \"title\": \"Work ").append(i).append("\"}");
+        }
+        return "{\"docs\": [" + docs + "]}";
+    }
+
+    private org.springframework.test.web.client.ResponseActions expectSortedRequest(String expectedSortParam) {
+        return server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "*"))
+            .andExpect(queryParam("sort", expectedSortParam));
+    }
+
     private org.springframework.test.web.client.ResponseActions expectTrendingRequest() {
         return server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/trending/daily.json")))
             .andExpect(method(HttpMethod.GET))

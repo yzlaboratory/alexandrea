@@ -19,9 +19,14 @@ import CatalogTile from './CatalogTile';
 interface CatalogGridProps {
   mediaType: string;
   // Undefined/empty means "no active search" — the popular feed. A present,
-  // non-empty value replaces it with title-search results (issue #41);
-  // never combined with sort/filter, which stay out of scope here.
+  // non-empty value replaces it with title-search results.
   search?: string;
+  // sort/direction are ignored server-side whenever search is active
+  // (CatalogService) — CatalogPage never passes both at once, but this
+  // component stays a plain pass-through either way rather than encoding
+  // that rule itself.
+  sort?: string;
+  direction?: string;
   // Only used to render the "clear search" affordance on a no-results
   // search page — CatalogGrid doesn't own the search box itself, so
   // clearing it is delegated back to whichever component does (CatalogPage).
@@ -31,18 +36,22 @@ interface CatalogGridProps {
 type LoadState = 'idle' | 'loading' | 'error';
 
 // Page/hasMore/in-flight state lives in refs, not useState: loadNextPage
-// only needs to change identity when mediaType or search changes (so the
-// IntersectionObserver effect below isn't torn down and rebuilt on every
-// single page load), while still always reading the latest page/hasMore.
+// only needs to change identity when mediaType, search, sort, or direction
+// changes (so the IntersectionObserver effect below isn't torn down and
+// rebuilt on every single page load), while still always reading the
+// latest page/hasMore.
 //
-// Switching media type, or committing a new search, is handled by
-// CatalogPage rendering this component with a `key` covering both — not by
-// an internal reset effect: React unmounts and remounts a fresh instance,
-// which resets every ref and state variable here for free and avoids a
-// same-render cascade from calling setState synchronously inside an effect.
+// Switching media type, committing a new search, or changing the sort is
+// handled by CatalogPage rendering this component with a `key` covering
+// all of them — not by an internal reset effect: React unmounts and
+// remounts a fresh instance, which resets every ref and state variable
+// here for free and avoids a same-render cascade from calling setState
+// synchronously inside an effect.
 function CatalogGrid({
   mediaType,
   search,
+  sort,
+  direction,
   onClearSearch,
 }: CatalogGridProps): ReactNode {
   const [items, setItems] = useState<CatalogItem[]>([]);
@@ -61,13 +70,23 @@ function CatalogGrid({
     if (loadingRef.current || !hasMoreRef.current) return;
     loadingRef.current = true;
     setStatus('loading');
-    // Two distinct call shapes, not one call with search always passed
-    // (even as undefined/''), so a plain browse request looks identical on
-    // the wire to what it was before this issue — no incidental "search="
-    // param for the common no-search case.
+    // Three distinct call shapes, not one call with every param always
+    // passed (even as undefined), so each request looks on the wire exactly
+    // like what a caller not using that feature would send — no incidental
+    // "search=" or "sort="/"direction=" params for the cases that don't use
+    // them. search and sort are never both active (CatalogPage never sets
+    // both), so this is an if/else-if, not a combined branch.
     const outcome = search
       ? await fetchCatalogPage(mediaType, nextPageRef.current, search)
-      : await fetchCatalogPage(mediaType, nextPageRef.current);
+      : sort
+        ? await fetchCatalogPage(
+            mediaType,
+            nextPageRef.current,
+            undefined,
+            sort,
+            direction,
+          )
+        : await fetchCatalogPage(mediaType, nextPageRef.current);
     loadingRef.current = false;
     if (outcome.status === 'error') {
       setStatus('error');
@@ -89,7 +108,7 @@ function CatalogGrid({
     nextPageRef.current = outcome.result.page + 1;
     hasMoreRef.current = outcome.result.hasMore;
     setStatus('idle');
-  }, [mediaType, search]);
+  }, [mediaType, search, sort, direction]);
 
   // Loads this instance's first page. loadNextPage's identity is stable for
   // the lifetime of one mounted instance (mediaType is fixed per instance —

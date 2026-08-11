@@ -7,9 +7,11 @@ import * as catalogApi from '../catalog/catalogApi';
 
 vi.mock('../catalog/catalogApi', () => ({
   fetchCatalogPage: vi.fn(),
+  fetchSortPreference: vi.fn(),
 }));
 
 const mockedFetchCatalogPage = vi.mocked(catalogApi.fetchCatalogPage);
+const mockedFetchSortPreference = vi.mocked(catalogApi.fetchSortPreference);
 
 // Test fixture only — the media types under test come from AppShell's
 // own MEDIA_TYPES (imported below), not a hardcoded copy here.
@@ -36,6 +38,9 @@ describe('CatalogSurfaceRoute', () => {
       status: 'ok',
       result: { items: [], page: 1, hasMore: false },
     });
+    mockedFetchSortPreference
+      .mockReset()
+      .mockResolvedValue({ sortKey: null, sortDirection: null });
   });
 
   it.each(MEDIA_TYPES)(
@@ -48,7 +53,13 @@ describe('CatalogSurfaceRoute', () => {
           name: EXPECTED_HEADINGS[mediaType],
         }),
       ).toBeInTheDocument();
-      expect(mockedFetchCatalogPage).toHaveBeenCalledWith(mediaType, 1);
+      expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+        mediaType,
+        1,
+        undefined,
+        'popularity',
+        'desc',
+      );
     },
   );
 

@@ -14,12 +14,13 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriBuilder;
 
 /**
- * Talks to TMDB's {@code /movie/popular}/{@code /tv/popular} and {@code
- * /search/movie}/{@code /search/tv} endpoints (ADR 0018's "nothing applied"
- * and "text search active" rows) and maps each response into the common
- * {@link CatalogItem} shape (ADR 0001). TMDB already paginates at 20 results
- * per page, so the page-number contract this app exposes to the frontend
- * needs no offset math for this provider.
+ * Talks to TMDB's {@code /movie/popular}/{@code /tv/popular}, {@code
+ * /discover/movie}/{@code /discover/tv}, and {@code /search/movie}/{@code
+ * /search/tv} endpoints (ADR 0018's "nothing applied", "filter/sort
+ * applied", and "text search active" rows) and maps each response into the
+ * common {@link CatalogItem} shape (ADR 0001). TMDB already paginates at 20
+ * results per page, so the page-number contract this app exposes to the
+ * frontend needs no offset math for this provider.
  *
  * <p>{@code /tv/popular} already returns one row per series — TMDB has no
  * per-season entry in this feed — so {@link #popularTv(int)} needs no extra
@@ -41,6 +42,7 @@ public class TmdbClient {
     private static final String API_KEY_PARAM = "api_key";
     private static final String PAGE_PARAM = "page";
     private static final String QUERY_PARAM = "query";
+    private static final String SORT_BY_PARAM = "sort_by";
 
     private final RestClient restClient;
     private final CatalogProperties properties;
@@ -66,6 +68,34 @@ public class TmdbClient {
 
     public CatalogPageResult searchTv(String query, int page) {
         return fetchPage("/search/tv", TV_MEDIA_TYPE, page, uriBuilder -> uriBuilder.queryParam(QUERY_PARAM, query));
+    }
+
+    // ADR 0018's "filter/sort applied" row: /discover/* replaces /*/popular
+    // once a sort is chosen, since /movie/popular and /tv/popular accept no
+    // sort_by param of their own.
+    public CatalogPageResult discoverMovies(String sortKey, String direction, int page) {
+        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page,
+            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction)));
+    }
+
+    public CatalogPageResult discoverTv(String sortKey, String direction, int page) {
+        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page,
+            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction)));
+    }
+
+    // TMDB's sort_by accepts "<field>.<asc|desc>" for every field below in
+    // either direction (ADR 0018 pins only the default direction's literal
+    // value, e.g. "popularity.desc" — the opposite direction is the same
+    // mechanism with the suffix flipped).
+    private static String sortByValue(String sortKey, String direction) {
+        var field = switch (sortKey) {
+            case CatalogSort.POPULARITY -> "popularity";
+            case CatalogSort.RELEASE_DATE -> "primary_release_date";
+            case CatalogSort.TITLE -> "original_title";
+            case CatalogSort.EXTERNAL_RATING -> "vote_average";
+            default -> throw new IllegalArgumentException("Unsupported sort key: " + sortKey);
+        };
+        return field + "." + direction;
     }
 
     // Shared by the popular feed and search: TMDB returns the identical

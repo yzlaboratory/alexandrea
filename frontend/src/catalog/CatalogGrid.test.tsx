@@ -371,6 +371,122 @@ describe('CatalogGrid', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('requests the given sort and direction alongside the media type and page', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Sorted Movie' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+
+    render(<CatalogGrid mediaType="movies" sort="title" direction="asc" />);
+
+    expect(await screen.findByText('Sorted Movie')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      'title',
+      'asc',
+    );
+  });
+
+  it('carries the same sort and direction into the next page fetch when the sentinel intersects', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ externalId: '1', title: 'Page One' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+    render(<CatalogGrid mediaType="movies" sort="title" direction="asc" />);
+    await screen.findByText('Page One');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ externalId: '2', title: 'Page Two' })],
+        page: 2,
+        hasMore: false,
+      },
+    });
+    lastObserver().trigger(true);
+
+    expect(await screen.findByText('Page Two')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(
+      2,
+      'movies',
+      2,
+      undefined,
+      'title',
+      'asc',
+    );
+  });
+
+  it('reverts to the two-argument popular-feed call when no sort is given', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [], page: 1, hasMore: false },
+    });
+
+    render(<CatalogGrid mediaType="movies" />);
+
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenCalledWith('movies', 1);
+    });
+  });
+
+  it('starts a fresh feed when remounted for a different sort, as CatalogPage does via key', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Popularity Sorted' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+    const { rerender } = render(
+      <CatalogGrid
+        key="popularity:desc"
+        mediaType="movies"
+        sort="popularity"
+        direction="desc"
+      />,
+    );
+    await screen.findByText('Popularity Sorted');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Title Sorted' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+    rerender(
+      <CatalogGrid
+        key="title:asc"
+        mediaType="movies"
+        sort="title"
+        direction="asc"
+      />,
+    );
+
+    expect(await screen.findByText('Title Sorted')).toBeInTheDocument();
+    expect(screen.queryByText('Popularity Sorted')).not.toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(
+      2,
+      'movies',
+      1,
+      undefined,
+      'title',
+      'asc',
+    );
+  });
+
   it('invokes onClearSearch when the clear-search affordance is clicked', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',

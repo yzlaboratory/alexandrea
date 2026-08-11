@@ -385,6 +385,100 @@ class IgdbClientTest {
         twitchServer.verify();
     }
 
+    @Test
+    void discoverGamesRequestsTheGivenSortFieldAndDirectionWithLimitAndOffset() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))
+            .andExpect(method(HttpMethod.POST))
+            .andExpect(content().string("""
+                fields name,cover.image_id,first_release_date,total_rating;
+                sort name asc;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.discoverGames("title", "asc", 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void discoverGamesMapsPopularityToTotalRatingCount() {
+        assertDiscoverGamesSortField("popularity", "total_rating_count");
+    }
+
+    @Test
+    void discoverGamesMapsReleaseDateToFirstReleaseDate() {
+        assertDiscoverGamesSortField("release_date", "first_release_date");
+    }
+
+    @Test
+    void discoverGamesMapsTitleToName() {
+        assertDiscoverGamesSortField("title", "name");
+    }
+
+    @Test
+    void discoverGamesMapsExternalRatingToTotalRating() {
+        assertDiscoverGamesSortField("external_rating", "total_rating");
+    }
+
+    @Test
+    void discoverGamesMapsAResponseIntoCatalogItemsJustLikePopularGames() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest().andRespond(withSuccess("""
+            [{"id": 1942, "name": "The Witcher 3: Wild Hunt", "cover": {"id": 1, "image_id": "co1wyy"}, "first_release_date": 1431993600, "total_rating": 92.5}]
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.discoverGames("external_rating", "desc", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("The Witcher 3: Wild Hunt");
+    }
+
+    @Test
+    void anUpstream5xxOnDiscoverGamesIsWrappedAsACatalogUpstreamException() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest().andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.discoverGames("popularity", "desc", 1))
+            .isInstanceOf(CatalogUpstreamException.class);
+    }
+
+    @Test
+    void popularGamesBuildsTheIdenticalRequestAsDiscoverGamesWithPopularityDescending() {
+        // IGDB's default feed is already "sorted by popularity desc" (ADR
+        // 0018's "nothing applied" row) — this pins that equivalence rather
+        // than letting the two request-body builders silently drift apart.
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))
+            .andExpect(content().string("""
+                fields name,cover.image_id,first_release_date,total_rating;
+                sort total_rating_count desc;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.popularGames(1);
+
+        gamesServer.verify();
+    }
+
+    private void assertDiscoverGamesSortField(String sortKey, String expectedField) {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))
+            .andExpect(content().string("""
+                fields name,cover.image_id,first_release_date,total_rating;
+                sort %s desc;
+                limit 20;
+                offset 0;
+                """.formatted(expectedField)))
+            .andRespond(emptyGamesResponse());
+
+        client.discoverGames(sortKey, "desc", 1);
+    }
+
     private org.springframework.test.web.client.ResponseActions expectTokenRequest() {
         return twitchServer.expect(requestTo(org.hamcrest.Matchers.startsWith(TWITCH_BASE_URL + "/oauth2/token")))
             .andExpect(method(HttpMethod.POST));

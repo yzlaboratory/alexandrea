@@ -1,6 +1,10 @@
 package dev.yzlaboratory.alexandrea.catalog;
 
+import dev.yzlaboratory.alexandrea.surface.SurfacePreference;
+import dev.yzlaboratory.alexandrea.surface.SurfacePreferenceStore;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.IntFunction;
 import org.springframework.stereotype.Service;
 
@@ -29,25 +33,36 @@ public class CatalogService {
     private static final String SEARCH_FEED_PREFIX = "search:";
     private static final String NO_FILTERS = "";
     private static final String DEFAULT_SORT = "default";
+    private static final String CATALOG_SURFACE = "catalog";
+    // ADR 0018: all four sorts are available for all four media types, so
+    // (unlike filters) sort needs no per-media-type capability table — just
+    // this one shared valid-key/valid-direction check.
+    private static final Set<String> VALID_SORT_KEYS = Set.of(
+        CatalogSort.POPULARITY, CatalogSort.RELEASE_DATE, CatalogSort.TITLE, CatalogSort.EXTERNAL_RATING
+    );
+    private static final Set<String> VALID_DIRECTIONS = Set.of(CatalogSort.ASCENDING, CatalogSort.DESCENDING);
 
     private final TmdbClient tmdbClient;
     private final OpenLibraryClient openLibraryClient;
     private final IgdbClient igdbClient;
     private final CatalogCache cache;
     private final ProviderCircuitBreaker circuitBreaker;
+    private final SurfacePreferenceStore surfacePreferenceStore;
 
     public CatalogService(
         TmdbClient tmdbClient,
         OpenLibraryClient openLibraryClient,
         IgdbClient igdbClient,
         CatalogCache cache,
-        ProviderCircuitBreaker circuitBreaker
+        ProviderCircuitBreaker circuitBreaker,
+        SurfacePreferenceStore surfacePreferenceStore
     ) {
         this.tmdbClient = tmdbClient;
         this.openLibraryClient = openLibraryClient;
         this.igdbClient = igdbClient;
         this.cache = cache;
         this.circuitBreaker = circuitBreaker;
+        this.surfacePreferenceStore = surfacePreferenceStore;
     }
 
     /** Popular-feed convenience overload — equivalent to {@code browse(mediaType, null, page)}. */
@@ -64,6 +79,47 @@ public class CatalogService {
     public CatalogPageResult browse(String mediaType, String search, int page) {
         var query = normalizeSearch(search);
         return query != null ? searchFeedFor(mediaType, query, page) : popularFeedFor(mediaType, page);
+    }
+
+    /**
+     * The sort-aware overload the Catalog controller calls: routes to the
+     * search feed exactly as {@link #browse(String, String, int)} does, and
+     * ignores {@code sortKey}/{@code sortDirection} while a search is active
+     * — TMDB's and IGDB's search endpoints cannot honor an explicit sort at
+     * all (ADR 0018's "Behavior under active text search"), and this issue
+     * does not wire OpenLibrary's own ability to combine the two. Current
+     * search is therefore preserved untouched across a sort change, and vice
+     * versa. An unrecognised sort key or direction is dropped rather than
+     * passed through (falls back to the popular feed), matching the same
+     * "callers validate, invalid drops rather than errors" rule ADR 0025
+     * sets for filters. A recognised sort persists to {@link
+     * SurfacePreferenceStore} only once the page it produced was actually
+     * served — an upstream failure or unsupported media type must not
+     * persist a sort choice its own request never proved works.
+     */
+    public CatalogPageResult browse(
+        String mediaType, String search, String sortKey, String sortDirection, long userId, int page
+    ) {
+        var query = normalizeSearch(search);
+        if (query != null) {
+            return searchFeedFor(mediaType, query, page);
+        }
+        if (!isValidSort(sortKey, sortDirection)) {
+            return popularFeedFor(mediaType, page);
+        }
+        var result = sortedFeedFor(mediaType, sortKey, sortDirection, page);
+        surfacePreferenceStore.upsert(userId, CATALOG_SURFACE, mediaType, sortKey, sortDirection, null);
+        return result;
+    }
+
+    /** The current user's persisted Catalog sort for this media type, if they've ever set one (ADR 0025). */
+    public Optional<SurfacePreference> sortPreference(long userId, String mediaType) {
+        return surfacePreferenceStore.get(userId, CATALOG_SURFACE, mediaType);
+    }
+
+    private static boolean isValidSort(String sortKey, String sortDirection) {
+        return sortKey != null && VALID_SORT_KEYS.contains(sortKey)
+            && sortDirection != null && VALID_DIRECTIONS.contains(sortDirection);
     }
 
     // Lowercased and whitespace-collapsed, not just trimmed: "Blade Runner",
@@ -89,6 +145,28 @@ public class CatalogService {
             );
             case IgdbClient.GAMES_MEDIA_TYPE ->
                 popularFeed(IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, igdbClient::popularGames, page);
+            default -> throw new UnsupportedCatalogMediaTypeException(mediaType);
+        };
+    }
+
+    private CatalogPageResult sortedFeedFor(String mediaType, String sortKey, String sortDirection, int page) {
+        return switch (mediaType) {
+            case TmdbClient.MOVIES_MEDIA_TYPE -> sortedFeed(
+                TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, sortKey, sortDirection,
+                pageToFetch -> tmdbClient.discoverMovies(sortKey, sortDirection, pageToFetch), page
+            );
+            case TmdbClient.TV_MEDIA_TYPE -> sortedFeed(
+                TmdbClient.PROVIDER, TmdbClient.TV_MEDIA_TYPE, sortKey, sortDirection,
+                pageToFetch -> tmdbClient.discoverTv(sortKey, sortDirection, pageToFetch), page
+            );
+            case OpenLibraryClient.BOOKS_MEDIA_TYPE -> sortedFeed(
+                OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, sortKey, sortDirection,
+                pageToFetch -> openLibraryClient.sortedBooks(sortKey, sortDirection, pageToFetch), page
+            );
+            case IgdbClient.GAMES_MEDIA_TYPE -> sortedFeed(
+                IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, sortKey, sortDirection,
+                pageToFetch -> igdbClient.discoverGames(sortKey, sortDirection, pageToFetch), page
+            );
             default -> throw new UnsupportedCatalogMediaTypeException(mediaType);
         };
     }
@@ -121,6 +199,20 @@ public class CatalogService {
         String provider, String mediaType, String query, IntFunction<CatalogPageResult> fetchPage, int page
     ) {
         var key = CatalogCache.pageKey(provider, mediaType, SEARCH_FEED_PREFIX + query, NO_FILTERS, DEFAULT_SORT, page);
+        return cachedFeed(provider, key, fetchPage, page);
+    }
+
+    // A "popular sorted by X" page is cached separately from both the plain
+    // popular feed and any search — it shares the "popular" feed/query slot
+    // (it's still the unfiltered, unsearched browse) but carries the real
+    // sort in the slot popularFeed always fills with the DEFAULT_SORT
+    // placeholder, so choosing a sort can never collide with — or be served
+    // by — the default popular page's cache entry.
+    private CatalogPageResult sortedFeed(
+        String provider, String mediaType, String sortKey, String sortDirection,
+        IntFunction<CatalogPageResult> fetchPage, int page
+    ) {
+        var key = CatalogCache.pageKey(provider, mediaType, POPULAR_FEED, NO_FILTERS, sortKey + ":" + sortDirection, page);
         return cachedFeed(provider, key, fetchPage, page);
     }
 
