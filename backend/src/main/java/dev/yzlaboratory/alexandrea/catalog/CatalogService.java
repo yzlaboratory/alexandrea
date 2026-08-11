@@ -1,5 +1,6 @@
 package dev.yzlaboratory.alexandrea.catalog;
 
+import java.util.Locale;
 import java.util.function.IntFunction;
 import org.springframework.stereotype.Service;
 
@@ -65,10 +66,16 @@ public class CatalogService {
         return query != null ? searchFeedFor(mediaType, query, page) : popularFeedFor(mediaType, page);
     }
 
+    // Lowercased and whitespace-collapsed, not just trimmed: "Blade Runner",
+    // "blade runner", and "blade   runner" are the same search to a user,
+    // and without this they'd fall into three distinct cache entries (and
+    // cost three separate upstream calls) for one search. All three
+    // providers' search relevance is already case-insensitive, so this
+    // changes nothing about which results come back.
     private static String normalizeSearch(String search) {
         if (search == null) return null;
-        var trimmed = search.trim();
-        return trimmed.isEmpty() ? null : trimmed;
+        var normalized = search.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
     }
 
     private CatalogPageResult popularFeedFor(String mediaType, int page) {

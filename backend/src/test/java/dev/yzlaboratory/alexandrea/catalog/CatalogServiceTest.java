@@ -458,6 +458,40 @@ class CatalogServiceTest {
     }
 
     @Test
+    void aMixedCaseSearchIsLowercasedBeforeReachingTheProvider() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+
+        var result = service.browse("movies", "Blade Runner", 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+    }
+
+    @Test
+    void searchesDifferingOnlyByCaseShareOneCacheEntry() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+
+        assertThat(service.browse("movies", "Blade Runner", 1)).isEqualTo(page);
+        assertThat(service.browse("movies", "BLADE RUNNER", 1)).isEqualTo(page);
+        assertThat(service.browse("movies", "blade runner", 1)).isEqualTo(page);
+
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+    }
+
+    @Test
+    void searchesDifferingOnlyByExtraInternalWhitespaceShareOneCacheEntry() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+
+        assertThat(service.browse("movies", "blade   runner", 1)).isEqualTo(page);
+        assertThat(service.browse("movies", "blade runner", 1)).isEqualTo(page);
+
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+    }
+
+    @Test
     void popularAndSearchPagesForTheSamePageNumberAreCachedIndependently() {
         var popularPage = new CatalogPageResult(List.of(ITEM), 1, true);
         var searchPage = new CatalogPageResult(List.of(ITEM), 1, false);
