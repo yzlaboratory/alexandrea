@@ -75,6 +75,7 @@ public class CatalogService {
         ProviderCircuitBreaker circuitBreaker,
         SurfacePreferenceStore surfacePreferenceStore,
         GenreVocabulary genreVocabulary,
+        LanguageVocabulary languageVocabulary,
         ObjectMapper objectMapper
     ) {
         this.tmdbClient = tmdbClient;
@@ -86,7 +87,10 @@ public class CatalogService {
         this.genreVocabulary = genreVocabulary;
         this.objectMapper = objectMapper;
         this.filterFields = List.of(
-            new CatalogFilterField(CatalogFilterKeys.GENRE, genreVocabulary::supports, genreVocabulary::genresFor)
+            new CatalogFilterField(CatalogFilterKeys.GENRE, genreVocabulary::supports, genreVocabulary::genresFor),
+            new CatalogFilterField(
+                CatalogFilterKeys.ORIGINAL_LANGUAGE, languageVocabulary::supportsOriginalLanguage, languageVocabulary::originalLanguageOptionsFor
+            )
         );
     }
 
@@ -305,14 +309,15 @@ public class CatalogService {
 
     private CatalogPageResult filteredFeedFor(String mediaType, String sortKey, String sortDirection, Map<String, String> filters, int page) {
         var genre = filters.get(CatalogFilterKeys.GENRE);
+        var originalLanguage = filters.get(CatalogFilterKeys.ORIGINAL_LANGUAGE);
         return switch (mediaType) {
             case TmdbClient.MOVIES_MEDIA_TYPE -> filteredFeed(
                 TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, sortKey, sortDirection, filters,
-                pageToFetch -> tmdbClient.discoverMovies(sortKey, sortDirection, genre, pageToFetch), page
+                pageToFetch -> tmdbClient.discoverMovies(sortKey, sortDirection, genre, originalLanguage, pageToFetch), page
             );
             case TmdbClient.TV_MEDIA_TYPE -> filteredFeed(
                 TmdbClient.PROVIDER, TmdbClient.TV_MEDIA_TYPE, sortKey, sortDirection, filters,
-                pageToFetch -> tmdbClient.discoverTv(sortKey, sortDirection, genre, pageToFetch), page
+                pageToFetch -> tmdbClient.discoverTv(sortKey, sortDirection, genre, originalLanguage, pageToFetch), page
             );
             case OpenLibraryClient.BOOKS_MEDIA_TYPE -> filteredFeed(
                 OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, sortKey, sortDirection, filters,
