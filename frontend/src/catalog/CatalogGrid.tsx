@@ -25,22 +25,25 @@ interface CatalogGridProps {
   // Undefined/empty means "no active search" — the popular feed. A present,
   // non-empty value replaces it with title-search results.
   search?: string;
-  // sort/direction/genre are ignored server-side whenever search is active
-  // (CatalogService) — CatalogPage never passes any of them at once with a
-  // search, but this component stays a plain pass-through either way rather
-  // than encoding that rule itself.
+  // sort/direction/filters are ignored server-side whenever search is
+  // active (CatalogService) — CatalogPage never passes any of them at once
+  // with a search, but this component stays a plain pass-through either way
+  // rather than encoding that rule itself.
   sort?: string;
   direction?: string;
-  // Three states, not just present/absent: a string applies that genre;
-  // null is CatalogPage's definite "no genre selected" (the user cleared a
+  // Keyed by filter field (see catalogApi's CATALOG_FILTER_FIELDS). A
+  // field's value applies that filter; a field mapped to null is
+  // CatalogPage's definite "no value selected" (the user cleared a
   // previously-chosen filter, or never had one) and must reach the backend
-  // as an explicit clear rather than being silently dropped; undefined
-  // means this caller doesn't manage genre at all, so nothing is sent and
-  // CatalogService falls back to whatever's already persisted. Collapsing
-  // null into undefined here would make "explicitly cleared" indistinguishable
-  // from "not mentioned", and CatalogService would then resurrect a
-  // deselected filter from the persisted row instead of clearing it.
-  genre?: string | null | undefined;
+  // as an explicit clear rather than being silently dropped; a field absent
+  // from this object means this caller doesn't manage that field at all, so
+  // nothing is sent for it and CatalogService falls back to whatever's
+  // already persisted. Collapsing "mapped to null" into "absent" would make
+  // an explicit clear indistinguishable from "not mentioned", and
+  // CatalogService would then resurrect a deselected filter from the
+  // persisted row instead of clearing it. The whole prop being undefined
+  // means this caller manages no filters at all.
+  filters?: Record<string, string | null>;
   // Only used to render the "clear search" affordance on a no-results
   // search page — CatalogGrid doesn't own the search box itself, so
   // clearing it is delegated back to whichever component does (CatalogPage).
@@ -73,7 +76,7 @@ function CatalogGrid({
   search,
   sort,
   direction,
-  genre,
+  filters,
   onClearSearch,
   onAvailableFiltersChange,
 }: CatalogGridProps): ReactNode {
@@ -92,42 +95,43 @@ function CatalogGrid({
   // Four call shapes, not one call with every param always passed (even as
   // undefined), so each request looks on the wire exactly like what a
   // caller not using that feature would send — no incidental "search=",
-  // "sort="/"direction=", or "genre=" params for the cases that don't use
-  // them. search never combines with sort or genre (CatalogService ignores
-  // both while a search is active); sort and genre do combine with each
-  // other, so a page fetch threads through whichever of the two is active.
+  // "sort="/"direction=", or filter params for the cases that don't use
+  // them. search never combines with sort or filters (CatalogService
+  // ignores both while a search is active); sort and filters do combine
+  // with each other, so a page fetch threads through whichever of the two
+  // is active.
   const fetchPage = useCallback(
     (page: number) => {
       if (search) return fetchCatalogPage(mediaType, page, search);
-      // genre !== undefined, not a truthy check: null is a definite "no
-      // genre" the backend must apply/persist as a clear, distinct from
-      // undefined ("this caller doesn't mention genre at all") — see the
-      // genre prop's own doc comment above.
-      if (sort && genre !== undefined) {
+      // filters !== undefined, not a truthy check: an empty object is a
+      // valid "this caller manages filters, none happen to be set right
+      // now" and must still reach fetchCatalogPage — see the filters prop's
+      // own doc comment above.
+      if (sort && filters !== undefined) {
         return fetchCatalogPage(
           mediaType,
           page,
           undefined,
           sort,
           direction,
-          genre,
+          filters,
         );
       }
       if (sort)
         return fetchCatalogPage(mediaType, page, undefined, sort, direction);
-      if (genre !== undefined) {
+      if (filters !== undefined) {
         return fetchCatalogPage(
           mediaType,
           page,
           undefined,
           undefined,
           undefined,
-          genre,
+          filters,
         );
       }
       return fetchCatalogPage(mediaType, page);
     },
-    [mediaType, search, sort, direction, genre],
+    [mediaType, search, sort, direction, filters],
   );
 
   const loadNextPage = useCallback(async (): Promise<void> => {

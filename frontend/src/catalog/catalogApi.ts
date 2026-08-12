@@ -17,23 +17,35 @@ export interface CatalogItem {
   externalRatingScale: number;
 }
 
-// One selectable filter value — e.g. one TMDB or IGDB genre. `value` is the
-// provider's own native id (what round-trips back to the catalog request);
+// One selectable filter value — e.g. one TMDB genre or ISO 639-1 language
+// code. `value` is the provider's own native id, or (for Books) OpenLibrary's
+// MARC3 code — whatever round-trips back to the catalog request unchanged;
 // `label` is what FilterControls renders.
 export interface CatalogFilterOption {
   value: string;
   label: string;
 }
 
+// The filter fields ADR 0018 defines, in the fixed order FilterControls
+// renders them — the single source both CatalogPage's persisted-preference
+// state and FilterControls' rendering order draw from, so the two can never
+// silently drift out of sync on which fields exist.
+export const CATALOG_FILTER_FIELDS = [
+  'genre',
+  'originalLanguage',
+  'availableInLanguage',
+] as const;
+
 export interface CatalogPageResult {
   items: CatalogItem[];
   page: number;
   hasMore: boolean;
-  // Which filters are currently available for this media_type (ADR 0018's
-  // capability table), keyed by filter name — today just "genre". Optional
-  // because it's driven entirely by the backend response; FilterControls
-  // renders only whatever keys are present rather than hardcoding a
-  // per-media-type table of its own.
+  // Which filter kinds are currently available for this media_type (ADR
+  // 0018's capability table) — a media type can report more than one (e.g.
+  // Movies: genre and originalLanguage). Optional because it's driven
+  // entirely by the backend response; FilterControls renders only whatever
+  // keys are present rather than hardcoding a per-media-type table of its
+  // own.
   availableFilters?: Record<string, CatalogFilterOption[]>;
 }
 
@@ -47,12 +59,13 @@ export async function fetchCatalogPage(
   search?: string,
   sort?: string,
   direction?: string,
-  // string: apply this genre. null: the user explicitly cleared the genre
-  // filter (a deselected chip) — sent as a present-but-empty `genre=`
-  // param so CatalogService can tell "clear it" apart from undefined
-  // ("this caller doesn't mention genre, leave whatever's persisted").
-  // undefined: omit the param entirely.
-  genre?: string | null,
+  // Keyed by filter field (see CATALOG_FILTER_FIELDS). A field mapped to a
+  // string applies that value. A field mapped to null is the user's
+  // explicit "no value selected" (a cleared/deselected control) and is sent
+  // as a present-but-empty `<field>=` param, so CatalogService can tell
+  // "clear it" apart from the field being absent from this map entirely,
+  // which omits the param and leaves whatever's already persisted alone.
+  filters?: Record<string, string | null>,
 ): Promise<FetchCatalogPageOutcome> {
   // fetch() itself rejects on a network-level failure (offline, DNS,
   // connection reset) rather than resolving with a non-ok Response. Without
@@ -61,19 +74,22 @@ export async function fetchCatalogPage(
   // leaving the grid stuck in a permanent loading spinner with no visible
   // way to retry.
   const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
-  // Backend ignores sort and genre while a search is active (CatalogService),
-  // so CatalogGrid never sends either alongside search — but this helper
-  // stays permissive about it, the same "just build the query string from
-  // whatever's given" shape the search param already has.
+  // Backend ignores sort and every filter while a search is active
+  // (CatalogService), so CatalogGrid never sends either alongside search —
+  // but this helper stays permissive about it, the same "just build the
+  // query string from whatever's given" shape the search param already has.
   const sortParam = sort ? `&sort=${sort}&direction=${direction ?? ''}` : '';
-  const genreParam =
-    genre === null
-      ? '&genre='
-      : genre
-        ? `&genre=${encodeURIComponent(genre)}`
-        : '';
+  const filtersParam = filters
+    ? Object.entries(filters)
+        .map(([field, value]) =>
+          value === null
+            ? `&${field}=`
+            : `&${field}=${encodeURIComponent(value)}`,
+        )
+        .join('')
+    : '';
   const response = await fetch(
-    `/api/catalog/${mediaType}?page=${String(page)}${searchParam}${sortParam}${genreParam}`,
+    `/api/catalog/${mediaType}?page=${String(page)}${searchParam}${sortParam}${filtersParam}`,
     { credentials: 'same-origin' },
   ).catch(() => null);
   if (!response?.ok) return { status: 'error' };
@@ -87,18 +103,22 @@ export async function fetchCatalogPage(
 export interface CatalogPreference {
   sortKey: string | null;
   sortDirection: string | null;
-  genre: string | null;
+  // Keyed by filter field, carrying only the fields currently set — a field
+  // absent from this object means no value is selected for it. Empty rather
+  // than every-field-null so callers never null-check a field before
+  // looking it up.
+  filters: Record<string, string>;
 }
 
 const NO_PREFERENCE: CatalogPreference = {
   sortKey: null,
   sortDirection: null,
-  genre: null,
+  filters: {},
 };
 
 // A failure here (network error, non-2xx, bad JSON) degrades to "nothing
 // stored" rather than a distinct error state — CatalogPage's own defaults
-// (popularity/desc, no genre) are already the correct fallback for that
+// (popularity/desc, no filters) are already the correct fallback for that
 // case, so there is no separate error UI worth building for this one small
 // preference read.
 export async function fetchCatalogPreference(

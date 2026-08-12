@@ -7,13 +7,18 @@ const MOVIE_GENRES = [
   { value: '35', label: 'Comedy' },
 ];
 
+const ORIGINAL_LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'ja', label: 'Japanese' },
+];
+
 describe('FilterControls', () => {
-  it('renders nothing when the capability payload has no genre entry for this media type', () => {
+  it('renders nothing when the capability payload has no filter entries for this media type', () => {
     const { container } = render(
       <FilterControls
         availableFilters={{}}
-        genre={null}
-        onGenreChange={vi.fn()}
+        selectedFilters={{}}
+        onFilterChange={vi.fn()}
       />,
     );
 
@@ -24,8 +29,8 @@ describe('FilterControls', () => {
     const { container } = render(
       <FilterControls
         availableFilters={{ genre: [] }}
-        genre={null}
-        onGenreChange={vi.fn()}
+        selectedFilters={{}}
+        onFilterChange={vi.fn()}
       />,
     );
 
@@ -37,8 +42,8 @@ describe('FilterControls', () => {
     render(
       <FilterControls
         availableFilters={{ genre: MOVIE_GENRES }}
-        genre={null}
-        onGenreChange={vi.fn()}
+        selectedFilters={{}}
+        onFilterChange={vi.fn()}
       />,
     );
 
@@ -55,8 +60,8 @@ describe('FilterControls', () => {
     render(
       <FilterControls
         availableFilters={{ genre: MOVIE_GENRES }}
-        genre={null}
-        onGenreChange={vi.fn()}
+        selectedFilters={{}}
+        onFilterChange={vi.fn()}
       />,
     );
 
@@ -68,8 +73,8 @@ describe('FilterControls', () => {
     render(
       <FilterControls
         availableFilters={{ genre: MOVIE_GENRES }}
-        genre="28"
-        onGenreChange={vi.fn()}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={vi.fn()}
       />,
     );
 
@@ -85,8 +90,8 @@ describe('FilterControls', () => {
     render(
       <FilterControls
         availableFilters={{ genre: MOVIE_GENRES }}
-        genre="999-unknown"
-        onGenreChange={vi.fn()}
+        selectedFilters={{ genre: '999-unknown' }}
+        onFilterChange={vi.fn()}
       />,
     );
 
@@ -94,53 +99,126 @@ describe('FilterControls', () => {
     expect(screen.queryByText('Comedy')).not.toBeInTheDocument();
   });
 
-  it('selecting a different genre calls onGenreChange with the new value, replacing rather than adding', async () => {
+  it('selecting a different genre calls onFilterChange with the field and new value, replacing rather than adding', async () => {
     const user = (await import('@testing-library/user-event')).default.setup();
-    const onGenreChange = vi.fn();
+    const onFilterChange = vi.fn();
     render(
       <FilterControls
         availableFilters={{ genre: MOVIE_GENRES }}
-        genre="28"
-        onGenreChange={onGenreChange}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={onFilterChange}
       />,
     );
 
     await user.click(screen.getByRole('combobox', { name: 'Genre' }));
     await user.click(screen.getByRole('option', { name: 'Comedy' }));
 
-    expect(onGenreChange).toHaveBeenCalledExactlyOnceWith('35');
+    expect(onFilterChange).toHaveBeenCalledExactlyOnceWith('genre', '35');
   });
 
   it('selecting "Any genre" deselects the current genre', async () => {
     const user = (await import('@testing-library/user-event')).default.setup();
-    const onGenreChange = vi.fn();
+    const onFilterChange = vi.fn();
     render(
       <FilterControls
         availableFilters={{ genre: MOVIE_GENRES }}
-        genre="28"
-        onGenreChange={onGenreChange}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={onFilterChange}
       />,
     );
 
     await user.click(screen.getByRole('combobox', { name: 'Genre' }));
     await user.click(screen.getByRole('option', { name: 'Any genre' }));
 
-    expect(onGenreChange).toHaveBeenCalledExactlyOnceWith(null);
+    expect(onFilterChange).toHaveBeenCalledExactlyOnceWith('genre', null);
   });
 
   it('deleting the chip deselects the current genre', async () => {
     const user = (await import('@testing-library/user-event')).default.setup();
-    const onGenreChange = vi.fn();
+    const onFilterChange = vi.fn();
     render(
       <FilterControls
         availableFilters={{ genre: MOVIE_GENRES }}
-        genre="28"
-        onGenreChange={onGenreChange}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={onFilterChange}
       />,
     );
 
     await user.click(screen.getByTestId('CancelIcon'));
 
-    expect(onGenreChange).toHaveBeenCalledExactlyOnceWith(null);
+    expect(onFilterChange).toHaveBeenCalledExactlyOnceWith('genre', null);
+  });
+
+  it('renders both a genre and an original-language control for Movies, each independently', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    const onFilterChange = vi.fn();
+    render(
+      <FilterControls
+        availableFilters={{
+          genre: MOVIE_GENRES,
+          originalLanguage: ORIGINAL_LANGUAGES,
+        }}
+        selectedFilters={{ genre: '28', originalLanguage: 'ja' }}
+        onFilterChange={onFilterChange}
+      />,
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Genre' })).toHaveTextContent(
+      'Action',
+    );
+    expect(
+      screen.getByRole('combobox', { name: 'Original language' }),
+    ).toHaveTextContent('Japanese');
+
+    await user.click(
+      screen.getByRole('combobox', { name: 'Original language' }),
+    );
+    await user.click(screen.getByRole('option', { name: 'English' }));
+
+    // The genre control is unaffected by changing the other field.
+    expect(onFilterChange).toHaveBeenCalledExactlyOnceWith(
+      'originalLanguage',
+      'en',
+    );
+    expect(screen.getByRole('combobox', { name: 'Genre' })).toHaveTextContent(
+      'Action',
+    );
+  });
+
+  it('renders the fields in a fixed order regardless of the capability payload key order', () => {
+    render(
+      <FilterControls
+        availableFilters={{
+          originalLanguage: ORIGINAL_LANGUAGES,
+          genre: MOVIE_GENRES,
+        }}
+        selectedFilters={{}}
+        onFilterChange={vi.fn()}
+      />,
+    );
+
+    const comboboxes = screen.getAllByRole('combobox');
+    expect(comboboxes[0]).toHaveAccessibleName('Genre');
+    expect(comboboxes[1]).toHaveAccessibleName('Original language');
+  });
+
+  it('renders only the available-in-language control for Books, not original language', () => {
+    render(
+      <FilterControls
+        availableFilters={{
+          genre: MOVIE_GENRES,
+          availableInLanguage: [{ value: 'ger', label: 'German' }],
+        }}
+        selectedFilters={{}}
+        onFilterChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('combobox', { name: 'Available in language' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: 'Original language' }),
+    ).not.toBeInTheDocument();
   });
 });

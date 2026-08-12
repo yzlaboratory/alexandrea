@@ -487,7 +487,7 @@ describe('CatalogGrid', () => {
     );
   });
 
-  it('requests the given genre alone alongside the media type and page', async () => {
+  it('requests the given filters alone alongside the media type and page', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
@@ -497,7 +497,7 @@ describe('CatalogGrid', () => {
       },
     });
 
-    render(<CatalogGrid mediaType="movies" genre="28" />);
+    render(<CatalogGrid mediaType="movies" filters={{ genre: '28' }} />);
 
     expect(await screen.findByText('Action Movie')).toBeInTheDocument();
     expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
@@ -506,11 +506,11 @@ describe('CatalogGrid', () => {
       undefined,
       undefined,
       undefined,
-      '28',
+      { genre: '28' },
     );
   });
 
-  it('requests the given sort and genre together alongside the media type and page', async () => {
+  it('requests the given sort and filters together alongside the media type and page', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
@@ -525,7 +525,7 @@ describe('CatalogGrid', () => {
         mediaType="movies"
         sort="title"
         direction="asc"
-        genre="28"
+        filters={{ genre: '28' }}
       />,
     );
 
@@ -536,11 +536,60 @@ describe('CatalogGrid', () => {
       undefined,
       'title',
       'asc',
-      '28',
+      { genre: '28' },
     );
   });
 
-  it('carries the same genre into the next page fetch when the sentinel intersects', async () => {
+  it('requests filters of a different kind just as generically, e.g. an original-language filter', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'A Japanese Film' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+
+    render(
+      <CatalogGrid mediaType="movies" filters={{ originalLanguage: 'ja' }} />,
+    );
+
+    expect(await screen.findByText('A Japanese Film')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      undefined,
+      undefined,
+      { originalLanguage: 'ja' },
+    );
+  });
+
+  it('requests multiple filter fields combined in one object', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [item()], page: 1, hasMore: true },
+    });
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        filters={{ genre: '28', originalLanguage: 'ja' }}
+      />,
+    );
+
+    await screen.findByText('A Movie');
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      undefined,
+      undefined,
+      { genre: '28', originalLanguage: 'ja' },
+    );
+  });
+
+  it('carries the same filters into the next page fetch when the sentinel intersects', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
@@ -549,7 +598,7 @@ describe('CatalogGrid', () => {
         hasMore: true,
       },
     });
-    render(<CatalogGrid mediaType="movies" genre="28" />);
+    render(<CatalogGrid mediaType="movies" filters={{ genre: '28' }} />);
     await screen.findByText('Page One');
 
     mockedFetchCatalogPage.mockResolvedValueOnce({
@@ -570,16 +619,16 @@ describe('CatalogGrid', () => {
       undefined,
       undefined,
       undefined,
-      '28',
+      { genre: '28' },
     );
   });
 
-  it('sends an explicit null genre rather than omitting it, alongside a sort', async () => {
-    // null is CatalogPage's definite "no genre selected" (e.g. a
-    // deselected chip) and must reach fetchCatalogPage as an explicit
-    // value, not be collapsed into "not mentioned" — CatalogService relies
-    // on that distinction to actually clear a previously-chosen genre
-    // rather than falling back to it.
+  it('sends an explicit null filter value rather than omitting it, alongside a sort', async () => {
+    // null is CatalogPage's definite "no value selected" for that field
+    // (e.g. a deselected chip) and must reach fetchCatalogPage as an
+    // explicit value, not be collapsed into "not mentioned" —
+    // CatalogService relies on that distinction to actually clear a
+    // previously-chosen filter rather than falling back to it.
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: { items: [item()], page: 1, hasMore: true },
@@ -590,7 +639,7 @@ describe('CatalogGrid', () => {
         mediaType="movies"
         sort="title"
         direction="asc"
-        genre={null}
+        filters={{ genre: null }}
       />,
     );
 
@@ -601,17 +650,17 @@ describe('CatalogGrid', () => {
       undefined,
       'title',
       'asc',
-      null,
+      { genre: null },
     );
   });
 
-  it('sends an explicit null genre rather than omitting it, with no sort given', async () => {
+  it('sends an explicit null filter value rather than omitting it, with no sort given', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: { items: [item()], page: 1, hasMore: true },
     });
 
-    render(<CatalogGrid mediaType="movies" genre={null} />);
+    render(<CatalogGrid mediaType="movies" filters={{ genre: null }} />);
 
     await screen.findByText('A Movie');
     expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
@@ -620,11 +669,11 @@ describe('CatalogGrid', () => {
       undefined,
       undefined,
       undefined,
-      null,
+      { genre: null },
     );
   });
 
-  it('ignores genre entirely once a search is active, requesting the plain search shape', async () => {
+  it('ignores filters entirely once a search is active, requesting the plain search shape', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
@@ -634,7 +683,13 @@ describe('CatalogGrid', () => {
       },
     });
 
-    render(<CatalogGrid mediaType="movies" search="blade runner" genre="28" />);
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        search="blade runner"
+        filters={{ genre: '28' }}
+      />,
+    );
 
     expect(await screen.findByText('Blade Runner')).toBeInTheDocument();
     expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
@@ -644,7 +699,7 @@ describe('CatalogGrid', () => {
     );
   });
 
-  it('starts a fresh feed when remounted for a different genre, as CatalogPage does via key', async () => {
+  it('starts a fresh feed when remounted for different filters, as CatalogPage does via key', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
@@ -654,7 +709,11 @@ describe('CatalogGrid', () => {
       },
     });
     const { rerender } = render(
-      <CatalogGrid key="genre-28" mediaType="movies" genre="28" />,
+      <CatalogGrid
+        key="genre-28"
+        mediaType="movies"
+        filters={{ genre: '28' }}
+      />,
     );
     await screen.findByText('Action Movie');
 
@@ -666,7 +725,13 @@ describe('CatalogGrid', () => {
         hasMore: false,
       },
     });
-    rerender(<CatalogGrid key="genre-35" mediaType="movies" genre="35" />);
+    rerender(
+      <CatalogGrid
+        key="genre-35"
+        mediaType="movies"
+        filters={{ genre: '35' }}
+      />,
+    );
 
     expect(await screen.findByText('Comedy Movie')).toBeInTheDocument();
     expect(screen.queryByText('Action Movie')).not.toBeInTheDocument();
@@ -677,7 +742,7 @@ describe('CatalogGrid', () => {
       undefined,
       undefined,
       undefined,
-      '35',
+      { genre: '35' },
     );
   });
 
