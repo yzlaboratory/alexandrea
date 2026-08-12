@@ -326,7 +326,9 @@ public class CatalogService {
             );
             case OpenLibraryClient.BOOKS_MEDIA_TYPE -> filteredFeed(
                 OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, sortKey, sortDirection, filters,
-                pageToFetch -> openLibraryClient.sortedBooks(sortKey, sortDirection, booksSubjectAliases(genre), pageToFetch), page
+                pageToFetch -> openLibraryClient.sortedBooks(
+                    sortKey, sortDirection, booksSubjectAliases(genre), availableInLanguage, pageToFetch
+                ), page
             );
             case IgdbClient.GAMES_MEDIA_TYPE -> filteredFeed(
                 IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, sortKey, sortDirection, filters,

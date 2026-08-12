@@ -328,7 +328,7 @@ class OpenLibraryClientTest {
             {"docs": []}
             """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", List.of(), 1);
+        client.sortedBooks("popularity", "desc", List.of(), null, 1);
 
         server.verify();
     }
@@ -376,7 +376,7 @@ class OpenLibraryClientTest {
                 {"docs": []}
                 """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", List.of(), 3);
+        client.sortedBooks("popularity", "desc", List.of(), null, 3);
 
         server.verify();
     }
@@ -391,7 +391,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("title", "asc", List.of(), 1);
+        var result = client.sortedBooks("title", "asc", List.of(), null, 1);
 
         assertThat(result.items()).hasSize(1);
         var item = result.items().getFirst();
@@ -414,7 +414,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of(), 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Has A Key");
@@ -430,7 +430,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of(), 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().externalRating()).isNull();
@@ -447,7 +447,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("external_rating", "desc", List.of(), 1);
+        var result = client.sortedBooks("external_rating", "desc", List.of(), null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Rated Book");
@@ -465,7 +465,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("external_rating", "desc", List.of(), 1);
+        var result = client.sortedBooks("external_rating", "desc", List.of(), null, 1);
 
         assertThat(result.items()).isEmpty();
     }
@@ -474,7 +474,7 @@ class OpenLibraryClientTest {
     void sortedBooksByExternalRatingStillReportsMoreAvailableWhenTheFullUpstreamPageWasFilteredToEmpty() {
         expectSortedRequest("rating").andRespond(withSuccess(fullPageOfUnratedDocsJson(), MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("external_rating", "desc", List.of(), 1);
+        var result = client.sortedBooks("external_rating", "desc", List.of(), null, 1);
 
         // The upstream page was full (20 keyed docs) even though every one of
         // them lacked a rating and got filtered out — hasMore must reflect
@@ -491,7 +491,7 @@ class OpenLibraryClientTest {
             {"docs": null}
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of(), 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, 1);
 
         assertThat(result.items()).isEmpty();
     }
@@ -503,7 +503,7 @@ class OpenLibraryClientTest {
             {"docs": [{"key": "/works/OL1W", "title": "Recovered Book"}]}
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of(), 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Recovered Book");
@@ -518,7 +518,7 @@ class OpenLibraryClientTest {
             .andExpect(queryParam("sort", "trending"))
             .andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), 1))
+        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
 
         server.verify();
@@ -528,7 +528,7 @@ class OpenLibraryClientTest {
     void sortedBooksDoesNotRetryOnANonServerErrorFailure() {
         expectSortedRequest("trending").andRespond(withStatus(HttpStatus.NOT_FOUND));
 
-        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), 1))
+        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
 
         server.verify();
@@ -545,7 +545,7 @@ class OpenLibraryClientTest {
                 {"docs": []}
                 """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", aliases, 1);
+        client.sortedBooks("popularity", "desc", aliases, null, 1);
 
         server.verify();
     }
@@ -556,7 +556,7 @@ class OpenLibraryClientTest {
             {"docs": []}
             """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", List.of(), 1);
+        client.sortedBooks("popularity", "desc", List.of(), null, 1);
 
         server.verify();
     }
@@ -570,16 +570,84 @@ class OpenLibraryClientTest {
                 {"docs": [{"key": "/works/OL1W", "title": "A Sci-Fi Book"}]}
                 """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of("Sci-Fi"), 1);
+        var result = client.sortedBooks("popularity", "desc", List.of("Sci-Fi"), null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("A Sci-Fi Book");
     }
 
     @Test
+    void sortedBooksWithAnAvailableInLanguageReplacesTheWildcardQueryWithALanguageClause() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "language:ger"))
+            .andExpect(queryParam("sort", "trending"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of(), "ger", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksCombinesGenreAndAvailableInLanguageWithAndWhenBothAreGiven() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "subject:(%22Sci-Fi%22)%20AND%20language:ger"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of("Sci-Fi"), "ger", 1);
+
+        server.verify();
+    }
+
+    // OpenLibrary's language field on a work reflects every edition's
+    // language, not the work's original language — so this German-tagged
+    // result must surface even though the doc itself carries no evidence of
+    // being originally German, matching ADR 0018's "has an edition in this
+    // language" semantics rather than "was originally in this language".
+    @Test
+    void sortedBooksWithAnAvailableInLanguageMapsAMatchingDocRegardlessOfItsOriginalLanguage() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(queryParam("q", "language:ger"))
+            .andRespond(withSuccess("""
+                {"docs": [{"key": "/works/OL1W", "title": "Dune"}]}
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("popularity", "desc", List.of(), "ger", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("Dune");
+    }
+
+    @Test
     void subjectQueryPhraseQuotesEachAliasAndJoinsWithOr() {
         assertThat(OpenLibraryClient.subjectQuery(List.of("Science fiction", "Sci-Fi")))
             .isEqualTo("subject:(\"Science fiction\" OR \"Sci-Fi\")");
+    }
+
+    @Test
+    void combinedQueryWithNeitherGenreNorLanguageIsTheWildcard() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), null)).isEqualTo("*");
+    }
+
+    @Test
+    void combinedQueryWithOnlyGenreIsJustTheSubjectClause() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of("Sci-Fi"), null)).isEqualTo("subject:(\"Sci-Fi\")");
+    }
+
+    @Test
+    void combinedQueryWithOnlyLanguageIsJustTheLanguageClause() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), "ger")).isEqualTo("language:ger");
+    }
+
+    @Test
+    void combinedQueryWithBothAndsTheSubjectAndLanguageClauses() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of("Sci-Fi"), "ger")).isEqualTo("subject:(\"Sci-Fi\") AND language:ger");
     }
 
     @Test
@@ -598,7 +666,7 @@ class OpenLibraryClientTest {
             {"docs": []}
             """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks(sortKey, direction, List.of(), 1);
+        client.sortedBooks(sortKey, direction, List.of(), null, 1);
     }
 
     private static String fullPageOfUnratedDocsJson() {

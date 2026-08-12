@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -68,11 +69,19 @@ public class OpenLibraryClient {
     // ADR 0018's "filter/sort applied" row: /search.json replaces
     // /trending/daily.json once a sort is chosen, with q=* matching every
     // work (the same Solr "match everything" idiom as an empty query) when
-    // no curated Books genre (ADR 0013) is applied either — genreSubjectAliases
-    // empty means no genre filter; a non-empty list replaces q=* with the
-    // subject:(alias OR alias …) clause built below.
-    public CatalogPageResult sortedBooks(String sortKey, String direction, List<String> genreSubjectAliases, int page) {
-        var response = fetchSorted(sortKey, direction, genreSubjectAliases, page);
+    // neither a curated Books genre (ADR 0013) nor an available-in-language
+    // filter is applied — genreSubjectAliases empty means no genre filter;
+    // availableInLanguageMarc3 null means no language filter; either or both
+    // replace q=* with their own clause, ANDed together when both are given.
+    // OpenLibrary's language field on a work reflects every edition's
+    // language, not the work's original language (a concept it has no
+    // notion of at all), so filtering by it already matches ADR 0018's
+    // "has an edition in this language" semantics without any extra
+    // original-language exclusion to apply.
+    public CatalogPageResult sortedBooks(
+        String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3, int page
+    ) {
+        var response = fetchSorted(sortKey, direction, genreSubjectAliases, availableInLanguageMarc3, page);
         var docs = response.docs() != null ? response.docs() : List.<OpenLibraryWork>of();
         var keyedDocs = docs.stream().filter(work -> work.key() != null).toList();
         // hasMore reflects the upstream page's own fullness, computed before
@@ -140,8 +149,10 @@ public class OpenLibraryClient {
         });
     }
 
-    private OpenLibrarySearchResponse fetchSorted(String sortKey, String direction, List<String> genreSubjectAliases, int page) {
-        var query = genreSubjectAliases.isEmpty() ? MATCH_ALL_QUERY : subjectQuery(genreSubjectAliases);
+    private OpenLibrarySearchResponse fetchSorted(
+        String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3, int page
+    ) {
+        var query = combinedQuery(genreSubjectAliases, availableInLanguageMarc3);
         return fetchWithRetry(() -> {
             var response = restClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -198,6 +209,21 @@ public class OpenLibraryClient {
         return subjectAliases.stream()
             .map(OpenLibraryClient::quotedPhrase)
             .collect(Collectors.joining(" OR ", "subject:(", ")"));
+    }
+
+    // Package-private for the same reason as subjectQuery. The genre and
+    // available-in-language clauses are independent Solr fields, so ANDing
+    // them narrows to their intersection exactly like TMDB's with_genres and
+    // with_original_language combining in the same discover request.
+    static String combinedQuery(List<String> genreSubjectAliases, String availableInLanguageMarc3) {
+        var clauses = new ArrayList<String>();
+        if (!genreSubjectAliases.isEmpty()) {
+            clauses.add(subjectQuery(genreSubjectAliases));
+        }
+        if (availableInLanguageMarc3 != null) {
+            clauses.add("language:" + availableInLanguageMarc3);
+        }
+        return clauses.isEmpty() ? MATCH_ALL_QUERY : String.join(" AND ", clauses);
     }
 
     private static String quotedPhrase(String value) {

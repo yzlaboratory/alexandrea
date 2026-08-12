@@ -67,11 +67,26 @@ class LanguageVocabularyTest {
     }
 
     @Test
-    void supportsAvailableInLanguageForGamesOnlySoFar() {
+    void supportsAvailableInLanguageForBooksAndGames() {
+        assertThat(vocabulary.supportsAvailableInLanguage("books")).isTrue();
         assertThat(vocabulary.supportsAvailableInLanguage("games")).isTrue();
-        assertThat(vocabulary.supportsAvailableInLanguage("books")).isFalse();
         assertThat(vocabulary.supportsAvailableInLanguage("movies")).isFalse();
         assertThat(vocabulary.supportsAvailableInLanguage("tv")).isFalse();
+    }
+
+    @Test
+    void availableInLanguageOptionsForBooksReturnsTheCuratedMarc3ListWithoutCallingIgdb() {
+        var options = vocabulary.availableInLanguageOptionsFor("books");
+
+        assertThat(options).contains(new CatalogFilterOption("ger", "German"));
+        assertThat(options).contains(new CatalogFilterOption("eng", "English"));
+        verifyNoInteractions(igdbClient);
+    }
+
+    @Test
+    void everyCuratedBooksAvailableInLanguageHasAThreeLetterMarc3Value() {
+        assertThat(vocabulary.availableInLanguageOptionsFor("books"))
+            .allSatisfy(option -> assertThat(option.value()).hasSize(3));
     }
 
     @Test
@@ -107,7 +122,7 @@ class LanguageVocabularyTest {
 
     @Test
     void availableInLanguageOptionsForAnUnsupportedMediaTypeThrowsRatherThanSilentlyReturningEmpty() {
-        assertThatThrownBy(() -> vocabulary.availableInLanguageOptionsFor("books")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> vocabulary.availableInLanguageOptionsFor("movies")).isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(igdbClient);
     }
 }

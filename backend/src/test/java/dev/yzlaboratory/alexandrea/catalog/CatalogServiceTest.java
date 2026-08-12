@@ -635,12 +635,12 @@ class CatalogServiceTest {
     void sortedBooksRoutesToOpenLibrarySortedBooks() {
         var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Book", "cover", null, 4.2, 5.0);
         var page = new CatalogPageResult(List.of(bookItem), 1, true);
-        when(openLibraryClient.sortedBooks("external_rating", "desc", List.of(), 1)).thenReturn(page);
+        when(openLibraryClient.sortedBooks("external_rating", "desc", List.of(), null, 1)).thenReturn(page);
 
         var result = service.browse("books", null, "external_rating", "desc", NO_FILTERS, 7L, 1);
 
         assertThat(result).isEqualTo(page);
-        verify(openLibraryClient, times(1)).sortedBooks("external_rating", "desc", List.of(), 1);
+        verify(openLibraryClient, times(1)).sortedBooks("external_rating", "desc", List.of(), null, 1);
         verify(openLibraryClient, never()).trendingBooks(anyInt());
     }
 
@@ -830,7 +830,7 @@ class CatalogServiceTest {
     }
 
     @Test
-    void availableInLanguageIsNotOfferedOrAppliedForMoviesTvOrBooks() {
+    void availableInLanguageIsNotOfferedOrAppliedForMovies() {
         when(languageVocabulary.supportsAvailableInLanguage("movies")).thenReturn(false);
         var page = new CatalogPageResult(List.of(ITEM), 1, true);
         when(tmdbClient.popularMovies(1)).thenReturn(page);
@@ -895,14 +895,93 @@ class CatalogServiceTest {
         when(genreVocabulary.booksSubjectAliases("science_fiction")).thenReturn(aliases);
         var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Sci-Fi Book", "cover", null, 4.2, 5.0);
         var page = new CatalogPageResult(List.of(bookItem), 1, true);
-        when(openLibraryClient.sortedBooks("popularity", "desc", aliases, 1)).thenReturn(page);
+        when(openLibraryClient.sortedBooks("popularity", "desc", aliases, null, 1)).thenReturn(page);
 
         var result = service.browse("books", null, null, null, genreFilter("science_fiction"), 42L, 1);
 
         assertThat(result).isEqualTo(page);
-        verify(openLibraryClient, times(1)).sortedBooks("popularity", "desc", aliases, 1);
+        verify(openLibraryClient, times(1)).sortedBooks("popularity", "desc", aliases, null, 1);
         verify(openLibraryClient, never()).trendingBooks(anyInt());
         verify(surfacePreferenceStore).upsert(42L, "catalog", "books", null, null, encodedGenre("science_fiction"));
+    }
+
+    @Test
+    void availableInLanguageFilteredBooksRoutesToOpenLibrarySortedBooksWithTheGivenMarc3Code() {
+        stubAvailableInLanguage("books", "ger");
+        var germanBook = new CatalogItem("OpenLibrary", "OL2W", "books", "A German Edition", "cover", null, null, 5.0);
+        var page = new CatalogPageResult(List.of(germanBook), 1, true);
+        when(openLibraryClient.sortedBooks("popularity", "desc", List.of(), "ger", 1)).thenReturn(page);
+
+        var result = service.browse("books", null, "popularity", "desc", availableInLanguageFilter("ger"), 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(openLibraryClient, times(1)).sortedBooks("popularity", "desc", List.of(), "ger", 1);
+        verify(openLibraryClient, never()).trendingBooks(anyInt());
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "books", "popularity", "desc", encodedFilters("availableInLanguage", "ger"));
+    }
+
+    @Test
+    void availableInLanguageIsNotOfferedOrAppliedForTv() {
+        when(languageVocabulary.supportsAvailableInLanguage("tv")).thenReturn(false);
+        var tvItem = new CatalogItem("TMDB", "2", "tv", "A Series", "cover", LocalDate.of(2020, 1, 1), 8.0, 10.0);
+        var page = new CatalogPageResult(List.of(tvItem), 1, true);
+        when(tmdbClient.popularTv(1)).thenReturn(page);
+
+        var result = service.browse("tv", null, null, null, availableInLanguageFilter("ger"), 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, never()).discoverTv(any(), any(), any(), any(), anyInt());
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void anInvalidBooksAvailableInLanguageValueIsDroppedRatherThanPassedThrough() {
+        stubAvailableInLanguage("books", "ger");
+        var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Book", "cover", null, 4.2, 5.0);
+        var page = new CatalogPageResult(List.of(bookItem), 1, true);
+        when(openLibraryClient.trendingBooks(1)).thenReturn(page);
+
+        var result = service.browse("books", null, null, null, availableInLanguageFilter("not-a-real-marc3-code"), 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(openLibraryClient, never()).sortedBooks(any(), any(), any(), any(), anyInt());
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void combiningGenreAndAvailableInLanguageNarrowsBooksToTheIntersection() {
+        stubGenre("books", "science_fiction", "Science Fiction");
+        stubAvailableInLanguage("books", "ger");
+        var aliases = List.of("Science fiction", "Sci-Fi", "Science-fiction", "Speculative fiction");
+        when(genreVocabulary.booksSubjectAliases("science_fiction")).thenReturn(aliases);
+        var page = new CatalogPageResult(List.of(), 1, true);
+        when(openLibraryClient.sortedBooks("popularity", "desc", aliases, "ger", 1)).thenReturn(page);
+        var combined = new LinkedHashMap<>(genreFilter("science_fiction"));
+        combined.putAll(availableInLanguageFilter("ger"));
+
+        var result = service.browse("books", null, "popularity", "desc", combined, 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(openLibraryClient, times(1)).sortedBooks("popularity", "desc", aliases, "ger", 1);
+    }
+
+    @Test
+    void settingAvailableInLanguagePreservesAPreviouslyPersistedGenreForBooksRatherThanClobberingIt() {
+        stubGenre("books", "science_fiction", "Science Fiction");
+        stubAvailableInLanguage("books", "ger");
+        when(genreVocabulary.booksSubjectAliases("science_fiction")).thenReturn(List.of("Science fiction"));
+        var existing = new SurfacePreference(
+            42L, "catalog", "books", "popularity", "desc", encodedFilters("genre", "science_fiction"), clock.instant()
+        );
+        when(surfacePreferenceStore.get(42L, "catalog", "books")).thenReturn(Optional.of(existing));
+        when(openLibraryClient.sortedBooks("popularity", "desc", List.of("Science fiction"), "ger", 1))
+            .thenReturn(new CatalogPageResult(List.of(), 1, true));
+
+        service.browse("books", null, "popularity", "desc", availableInLanguageFilter("ger"), 42L, 1);
+
+        verify(openLibraryClient, times(1)).sortedBooks("popularity", "desc", List.of("Science fiction"), "ger", 1);
+        verify(surfacePreferenceStore)
+            .upsert(42L, "catalog", "books", "popularity", "desc", encodedFilters("genre", "science_fiction", "availableInLanguage", "ger"));
     }
 
     @Test
@@ -915,7 +994,7 @@ class CatalogServiceTest {
         var result = service.browse("books", null, null, null, genreFilter("not-a-curated-genre"), 42L, 1);
 
         assertThat(result).isEqualTo(page);
-        verify(openLibraryClient, never()).sortedBooks(any(), any(), any(), anyInt());
+        verify(openLibraryClient, never()).sortedBooks(any(), any(), any(), any(), anyInt());
         verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
     }
 
@@ -1092,7 +1171,7 @@ class CatalogServiceTest {
         var result = service.browse("books", null, null, null, originalLanguageFilter("ja"), 42L, 1);
 
         assertThat(result).isEqualTo(page);
-        verify(openLibraryClient, never()).sortedBooks(any(), any(), any(), anyInt());
+        verify(openLibraryClient, never()).sortedBooks(any(), any(), any(), any(), anyInt());
         verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
     }
 
@@ -1214,14 +1293,23 @@ class CatalogServiceTest {
     }
 
     @Test
-    void availableFiltersOmitsAvailableInLanguageForMoviesTvAndBooks() {
+    void availableFiltersReportsAvailableInLanguageForBooks() {
+        var options = List.of(new CatalogFilterOption("ger", "German"));
+        when(genreVocabulary.supports("books")).thenReturn(true);
+        when(genreVocabulary.genresFor("books")).thenReturn(List.of());
+        when(languageVocabulary.supportsAvailableInLanguage("books")).thenReturn(true);
+        when(languageVocabulary.availableInLanguageOptionsFor("books")).thenReturn(options);
+
+        assertThat(service.availableFilters("books")).containsEntry("availableInLanguage", options);
+    }
+
+    @Test
+    void availableFiltersOmitsAvailableInLanguageForMoviesAndTv() {
         when(languageVocabulary.supportsAvailableInLanguage("movies")).thenReturn(false);
         when(languageVocabulary.supportsAvailableInLanguage("tv")).thenReturn(false);
-        when(languageVocabulary.supportsAvailableInLanguage("books")).thenReturn(false);
 
         assertThat(service.availableFilters("movies")).doesNotContainKey("availableInLanguage");
         assertThat(service.availableFilters("tv")).doesNotContainKey("availableInLanguage");
-        assertThat(service.availableFilters("books")).doesNotContainKey("availableInLanguage");
     }
 
     @Test

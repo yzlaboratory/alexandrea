@@ -231,7 +231,7 @@ class CatalogEndpointTest {
     private static final long DEFAULT_TEST_USER_ID = 1L;
     private static final List<Long> TEST_USER_IDS = List.of(
         DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L, 9009L, 9010L, 9011L, 9012L,
-        9013L, 9014L, 9015L, 9016L, 9017L, 9018L, 9019L
+        9013L, 9014L, 9015L, 9016L, 9017L, 9018L, 9019L, 9020L, 9021L, 9022L, 9023L, 9024L
     );
 
     @BeforeEach
@@ -909,12 +909,12 @@ class CatalogEndpointTest {
     }
 
     @Test
-    void theBrowseResponseDoesNotListAvailableInLanguageForMoviesTvOrBooks() throws Exception {
+    void theBrowseResponseDoesNotListAvailableInLanguageForMoviesOrTv() throws Exception {
         mockMvc.perform(get("/api/catalog/movies").param("page", "110").with(loggedIn()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.availableFilters.availableInLanguage").doesNotExist());
 
-        mockMvc.perform(get("/api/catalog/books").param("page", "111").with(loggedIn()))
+        mockMvc.perform(get("/api/catalog/tv").param("page", "111").with(loggedIn()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.availableFilters.availableInLanguage").doesNotExist());
     }
@@ -1103,6 +1103,71 @@ class CatalogEndpointTest {
 
         assertThat(openLibraryRequestCount.get()).isEqualTo(1);
         assertThat(openLibrarySearchRequestCount.get()).isZero();
+    }
+
+    @Test
+    void theBrowseResponseListsTheCuratedMarc3VocabularyAsAnAvailableInLanguageFilterForBooks() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("page", "118").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[0].value").value("eng"))
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[0].label").value("English"));
+    }
+
+    @Test
+    void anAvailableInLanguageParamRoutesBooksToOpenLibrarySearchWithALanguageQuery() throws Exception {
+        // A dedicated user id, not the shared loggedIn() — this persists
+        // availableInLanguage for (userId, books), which a later test using
+        // the shared loggedIn() id for books must not inherit.
+        mockMvc.perform(get("/api/catalog/books").param("availableInLanguage", "ger").param("page", "119").with(loggedInAs(9020L)))
+            .andExpect(status().isOk());
+
+        assertThat(openLibrarySearchRequestCount.get()).isEqualTo(1);
+        assertThat(openLibraryRequestCount.get()).isZero();
+        assertThat(lastOpenLibrarySearchQuery.get()).contains("q=language:ger");
+    }
+
+    @Test
+    void anInvalidBooksAvailableInLanguageValueIsDroppedAndFallsBackToTheTrendingFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("availableInLanguage", "not-a-real-marc3-code")
+                .param("page", "120").with(loggedInAs(9021L)))
+            .andExpect(status().isOk());
+
+        assertThat(openLibraryRequestCount.get()).isEqualTo(1);
+        assertThat(openLibrarySearchRequestCount.get()).isZero();
+    }
+
+    @Test
+    void combiningGenreAndAvailableInLanguageNarrowsBooksToTheIntersection() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("genre", "science_fiction").param("availableInLanguage", "ger")
+                .param("page", "121").with(loggedInAs(9022L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastOpenLibrarySearchQuery.get())
+            .contains("q=subject:(\"Science fiction\" OR \"Sci-Fi\" OR \"Science-fiction\" OR \"Speculative fiction\") AND language:ger");
+    }
+
+    @Test
+    void anAvailableInLanguageSelectionForBooksPersistsAndIsReadBackFromThePreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("availableInLanguage", "ger").param("page", "122").with(loggedInAs(9023L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9023L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.availableInLanguage").value("ger"));
+    }
+
+    @Test
+    void settingAvailableInLanguageDoesNotClobberAPreviouslyPersistedGenreForBooks() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("genre", "science_fiction").param("page", "123").with(loggedInAs(9024L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books").param("availableInLanguage", "ger").param("page", "124").with(loggedInAs(9024L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9024L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.genre").value("science_fiction"))
+            .andExpect(jsonPath("$.filters.availableInLanguage").value("ger"));
     }
 
     // OpenLibrary's own subject tagging (not something this app enforces)
