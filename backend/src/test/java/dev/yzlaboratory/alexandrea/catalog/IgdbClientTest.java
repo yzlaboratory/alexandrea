@@ -398,7 +398,7 @@ class IgdbClientTest {
                 """))
             .andRespond(emptyGamesResponse());
 
-        client.discoverGames("title", "asc", null, 1);
+        client.discoverGames("title", "asc", null, null, 1);
 
         gamesServer.verify();
     }
@@ -430,7 +430,7 @@ class IgdbClientTest {
             [{"id": 1942, "name": "The Witcher 3: Wild Hunt", "cover": {"id": 1, "image_id": "co1wyy"}, "first_release_date": 1431993600, "total_rating": 92.5}]
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.discoverGames("external_rating", "desc", null, 1);
+        var result = client.discoverGames("external_rating", "desc", null, null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("The Witcher 3: Wild Hunt");
@@ -441,7 +441,7 @@ class IgdbClientTest {
         expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
         expectGamesRequest().andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.discoverGames("popularity", "desc", null, 1))
+        assertThatThrownBy(() -> client.discoverGames("popularity", "desc", null, null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
     }
 
@@ -458,7 +458,7 @@ class IgdbClientTest {
                 """))
             .andRespond(emptyGamesResponse());
 
-        client.discoverGames("popularity", "desc", "5", 1);
+        client.discoverGames("popularity", "desc", "5", null, 1);
 
         gamesServer.verify();
     }
@@ -475,7 +475,43 @@ class IgdbClientTest {
                 """))
             .andRespond(emptyGamesResponse());
 
-        client.discoverGames("popularity", "desc", null, 1);
+        client.discoverGames("popularity", "desc", null, null, 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void discoverGamesAddsAWhereLanguageSupportsClauseWhenAnAvailableInLanguageIsGiven() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))
+            .andExpect(content().string("""
+                fields name,cover.image_id,first_release_date,total_rating;
+                where language_supports.language = (2);
+                sort total_rating_count desc;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.discoverGames("popularity", "desc", null, "2", 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void discoverGamesCombinesGenreAndAvailableInLanguageWithAnAmpersandWhenBothAreGiven() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))
+            .andExpect(content().string("""
+                fields name,cover.image_id,first_release_date,total_rating;
+                where genres = (5) & language_supports.language = (2);
+                sort total_rating_count desc;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.discoverGames("popularity", "desc", "5", "2", 1);
 
         gamesServer.verify();
     }
@@ -554,6 +590,60 @@ class IgdbClientTest {
         assertThatThrownBy(client::genres).isInstanceOf(CatalogUpstreamException.class);
     }
 
+    @Test
+    void languagesMapsTheNativeIgdbEnumIntoCatalogFilterOptions() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/languages"))
+            .andExpect(method(HttpMethod.POST))
+            .andExpect(content().string("""
+                fields name;
+                limit 500;
+                sort name asc;
+                """))
+            .andRespond(withSuccess("""
+                [{"id": 1, "name": "English"}, {"id": 2, "name": "German"}]
+                """, MediaType.APPLICATION_JSON));
+
+        var languages = client.languages();
+
+        assertThat(languages).containsExactly(
+            new CatalogFilterOption("1", "English"),
+            new CatalogFilterOption("2", "German"));
+        gamesServer.verify();
+    }
+
+    @Test
+    void anEmptyLanguagesResponseMapsToAnEmptyListRatherThanThrowing() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/languages")).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+        assertThat(client.languages()).isEmpty();
+    }
+
+    @Test
+    void aFourZeroOneOnLanguagesForcesOneTokenRefetchAndRetryJustLikeGames() {
+        expectTokenRequest().andRespond(tokenResponse("stale-token", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/languages"))
+            .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer stale-token"))
+            .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+        expectTokenRequest().andRespond(tokenResponse("fresh-token", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/languages"))
+            .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer fresh-token"))
+            .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+        assertThat(client.languages()).isEmpty();
+        gamesServer.verify();
+        twitchServer.verify();
+    }
+
+    @Test
+    void anUpstream5xxOnLanguagesIsWrappedAsACatalogUpstreamException() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        gamesServer.expect(requestTo(GAMES_BASE_URL + "/languages")).andRespond(withServerError());
+
+        assertThatThrownBy(client::languages).isInstanceOf(CatalogUpstreamException.class);
+    }
+
     private void assertDiscoverGamesSortField(String sortKey, String expectedField) {
         expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
         gamesServer.expect(requestTo(GAMES_BASE_URL + "/games"))
@@ -565,7 +655,7 @@ class IgdbClientTest {
                 """.formatted(expectedField)))
             .andRespond(emptyGamesResponse());
 
-        client.discoverGames(sortKey, "desc", null, 1);
+        client.discoverGames(sortKey, "desc", null, null, 1);
     }
 
     private org.springframework.test.web.client.ResponseActions expectTokenRequest() {

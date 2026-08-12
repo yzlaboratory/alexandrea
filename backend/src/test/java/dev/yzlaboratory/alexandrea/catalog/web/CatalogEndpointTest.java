@@ -90,6 +90,9 @@ class CatalogEndpointTest {
     private static final AtomicReference<String> igdbGenreListResponseBody = new AtomicReference<>("""
         [{"id": 5, "name": "Shooter"}, {"id": 12, "name": "Role-playing (RPG)"}]
         """);
+    private static final AtomicReference<String> igdbLanguageListResponseBody = new AtomicReference<>("""
+        [{"id": 1, "name": "English"}, {"id": 2, "name": "German"}]
+        """);
 
     private static HttpServer openLibraryServer;
     private static final AtomicReference<String> nextOpenLibraryResponseBody = new AtomicReference<>();
@@ -175,6 +178,7 @@ class CatalogEndpointTest {
             respond(exchange, nextIgdbGamesResponseStatus.get(), nextIgdbGamesResponseBody.get());
         });
         igdbGamesServer.createContext("/genres", exchange -> respond(exchange, 200, igdbGenreListResponseBody.get()));
+        igdbGamesServer.createContext("/languages", exchange -> respond(exchange, 200, igdbLanguageListResponseBody.get()));
         igdbGamesServer.start();
         var igdbGamesPort = igdbGamesServer.getAddress().getPort();
         registry.add("alexandrea.catalog.igdb.base-url", () -> "http://localhost:" + igdbGamesPort);
@@ -227,7 +231,7 @@ class CatalogEndpointTest {
     private static final long DEFAULT_TEST_USER_ID = 1L;
     private static final List<Long> TEST_USER_IDS = List.of(
         DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L, 9009L, 9010L, 9011L, 9012L,
-        9013L, 9014L, 9015L
+        9013L, 9014L, 9015L, 9016L, 9017L, 9018L, 9019L
     );
 
     @BeforeEach
@@ -892,6 +896,82 @@ class CatalogEndpointTest {
 
         assertThat(igdbGamesRequestCount.get()).isEqualTo(1);
         assertThat(lastIgdbGamesRequestBody.get()).contains("where genres = (5);");
+    }
+
+    @Test
+    void theBrowseResponseListsTheIgdbLanguageEnumAsAnAvailableInLanguageFilterForGames() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("page", "109").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[0].value").value("1"))
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[0].label").value("English"))
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[1].value").value("2"))
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[1].label").value("German"));
+    }
+
+    @Test
+    void theBrowseResponseDoesNotListAvailableInLanguageForMoviesTvOrBooks() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("page", "110").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage").doesNotExist());
+
+        mockMvc.perform(get("/api/catalog/books").param("page", "111").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage").doesNotExist());
+    }
+
+    @Test
+    void anAvailableInLanguageParamRoutesGamesToIgdbWithAWhereLanguageSupportsClause() throws Exception {
+        // A dedicated user id, not the shared loggedIn() — this persists
+        // availableInLanguage for (userId, games), and a later test using
+        // the shared loggedIn() id for games (e.g. the plain genre-only
+        // test above) must not inherit it as an unexpected extra where
+        // clause.
+        mockMvc.perform(get("/api/catalog/games").param("availableInLanguage", "2").param("page", "112").with(loggedInAs(9019L)))
+            .andExpect(status().isOk());
+
+        assertThat(igdbGamesRequestCount.get()).isEqualTo(1);
+        assertThat(lastIgdbGamesRequestBody.get()).contains("where language_supports.language = (2);");
+    }
+
+    @Test
+    void anInvalidAvailableInLanguageValueIsDroppedAndFallsBackToThePopularFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("availableInLanguage", "not-a-real-language-id").param("page", "113").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(lastIgdbGamesRequestBody.get()).doesNotContain("where");
+    }
+
+    @Test
+    void combiningGenreAndAvailableInLanguageNarrowsGamesToTheIntersection() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("genre", "5").param("availableInLanguage", "2")
+                .param("page", "114").with(loggedInAs(9016L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastIgdbGamesRequestBody.get()).contains("where genres = (5) & language_supports.language = (2);");
+    }
+
+    @Test
+    void anAvailableInLanguageSelectionForGamesPersistsAndIsReadBackFromThePreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("availableInLanguage", "2").param("page", "115").with(loggedInAs(9017L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/games/preference").with(loggedInAs(9017L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.availableInLanguage").value("2"));
+    }
+
+    @Test
+    void settingAvailableInLanguageDoesNotClobberAPreviouslyPersistedGenreForGames() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("genre", "5").param("page", "116").with(loggedInAs(9018L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/games").param("availableInLanguage", "2").param("page", "117").with(loggedInAs(9018L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/games/preference").with(loggedInAs(9018L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.genre").value("5"))
+            .andExpect(jsonPath("$.filters.availableInLanguage").value("2"));
     }
 
     @Test

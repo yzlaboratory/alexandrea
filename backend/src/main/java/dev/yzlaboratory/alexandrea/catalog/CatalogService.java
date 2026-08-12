@@ -90,6 +90,10 @@ public class CatalogService {
             new CatalogFilterField(CatalogFilterKeys.GENRE, genreVocabulary::supports, genreVocabulary::genresFor),
             new CatalogFilterField(
                 CatalogFilterKeys.ORIGINAL_LANGUAGE, languageVocabulary::supportsOriginalLanguage, languageVocabulary::originalLanguageOptionsFor
+            ),
+            new CatalogFilterField(
+                CatalogFilterKeys.AVAILABLE_IN_LANGUAGE,
+                languageVocabulary::supportsAvailableInLanguage, languageVocabulary::availableInLanguageOptionsFor
             )
         );
     }
@@ -310,6 +314,7 @@ public class CatalogService {
     private CatalogPageResult filteredFeedFor(String mediaType, String sortKey, String sortDirection, Map<String, String> filters, int page) {
         var genre = filters.get(CatalogFilterKeys.GENRE);
         var originalLanguage = filters.get(CatalogFilterKeys.ORIGINAL_LANGUAGE);
+        var availableInLanguage = filters.get(CatalogFilterKeys.AVAILABLE_IN_LANGUAGE);
         return switch (mediaType) {
             case TmdbClient.MOVIES_MEDIA_TYPE -> filteredFeed(
                 TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, sortKey, sortDirection, filters,
@@ -325,7 +330,7 @@ public class CatalogService {
             );
             case IgdbClient.GAMES_MEDIA_TYPE -> filteredFeed(
                 IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, sortKey, sortDirection, filters,
-                pageToFetch -> igdbClient.discoverGames(sortKey, sortDirection, genre, pageToFetch), page
+                pageToFetch -> igdbClient.discoverGames(sortKey, sortDirection, genre, availableInLanguage, pageToFetch), page
             );
             default -> throw new UnsupportedCatalogMediaTypeException(mediaType);
         };

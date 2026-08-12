@@ -648,12 +648,12 @@ class CatalogServiceTest {
     void sortedGamesRoutesToIgdbDiscoverGames() {
         var gameItem = new CatalogItem("IGDB", "42", "games", "A Game", "cover", null, 84.0, 100.0);
         var page = new CatalogPageResult(List.of(gameItem), 1, true);
-        when(igdbClient.discoverGames("popularity", "asc", null, 1)).thenReturn(page);
+        when(igdbClient.discoverGames("popularity", "asc", null, null, 1)).thenReturn(page);
 
         var result = service.browse("games", null, "popularity", "asc", NO_FILTERS, 7L, 1);
 
         assertThat(result).isEqualTo(page);
-        verify(igdbClient, times(1)).discoverGames("popularity", "asc", null, 1);
+        verify(igdbClient, times(1)).discoverGames("popularity", "asc", null, null, 1);
     }
 
     @Test
@@ -806,12 +806,86 @@ class CatalogServiceTest {
         stubGenre("games", "5", "Shooter");
         var gameItem = new CatalogItem("IGDB", "42", "games", "A Game", "cover", null, 84.0, 100.0);
         var page = new CatalogPageResult(List.of(gameItem), 1, true);
-        when(igdbClient.discoverGames("popularity", "desc", "5", 1)).thenReturn(page);
+        when(igdbClient.discoverGames("popularity", "desc", "5", null, 1)).thenReturn(page);
 
         var result = service.browse("games", null, "popularity", "desc", genreFilter("5"), 42L, 1);
 
         assertThat(result).isEqualTo(page);
-        verify(igdbClient, times(1)).discoverGames("popularity", "desc", "5", 1);
+        verify(igdbClient, times(1)).discoverGames("popularity", "desc", "5", null, 1);
+    }
+
+    @Test
+    void availableInLanguageFilteredGamesRoutesToIgdbDiscoverGamesWithTheGivenLanguage() {
+        stubAvailableInLanguage("games", "2");
+        var germanGame = new CatalogItem("IGDB", "77", "games", "A German-Supported Game", "cover", null, 80.0, 100.0);
+        var page = new CatalogPageResult(List.of(germanGame), 1, true);
+        when(igdbClient.discoverGames("popularity", "desc", null, "2", 1)).thenReturn(page);
+
+        var result = service.browse("games", null, "popularity", "desc", availableInLanguageFilter("2"), 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(igdbClient, times(1)).discoverGames("popularity", "desc", null, "2", 1);
+        verify(igdbClient, never()).popularGames(anyInt());
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "games", "popularity", "desc", encodedFilters("availableInLanguage", "2"));
+    }
+
+    @Test
+    void availableInLanguageIsNotOfferedOrAppliedForMoviesTvOrBooks() {
+        when(languageVocabulary.supportsAvailableInLanguage("movies")).thenReturn(false);
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+
+        var result = service.browse("movies", null, null, null, availableInLanguageFilter("2"), 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, never()).discoverMovies(any(), any(), any(), any(), anyInt());
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void anUnrecognisedAvailableInLanguageValueIsDroppedRatherThanPassedThrough() {
+        stubAvailableInLanguage("games", "2");
+        var page = new CatalogPageResult(List.of(), 1, true);
+        when(igdbClient.popularGames(1)).thenReturn(page);
+
+        var result = service.browse("games", null, null, null, availableInLanguageFilter("not-a-real-language-id"), 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(igdbClient, never()).discoverGames(any(), any(), any(), any(), anyInt());
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void combiningGenreAndAvailableInLanguageNarrowsGamesToTheIntersection() {
+        stubGenre("games", "5", "Shooter");
+        stubAvailableInLanguage("games", "2");
+        var page = new CatalogPageResult(List.of(), 1, true);
+        when(igdbClient.discoverGames("popularity", "desc", "5", "2", 1)).thenReturn(page);
+        var combined = new LinkedHashMap<>(genreFilter("5"));
+        combined.putAll(availableInLanguageFilter("2"));
+
+        var result = service.browse("games", null, "popularity", "desc", combined, 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(igdbClient, times(1)).discoverGames("popularity", "desc", "5", "2", 1);
+    }
+
+    @Test
+    void settingAvailableInLanguagePreservesAPreviouslyPersistedGenreForGamesRatherThanClobberingIt() {
+        stubGenre("games", "5", "Shooter");
+        stubAvailableInLanguage("games", "2");
+        var existing = new SurfacePreference(
+            42L, "catalog", "games", "popularity", "desc", encodedFilters("genre", "5"), clock.instant()
+        );
+        when(surfacePreferenceStore.get(42L, "catalog", "games")).thenReturn(Optional.of(existing));
+        when(igdbClient.discoverGames("popularity", "desc", "5", "2", 1))
+            .thenReturn(new CatalogPageResult(List.of(), 1, true));
+
+        service.browse("games", null, "popularity", "desc", availableInLanguageFilter("2"), 42L, 1);
+
+        verify(igdbClient, times(1)).discoverGames("popularity", "desc", "5", "2", 1);
+        verify(surfacePreferenceStore)
+            .upsert(42L, "catalog", "games", "popularity", "desc", encodedFilters("genre", "5", "availableInLanguage", "2"));
     }
 
     @Test
@@ -1129,6 +1203,28 @@ class CatalogServiceTest {
     }
 
     @Test
+    void availableFiltersReportsAvailableInLanguageForGames() {
+        var options = List.of(new CatalogFilterOption("1", "English"));
+        when(genreVocabulary.supports("games")).thenReturn(true);
+        when(genreVocabulary.genresFor("games")).thenReturn(List.of());
+        when(languageVocabulary.supportsAvailableInLanguage("games")).thenReturn(true);
+        when(languageVocabulary.availableInLanguageOptionsFor("games")).thenReturn(options);
+
+        assertThat(service.availableFilters("games")).containsEntry("availableInLanguage", options);
+    }
+
+    @Test
+    void availableFiltersOmitsAvailableInLanguageForMoviesTvAndBooks() {
+        when(languageVocabulary.supportsAvailableInLanguage("movies")).thenReturn(false);
+        when(languageVocabulary.supportsAvailableInLanguage("tv")).thenReturn(false);
+        when(languageVocabulary.supportsAvailableInLanguage("books")).thenReturn(false);
+
+        assertThat(service.availableFilters("movies")).doesNotContainKey("availableInLanguage");
+        assertThat(service.availableFilters("tv")).doesNotContainKey("availableInLanguage");
+        assertThat(service.availableFilters("books")).doesNotContainKey("availableInLanguage");
+    }
+
+    @Test
     void availableFiltersDegradesToOmittingJustTheUnavailableFieldWhenOneVocabularyFails() {
         var genreOptions = List.of(new CatalogFilterOption("28", "Action"));
         when(genreVocabulary.supports("movies")).thenReturn(true);
@@ -1243,12 +1339,21 @@ class CatalogServiceTest {
         when(languageVocabulary.originalLanguageOptionsFor(mediaType)).thenReturn(List.of(new CatalogFilterOption(value, value)));
     }
 
+    private void stubAvailableInLanguage(String mediaType, String value) {
+        when(languageVocabulary.supportsAvailableInLanguage(mediaType)).thenReturn(true);
+        when(languageVocabulary.availableInLanguageOptionsFor(mediaType)).thenReturn(List.of(new CatalogFilterOption(value, value)));
+    }
+
     private static Map<String, String> genreFilter(String genre) {
         return Map.of(CatalogFilterKeys.GENRE, genre);
     }
 
     private static Map<String, String> originalLanguageFilter(String originalLanguage) {
         return Map.of(CatalogFilterKeys.ORIGINAL_LANGUAGE, originalLanguage);
+    }
+
+    private static Map<String, String> availableInLanguageFilter(String availableInLanguage) {
+        return Map.of(CatalogFilterKeys.AVAILABLE_IN_LANGUAGE, availableInLanguage);
     }
 
     private String encodedGenre(String genre) {
