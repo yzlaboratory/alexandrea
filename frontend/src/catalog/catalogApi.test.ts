@@ -252,6 +252,22 @@ describe('catalogApi', () => {
     expect(path).toBe('/api/catalog/movies?page=1');
   });
 
+  it('sends a present-but-empty genre param when genre is explicitly null, distinct from omitted', async () => {
+    // null signals an explicit "clear the genre filter" (a deselected
+    // chip) — CatalogService must be able to tell this apart from the
+    // param being absent entirely (which falls back to whatever's
+    // persisted), so this can never collapse to the same URL as the
+    // "omitted" case above.
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1, undefined, undefined, undefined, null);
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/catalog/movies?page=1&genre=');
+  });
+
   it('combines sort, direction, and genre params in one request', async () => {
     fetchMock.mockResolvedValueOnce(
       response(200, { items: [], page: 1, hasMore: false }),

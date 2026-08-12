@@ -47,7 +47,12 @@ export async function fetchCatalogPage(
   search?: string,
   sort?: string,
   direction?: string,
-  genre?: string,
+  // string: apply this genre. null: the user explicitly cleared the genre
+  // filter (a deselected chip) — sent as a present-but-empty `genre=`
+  // param so CatalogService can tell "clear it" apart from undefined
+  // ("this caller doesn't mention genre, leave whatever's persisted").
+  // undefined: omit the param entirely.
+  genre?: string | null,
 ): Promise<FetchCatalogPageOutcome> {
   // fetch() itself rejects on a network-level failure (offline, DNS,
   // connection reset) rather than resolving with a non-ok Response. Without
@@ -61,7 +66,12 @@ export async function fetchCatalogPage(
   // stays permissive about it, the same "just build the query string from
   // whatever's given" shape the search param already has.
   const sortParam = sort ? `&sort=${sort}&direction=${direction ?? ''}` : '';
-  const genreParam = genre ? `&genre=${encodeURIComponent(genre)}` : '';
+  const genreParam =
+    genre === null
+      ? '&genre='
+      : genre
+        ? `&genre=${encodeURIComponent(genre)}`
+        : '';
   const response = await fetch(
     `/api/catalog/${mediaType}?page=${String(page)}${searchParam}${sortParam}${genreParam}`,
     { credentials: 'same-origin' },

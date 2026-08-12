@@ -31,11 +31,16 @@ interface CatalogGridProps {
   // than encoding that rule itself.
   sort?: string;
   direction?: string;
-  // Explicit `| undefined` (not just optional): CatalogPage passes
-  // `preference.genre ?? undefined` to convert its own "no genre selected"
-  // null into this prop's absent state, and exactOptionalPropertyTypes
-  // requires the prop's type itself to admit that explicit undefined.
-  genre?: string | undefined;
+  // Three states, not just present/absent: a string applies that genre;
+  // null is CatalogPage's definite "no genre selected" (the user cleared a
+  // previously-chosen filter, or never had one) and must reach the backend
+  // as an explicit clear rather than being silently dropped; undefined
+  // means this caller doesn't manage genre at all, so nothing is sent and
+  // CatalogService falls back to whatever's already persisted. Collapsing
+  // null into undefined here would make "explicitly cleared" indistinguishable
+  // from "not mentioned", and CatalogService would then resurrect a
+  // deselected filter from the persisted row instead of clearing it.
+  genre?: string | null | undefined;
   // Only used to render the "clear search" affordance on a no-results
   // search page — CatalogGrid doesn't own the search box itself, so
   // clearing it is delegated back to whichever component does (CatalogPage).
@@ -94,7 +99,11 @@ function CatalogGrid({
   const fetchPage = useCallback(
     (page: number) => {
       if (search) return fetchCatalogPage(mediaType, page, search);
-      if (sort && genre) {
+      // genre !== undefined, not a truthy check: null is a definite "no
+      // genre" the backend must apply/persist as a clear, distinct from
+      // undefined ("this caller doesn't mention genre at all") — see the
+      // genre prop's own doc comment above.
+      if (sort && genre !== undefined) {
         return fetchCatalogPage(
           mediaType,
           page,
@@ -106,7 +115,7 @@ function CatalogGrid({
       }
       if (sort)
         return fetchCatalogPage(mediaType, page, undefined, sort, direction);
-      if (genre) {
+      if (genre !== undefined) {
         return fetchCatalogPage(
           mediaType,
           page,

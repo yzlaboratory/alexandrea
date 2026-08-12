@@ -54,6 +54,7 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
+        null,
       );
     });
   });
@@ -109,6 +110,7 @@ describe('CatalogPage', () => {
         undefined,
         'title',
         'asc',
+        null,
       );
     });
   });
@@ -228,6 +230,7 @@ describe('CatalogPage', () => {
       undefined,
       'popularity',
       'desc',
+      null,
     );
   });
 
@@ -270,6 +273,7 @@ describe('CatalogPage', () => {
         undefined,
         'title',
         'desc',
+        null,
       );
     });
   });
@@ -441,6 +445,10 @@ describe('CatalogPage', () => {
 
     await user.click(screen.getByTestId('CancelIcon'));
 
+    // null, not omitted: CatalogService distinguishes an explicit clear
+    // from "genre wasn't mentioned" (which falls back to whatever's
+    // persisted) — sending undefined here would silently resurrect the
+    // just-deselected genre server-side instead of clearing it.
     await waitFor(() => {
       expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
         'movies',
@@ -448,6 +456,7 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
+        null,
       );
     });
   });

@@ -61,6 +61,7 @@ describe('CatalogSurfaceRoute', () => {
         undefined,
         'popularity',
         'desc',
+        null,
       );
     },
   );

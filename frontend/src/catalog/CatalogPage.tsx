@@ -157,7 +157,7 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
           search={activeSearch}
           sort={preference.sortKey}
           direction={preference.direction}
-          genre={preference.genre ?? undefined}
+          genre={preference.genre}
           onAvailableFiltersChange={setAvailableFilters}
           onClearSearch={clearSearch}
         />

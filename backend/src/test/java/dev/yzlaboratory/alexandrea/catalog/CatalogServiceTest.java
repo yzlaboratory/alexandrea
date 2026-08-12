@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -916,6 +917,42 @@ class CatalogServiceTest {
 
         verify(tmdbClient, times(1)).discoverMovies("popularity", "desc", "28", 1);
         verify(surfacePreferenceStore).upsert(42L, "catalog", "movies", null, null, encodedGenre("28"));
+    }
+
+    // An empty-string genre is CatalogController's distinct "the frontend
+    // sent a present-but-empty genre=" signal for a deselected filter chip
+    // — not the same wire value as omitting the param entirely (null),
+    // which instead falls back to whatever's persisted (the tests above).
+    // Collapsing the two would mean a deselected chip can never actually
+    // clear a previously-chosen genre — see the browse() Javadoc.
+    @Test
+    void anExplicitlyEmptyGenreClearsAPreviouslyPersistedGenreRatherThanFallingBackToIt() {
+        var existing = new SurfacePreference(42L, "catalog", "movies", "title", "asc", encodedGenre("28"), clock.instant());
+        when(surfacePreferenceStore.get(42L, "catalog", "movies")).thenReturn(Optional.of(existing));
+        when(tmdbClient.discoverMovies("title", "asc", null, 1))
+            .thenReturn(new CatalogPageResult(List.of(ITEM), 1, true));
+
+        var result = service.browse("movies", null, "title", "asc", "", 42L, 1);
+
+        assertThat(result.items()).containsExactly(ITEM);
+        verify(tmdbClient, times(1)).discoverMovies("title", "asc", null, 1);
+        verify(tmdbClient, never()).discoverMovies(any(), any(), eq("28"), anyInt());
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "movies", "title", "asc", null);
+    }
+
+    @Test
+    void anExplicitlyEmptyGenreWithNoSortGivenStillClearsRatherThanFallingBackToPopularWithoutPersisting() {
+        var existing = new SurfacePreference(42L, "catalog", "movies", "title", "asc", encodedGenre("28"), clock.instant());
+        when(surfacePreferenceStore.get(42L, "catalog", "movies")).thenReturn(Optional.of(existing));
+        when(tmdbClient.discoverMovies("title", "asc", null, 1))
+            .thenReturn(new CatalogPageResult(List.of(ITEM), 1, true));
+
+        service.browse("movies", null, null, null, "", 42L, 1);
+
+        // The persisted sort ("title"/"asc") still governs the fetch even
+        // though this request didn't repeat it — only genre changed.
+        verify(tmdbClient, times(1)).discoverMovies("title", "asc", null, 1);
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "movies", "title", "asc", null);
     }
 
     @Test

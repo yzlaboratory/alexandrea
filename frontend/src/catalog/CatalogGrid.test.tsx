@@ -574,6 +574,56 @@ describe('CatalogGrid', () => {
     );
   });
 
+  it('sends an explicit null genre rather than omitting it, alongside a sort', async () => {
+    // null is CatalogPage's definite "no genre selected" (e.g. a
+    // deselected chip) and must reach fetchCatalogPage as an explicit
+    // value, not be collapsed into "not mentioned" — CatalogService relies
+    // on that distinction to actually clear a previously-chosen genre
+    // rather than falling back to it.
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [item()], page: 1, hasMore: true },
+    });
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        sort="title"
+        direction="asc"
+        genre={null}
+      />,
+    );
+
+    await screen.findByText('A Movie');
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      'title',
+      'asc',
+      null,
+    );
+  });
+
+  it('sends an explicit null genre rather than omitting it, with no sort given', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [item()], page: 1, hasMore: true },
+    });
+
+    render(<CatalogGrid mediaType="movies" genre={null} />);
+
+    await screen.findByText('A Movie');
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      undefined,
+      undefined,
+      null,
+    );
+  });
+
   it('ignores genre entirely once a search is active, requesting the plain search shape', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',

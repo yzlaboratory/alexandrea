@@ -110,17 +110,21 @@ public class CatalogService {
      * Current search is therefore preserved untouched across a sort or
      * filter change, and vice versa.
      *
-     * <p>An unrecognised sort key/direction or an unrecognised (or
-     * currently-unverifiable) genre value for this media type is dropped
-     * rather than passed through — but, unlike a plain drop-to-popular,
-     * whichever of the two this request didn't validly supply falls back to
-     * what's already persisted for the other, so that a request changing
-     * only the sort can't silently clobber a previously-chosen genre and
-     * vice versa (the read-merge-write ADR 0025's store Javadoc requires,
-     * since {@link SurfacePreferenceStore#upsert} replaces the whole row).
-     * The combined row that results — real or persisted-fallback sort, real
-     * or persisted-fallback genre — is what actually gets upserted and what
-     * the page is fetched with.
+     * <p>An unrecognised sort key/direction, or {@code genre} being {@code
+     * null} (the caller didn't mention genre at all) or an unrecognised
+     * value, falls back to what's already persisted for that piece, so that
+     * a request changing only the sort can't silently clobber a
+     * previously-chosen genre and vice versa (the read-merge-write ADR
+     * 0025's store Javadoc requires, since {@link
+     * SurfacePreferenceStore#upsert} replaces the whole row). {@code genre}
+     * being the <em>empty string</em> is different from {@code null}: it's
+     * the frontend's explicit "no genre selected" signal (a deselected
+     * filter chip) and clears rather than falls back — {@code
+     * CatalogController} can make this distinction because HTTP already
+     * distinguishes an absent query param from a present-but-empty one. The
+     * combined row that results — real or persisted-fallback sort, real,
+     * cleared, or persisted-fallback genre — is what actually gets upserted
+     * and what the page is fetched with.
      */
     public CatalogPageResult browse(
         String mediaType, String search, String sortKey, String sortDirection, String genre, long userId, int page
@@ -132,13 +136,14 @@ public class CatalogService {
         if (!SUPPORTED_MEDIA_TYPES.contains(mediaType)) {
             throw new UnsupportedCatalogMediaTypeException(mediaType);
         }
-        if (!isValidSort(sortKey, sortDirection) && !isValidGenre(mediaType, genre)) {
+        var genreExplicitlyCleared = "".equals(genre);
+        if (!isValidSort(sortKey, sortDirection) && !isValidGenre(mediaType, genre) && !genreExplicitlyCleared) {
             return popularFeedFor(mediaType, page);
         }
 
         var existing = surfacePreferenceStore.get(userId, CATALOG_SURFACE, mediaType);
         var resolvedSort = resolveSort(sortKey, sortDirection, existing);
-        var resolvedGenre = resolveGenre(mediaType, genre, existing);
+        var resolvedGenre = genreExplicitlyCleared ? null : resolveGenre(mediaType, genre, existing);
         var fetchSortKey = resolvedSort.key() != null ? resolvedSort.key() : CatalogSort.POPULARITY;
         var fetchSortDirection = resolvedSort.direction() != null ? resolvedSort.direction() : CatalogSort.DESCENDING;
 

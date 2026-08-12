@@ -224,7 +224,7 @@ class CatalogEndpointTest {
     // one class-level database.
     private static final long DEFAULT_TEST_USER_ID = 1L;
     private static final List<Long> TEST_USER_IDS =
-        List.of(DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L);
+        List.of(DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L);
 
     @BeforeEach
     void seedTestUsers() {
@@ -961,6 +961,27 @@ class CatalogEndpointTest {
         mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9007L)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.genre").value("35"));
+    }
+
+    // A deselected filter chip sends a present-but-empty genre= — distinct
+    // from omitting the param, which instead falls back to whatever's
+    // persisted (the read-merge-write tests above). Without this
+    // distinction, deselecting a genre could never actually clear it.
+    @Test
+    void anExplicitlyEmptyGenreParamClearsAPreviouslySelectedGenre() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "title").param("direction", "asc")
+                .param("genre", "28").param("page", "96").with(loggedInAs(9008L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "title").param("direction", "asc")
+                .param("genre", "").param("page", "97").with(loggedInAs(9008L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastDiscoverQuery.get()).doesNotContain("with_genres");
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9008L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").value("title"))
+            .andExpect(jsonPath("$.genre").doesNotExist());
     }
 
     private static RequestPostProcessor loggedIn() {
