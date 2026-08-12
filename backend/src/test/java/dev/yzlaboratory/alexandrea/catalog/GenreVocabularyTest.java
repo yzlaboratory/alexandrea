@@ -13,9 +13,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class GenreVocabularyTest {
+
+    private static final int CURATED_BOOKS_GENRE_COUNT = 15;
 
     @Mock
     private TmdbClient tmdbClient;
@@ -27,19 +30,15 @@ class GenreVocabularyTest {
 
     @BeforeEach
     void setUp() {
-        vocabulary = new GenreVocabulary(tmdbClient, igdbClient);
+        vocabulary = new GenreVocabulary(tmdbClient, igdbClient, new ObjectMapper());
     }
 
     @Test
-    void supportsMoviesTvAndGames() {
+    void supportsMoviesTvGamesAndBooks() {
         assertThat(vocabulary.supports("movies")).isTrue();
         assertThat(vocabulary.supports("tv")).isTrue();
         assertThat(vocabulary.supports("games")).isTrue();
-    }
-
-    @Test
-    void doesNotYetSupportBooksSinceItsCuratedTableIsATwoNineOnwardsConcern() {
-        assertThat(vocabulary.supports("books")).isFalse();
+        assertThat(vocabulary.supports("books")).isTrue();
     }
 
     @Test
@@ -111,7 +110,47 @@ class GenreVocabularyTest {
 
     @Test
     void genresForAnUnsupportedMediaTypeThrowsRatherThanSilentlyReturningEmpty() {
-        assertThatThrownBy(() -> vocabulary.genresFor("books")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> vocabulary.genresFor("podcasts")).isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(tmdbClient, igdbClient);
+    }
+
+    @Test
+    void genresForBooksReturnsTheCuratedListWithoutCallingAnyProvider() {
+        var genres = vocabulary.genresFor("books");
+
+        assertThat(genres).hasSize(CURATED_BOOKS_GENRE_COUNT);
+        assertThat(genres).contains(new CatalogFilterOption("science_fiction", "Science Fiction"));
+        verifyNoInteractions(tmdbClient, igdbClient);
+    }
+
+    @Test
+    void genresForBooksCoversEveryAdr0013CuratedCategory() {
+        var labels = vocabulary.genresFor("books").stream().map(CatalogFilterOption::label).toList();
+
+        assertThat(labels).containsExactly(
+            "Fiction (general)", "Science Fiction", "Fantasy", "Mystery & Thriller", "Romance", "Horror",
+            "Historical Fiction", "Literary Fiction", "Young Adult", "Children's", "Biography & Memoir",
+            "History", "Science & Nature", "Philosophy & Religion", "Reference & Other"
+        );
+    }
+
+    @Test
+    void booksSubjectAliasesForScienceFictionMatchesAdr0013sExample() {
+        assertThat(vocabulary.booksSubjectAliases("science_fiction"))
+            .containsExactly("Science fiction", "Sci-Fi", "Science-fiction", "Speculative fiction");
+    }
+
+    @Test
+    void booksSubjectAliasesForAnUnrecognisedGenreValueIsEmptyRatherThanThrowing() {
+        assertThat(vocabulary.booksSubjectAliases("not-a-curated-genre")).isEmpty();
+    }
+
+    @Test
+    void everyCuratedBooksGenreHasAtLeastOneAlias() {
+        var genres = vocabulary.genresFor("books");
+
+        assertThat(genres).allSatisfy(
+            genre -> assertThat(vocabulary.booksSubjectAliases(genre.value())).isNotEmpty()
+        );
     }
 }

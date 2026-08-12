@@ -851,10 +851,13 @@ class CatalogEndpointTest {
     }
 
     @Test
-    void theBrowseResponseOmitsGenreFromAvailableFiltersForBooksSinceItsNotBuiltYet() throws Exception {
+    void theBrowseResponseListsTheBooksCuratedGenreVocabularyAsAnAvailableFilter() throws Exception {
         mockMvc.perform(get("/api/catalog/books").param("page", "83").with(loggedIn()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.availableFilters.genre").doesNotExist());
+            .andExpect(jsonPath("$.availableFilters.genre[0].value").value("fiction_general"))
+            .andExpect(jsonPath("$.availableFilters.genre[0].label").value("Fiction (general)"))
+            .andExpect(jsonPath("$.availableFilters.genre[1].value").value("science_fiction"))
+            .andExpect(jsonPath("$.availableFilters.genre[1].label").value("Science Fiction"));
     }
 
     @Test

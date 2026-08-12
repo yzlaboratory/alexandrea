@@ -1,0 +1,77 @@
+[
+  {
+    "value": "fiction_general",
+    "label": "Fiction (general)",
+    "aliases": ["Fiction", "General fiction", "Novels"]
+  },
+  {
+    "value": "science_fiction",
+    "label": "Science Fiction",
+    "aliases": ["Science fiction", "Sci-Fi", "Science-fiction", "Speculative fiction"]
+  },
+  {
+    "value": "fantasy",
+    "label": "Fantasy",
+    "aliases": ["Fantasy", "Fantasy fiction", "Epic fantasy", "Sword and sorcery"]
+  },
+  {
+    "value": "mystery_thriller",
+    "label": "Mystery & Thriller",
+    "aliases": ["Mystery", "Mystery fiction", "Detective and mystery stories", "Thriller", "Suspense fiction"]
+  },
+  {
+    "value": "romance",
+    "label": "Romance",
+    "aliases": ["Romance", "Romance fiction", "Love stories"]
+  },
+  {
+    "value": "horror",
+    "label": "Horror",
+    "aliases": ["Horror", "Horror fiction", "Horror tales", "Supernatural fiction"]
+  },
+  {
+    "value": "historical_fiction",
+    "label": "Historical Fiction",
+    "aliases": ["Historical fiction", "Historical novels"]
+  },
+  {
+    "value": "literary_fiction",
+    "label": "Literary Fiction",
+    "aliases": ["Literary fiction", "Literature"]
+  },
+  {
+    "value": "young_adult",
+    "label": "Young Adult",
+    "aliases": ["Young adult fiction", "Young adult", "Teen fiction"]
+  },
+  {
+    "value": "childrens",
+    "label": "Children's",
+    "aliases": ["Children's fiction", "Children's stories", "Juvenile fiction", "Picture books"]
+  },
+  {
+    "value": "biography_memoir",
+    "label": "Biography & Memoir",
+    "aliases": ["Biography", "Autobiography", "Memoir", "Biography & Autobiography"]
+  },
+  {
+    "value": "history",
+    "label": "History",
+    "aliases": ["History", "World history", "Military history"]
+  },
+  {
+    "value": "science_nature",
+    "label": "Science & Nature",
+    "aliases": ["Science", "Nature", "Popular science", "Natural history"]
+  },
+  {
+    "value": "philosophy_religion",
+    "label": "Philosophy & Religion",
+    "aliases": ["Philosophy", "Religion", "Religious life", "Theology"]
+  },
+  {
+    "value": "reference_other",
+    "label": "Reference & Other",
+    "aliases": ["Reference", "Encyclopedias", "Handbooks, manuals, etc."]
+  }
+]

@@ -983,8 +983,12 @@ class CatalogServiceTest {
     }
 
     @Test
-    void availableFiltersOmitsGenreForBooksSinceItsCuratedTableIsNotBuiltYet() {
-        assertThat(service.availableFilters("books")).isEmpty();
+    void availableFiltersReportsTheCuratedGenreListForBooks() {
+        var options = List.of(new CatalogFilterOption("science_fiction", "Science Fiction"));
+        when(genreVocabulary.supports("books")).thenReturn(true);
+        when(genreVocabulary.genresFor("books")).thenReturn(options);
+
+        assertThat(service.availableFilters("books")).isEqualTo(Map.of("genre", options));
     }
 
     @Test
