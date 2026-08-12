@@ -206,7 +206,7 @@ public class CatalogService {
                 LOG.warn("{} vocabulary temporarily unavailable for {}; omitting it from the capability payload", field.key(), mediaType, e);
             }
         }
-        return result;
+        return Map.copyOf(result);
     }
 
     private record ResolvedSort(String key, String direction) {
