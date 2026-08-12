@@ -99,6 +99,7 @@ class CatalogEndpointTest {
     private static final AtomicReference<String> nextOpenLibrarySearchResponseBody = new AtomicReference<>();
     private static final AtomicReference<Integer> nextOpenLibrarySearchResponseStatus = new AtomicReference<>(200);
     private static final AtomicInteger openLibrarySearchRequestCount = new AtomicInteger();
+    private static final AtomicReference<String> lastOpenLibrarySearchQuery = new AtomicReference<>();
 
     private static HttpServer igdbGamesServer;
     private static final AtomicReference<String> nextIgdbGamesResponseBody = new AtomicReference<>();
@@ -160,6 +161,7 @@ class CatalogEndpointTest {
         });
         openLibraryServer.createContext("/search.json", exchange -> {
             openLibrarySearchRequestCount.incrementAndGet();
+            lastOpenLibrarySearchQuery.set(exchange.getRequestURI().getQuery());
             respond(exchange, nextOpenLibrarySearchResponseStatus.get(), nextOpenLibrarySearchResponseBody.get());
         });
         openLibraryServer.start();
@@ -223,8 +225,9 @@ class CatalogEndpointTest {
     // IGNORE keeps this idempotent across every test method sharing the
     // one class-level database.
     private static final long DEFAULT_TEST_USER_ID = 1L;
-    private static final List<Long> TEST_USER_IDS =
-        List.of(DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L);
+    private static final List<Long> TEST_USER_IDS = List.of(
+        DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L, 9009L, 9010L, 9011L, 9012L
+    );
 
     @BeforeEach
     void seedTestUsers() {
@@ -288,6 +291,7 @@ class CatalogEndpointTest {
             """);
 
         openLibrarySearchRequestCount.set(0);
+        lastOpenLibrarySearchQuery.set(null);
         nextOpenLibrarySearchResponseStatus.set(200);
         nextOpenLibrarySearchResponseBody.set("""
             {"docs": []}
@@ -899,12 +903,68 @@ class CatalogEndpointTest {
     }
 
     @Test
-    void aGenreOnBooksIsDroppedSinceBooksHasNoGenreVocabularyYet() throws Exception {
-        mockMvc.perform(get("/api/catalog/books").param("genre", "science-fiction").param("page", "88").with(loggedIn()))
+    void aGenreParamRoutesBooksToOpenLibrarySearchWithASubjectQueryBuiltFromTheCuratedAliases() throws Exception {
+        nextOpenLibrarySearchResponseBody.set("""
+            {"docs": [{"key": "/works/OL1W", "title": "A Sci-Fi Book"}]}
+            """);
+
+        // A dedicated user id, not the shared loggedIn() — an earlier test in
+        // this class's shared Spring context persists an external_rating
+        // sort for (loggedIn(), books), and sortedBooks excludes unrated
+        // entries under that sort (ADR 0006); this test's unrated stub book
+        // would then vanish for a reason unrelated to what it's testing.
+        mockMvc.perform(get("/api/catalog/books").param("genre", "science_fiction").param("page", "88").with(loggedInAs(9009L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].title").value("A Sci-Fi Book"));
+
+        assertThat(openLibrarySearchRequestCount.get()).isEqualTo(1);
+        assertThat(openLibraryRequestCount.get()).isZero();
+        assertThat(lastOpenLibrarySearchQuery.get())
+            .contains("q=subject:(\"Science fiction\" OR \"Sci-Fi\" OR \"Science-fiction\" OR \"Speculative fiction\")");
+    }
+
+    @Test
+    void anInvalidBooksGenreValueIsDroppedAndFallsBackToTheTrendingFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("genre", "not-a-curated-genre").param("page", "89").with(loggedInAs(9010L)))
             .andExpect(status().isOk());
 
         assertThat(openLibraryRequestCount.get()).isEqualTo(1);
         assertThat(openLibrarySearchRequestCount.get()).isZero();
+    }
+
+    // OpenLibrary's own subject tagging (not something this app enforces)
+    // is what actually makes a book match more than one curated genre — this
+    // proves our own routing doesn't artificially withhold a result from a
+    // filter view just because it also matched a different genre filter
+    // applied in a separate request.
+    @Test
+    void aBookMatchingMultipleCuratedGenresAppearsUnderEachWhenFilteredSeparately() throws Exception {
+        nextOpenLibrarySearchResponseBody.set("""
+            {"docs": [{"key": "/works/OL1W", "title": "A Cross-Genre Book"}]}
+            """);
+
+        mockMvc.perform(get("/api/catalog/books").param("genre", "fantasy").param("page", "150").with(loggedInAs(9011L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].title").value("A Cross-Genre Book"));
+        var fantasyQuery = lastOpenLibrarySearchQuery.get();
+
+        mockMvc.perform(get("/api/catalog/books").param("genre", "young_adult").param("page", "151").with(loggedInAs(9011L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].title").value("A Cross-Genre Book"));
+        var youngAdultQuery = lastOpenLibrarySearchQuery.get();
+
+        assertThat(fantasyQuery).isNotEqualTo(youngAdultQuery);
+        assertThat(openLibrarySearchRequestCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    void aBooksGenreSelectionPersistsAndIsReadBackFromThePreferenceEndpointJustLikeMovies() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("genre", "fantasy").param("page", "152").with(loggedInAs(9012L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9012L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.genre").value("fantasy"));
     }
 
     @Test

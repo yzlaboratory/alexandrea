@@ -2,9 +2,13 @@ package dev.yzlaboratory.alexandrea.catalog;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -15,6 +19,11 @@ import org.springframework.web.client.RestClientException;
  * applied", "filter/sort applied", and "text search active" rows) — and
  * maps their responses into the common {@link CatalogItem} shape (ADR 0001).
  * Needs no API key — OpenLibrary is a public, unauthenticated API.
+ *
+ * <p>{@code /search.json} returns intermittent HTTP 500s on some query
+ * shapes (ADR 0018); {@link #search} and {@link #sortedBooks} both retry
+ * such a failure with backoff via {@link #fetchWithRetry} before giving up,
+ * rather than treating one 500 as "unsupported" or "empty".
  */
 @Component
 public class OpenLibraryClient {
@@ -32,6 +41,9 @@ public class OpenLibraryClient {
     // toItem's rationale below), so the field must be asked for by name here to
     // get it back at all.
     private static final String SORTED_FIELDS = "key,title,cover_i,first_publish_year,ratings_average";
+    private static final String MATCH_ALL_QUERY = "*";
+    private static final int MAX_ATTEMPTS = 3;
+    private static final List<Duration> RETRY_BACKOFF = List.of(Duration.ofMillis(50), Duration.ofMillis(100));
 
     private final RestClient restClient;
     private final CatalogProperties properties;
@@ -55,10 +67,12 @@ public class OpenLibraryClient {
 
     // ADR 0018's "filter/sort applied" row: /search.json replaces
     // /trending/daily.json once a sort is chosen, with q=* matching every
-    // work (the same Solr "match everything" idiom as an empty query) since
-    // no text search is active.
-    public CatalogPageResult sortedBooks(String sortKey, String direction, int page) {
-        var response = fetchSorted(sortKey, direction, page);
+    // work (the same Solr "match everything" idiom as an empty query) when
+    // no curated Books genre (ADR 0013) is applied either — genreSubjectAliases
+    // empty means no genre filter; a non-empty list replaces q=* with the
+    // subject:(alias OR alias …) clause built below.
+    public CatalogPageResult sortedBooks(String sortKey, String direction, List<String> genreSubjectAliases, int page) {
+        var response = fetchSorted(sortKey, direction, genreSubjectAliases, page);
         var docs = response.docs() != null ? response.docs() : List.<OpenLibraryWork>of();
         var keyedDocs = docs.stream().filter(work -> work.key() != null).toList();
         // hasMore reflects the upstream page's own fullness, computed before
@@ -92,6 +106,9 @@ public class OpenLibraryClient {
         return new CatalogPageResult(items, page, hasMore);
     }
 
+    // Not wrapped in fetchWithRetry: ADR 0018's flaky-500 finding is specific
+    // to /search.json's sort=/range query shapes, which this endpoint never
+    // sends.
     private OpenLibraryTrendingResponse fetchTrending(int page) {
         try {
             var response = restClient.get()
@@ -109,7 +126,7 @@ public class OpenLibraryClient {
     }
 
     private OpenLibrarySearchResponse fetchSearch(String query, int page) {
-        try {
+        return fetchWithRetry(() -> {
             var response = restClient.get()
                 .uri(uriBuilder -> uriBuilder
                     .path("/search.json")
@@ -120,17 +137,16 @@ public class OpenLibraryClient {
                 .retrieve()
                 .body(OpenLibrarySearchResponse.class);
             return response != null ? response : OpenLibrarySearchResponse.empty();
-        } catch (RestClientException e) {
-            throw new CatalogUpstreamException(PROVIDER, e);
-        }
+        });
     }
 
-    private OpenLibrarySearchResponse fetchSorted(String sortKey, String direction, int page) {
-        try {
+    private OpenLibrarySearchResponse fetchSorted(String sortKey, String direction, List<String> genreSubjectAliases, int page) {
+        var query = genreSubjectAliases.isEmpty() ? MATCH_ALL_QUERY : subjectQuery(genreSubjectAliases);
+        return fetchWithRetry(() -> {
             var response = restClient.get()
                 .uri(uriBuilder -> uriBuilder
                     .path("/search.json")
-                    .queryParam("q", "*")
+                    .queryParam("q", query)
                     .queryParam("sort", sortParam(sortKey, direction))
                     .queryParam("fields", SORTED_FIELDS)
                     .queryParam("limit", PAGE_SIZE)
@@ -139,9 +155,53 @@ public class OpenLibraryClient {
                 .retrieve()
                 .body(OpenLibrarySearchResponse.class);
             return response != null ? response : OpenLibrarySearchResponse.empty();
-        } catch (RestClientException e) {
+        });
+    }
+
+    // ADR 0018: /search.json returns intermittent HTTP 500s on some query
+    // shapes, so one 500 must not be read as "unsupported" or "empty" — retry
+    // a 5xx with a short backoff before giving up. A non-5xx failure (a
+    // genuine 4xx, or a connection-level error) skips the backoff and fails
+    // immediately, since a second attempt won't fix it.
+    private <T> T fetchWithRetry(Supplier<T> request) {
+        for (var attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                return request.get();
+            } catch (RestClientException e) {
+                if (!(e instanceof HttpServerErrorException) || attempt == MAX_ATTEMPTS) {
+                    throw new CatalogUpstreamException(PROVIDER, e);
+                }
+                sleep(RETRY_BACKOFF.get(attempt - 1));
+            }
+        }
+        throw new IllegalStateException("fetchWithRetry's loop always returns or throws before exiting");
+    }
+
+    private static void sleep(Duration duration) {
+        try {
+            Thread.sleep(duration);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new CatalogUpstreamException(PROVIDER, e);
         }
+    }
+
+    // Package-private (not private): OpenLibraryClientTest asserts this
+    // Solr fragment directly rather than only indirectly through a mocked
+    // HTTP request's query string.
+    //
+    // Each alias is Solr phrase-quoted so a multi-word alias like "Science
+    // fiction" matches as one phrase rather than splitting into two ORed
+    // terms; backslashes and embedded quotes are escaped defensively even
+    // though the alias list is our own maintained resource (ADR 0013).
+    static String subjectQuery(List<String> subjectAliases) {
+        return subjectAliases.stream()
+            .map(OpenLibraryClient::quotedPhrase)
+            .collect(Collectors.joining(" OR ", "subject:(", ")"));
+    }
+
+    private static String quotedPhrase(String value) {
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     // ADR 0018 pins only the literal sort= value for each sort's default

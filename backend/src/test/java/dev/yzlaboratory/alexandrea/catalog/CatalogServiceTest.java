@@ -629,12 +629,12 @@ class CatalogServiceTest {
     void sortedBooksRoutesToOpenLibrarySortedBooks() {
         var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Book", "cover", null, 4.2, 5.0);
         var page = new CatalogPageResult(List.of(bookItem), 1, true);
-        when(openLibraryClient.sortedBooks("external_rating", "desc", 1)).thenReturn(page);
+        when(openLibraryClient.sortedBooks("external_rating", "desc", List.of(), 1)).thenReturn(page);
 
         var result = service.browse("books", null, "external_rating", "desc", null, 7L, 1);
 
         assertThat(result).isEqualTo(page);
-        verify(openLibraryClient, times(1)).sortedBooks("external_rating", "desc", 1);
+        verify(openLibraryClient, times(1)).sortedBooks("external_rating", "desc", List.of(), 1);
         verify(openLibraryClient, never()).trendingBooks(anyInt());
     }
 
@@ -809,15 +809,33 @@ class CatalogServiceTest {
     }
 
     @Test
-    void aGenreForBooksIsDroppedSinceGenreVocabularyDoesNotSupportItYet() {
+    void genreFilteredBooksRoutesToOpenLibrarySortedBooksWithTheResolvedSubjectAliases() {
+        stubGenre("books", "science_fiction", "Science Fiction");
+        var aliases = List.of("Science fiction", "Sci-Fi", "Science-fiction", "Speculative fiction");
+        when(genreVocabulary.booksSubjectAliases("science_fiction")).thenReturn(aliases);
+        var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Sci-Fi Book", "cover", null, 4.2, 5.0);
+        var page = new CatalogPageResult(List.of(bookItem), 1, true);
+        when(openLibraryClient.sortedBooks("popularity", "desc", aliases, 1)).thenReturn(page);
+
+        var result = service.browse("books", null, null, null, "science_fiction", 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(openLibraryClient, times(1)).sortedBooks("popularity", "desc", aliases, 1);
+        verify(openLibraryClient, never()).trendingBooks(anyInt());
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "books", null, null, encodedGenre("science_fiction"));
+    }
+
+    @Test
+    void anInvalidBooksGenreValueIsDroppedRatherThanPassedThrough() {
+        stubGenre("books", "science_fiction", "Science Fiction");
         var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Book", "cover", null, 4.2, 5.0);
         var page = new CatalogPageResult(List.of(bookItem), 1, true);
         when(openLibraryClient.trendingBooks(1)).thenReturn(page);
 
-        var result = service.browse("books", null, null, null, "science-fiction", 42L, 1);
+        var result = service.browse("books", null, null, null, "not-a-curated-genre", 42L, 1);
 
         assertThat(result).isEqualTo(page);
-        verify(openLibraryClient, never()).sortedBooks(any(), any(), anyInt());
+        verify(openLibraryClient, never()).sortedBooks(any(), any(), any(), anyInt());
         verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
     }
 
