@@ -1,8 +1,11 @@
 package dev.yzlaboratory.alexandrea.catalog.web;
 
 import dev.yzlaboratory.alexandrea.auth.AuthenticatedUser;
+import dev.yzlaboratory.alexandrea.catalog.CatalogFilterKeys;
 import dev.yzlaboratory.alexandrea.catalog.CatalogService;
 import jakarta.validation.constraints.Min;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,19 +39,40 @@ public class CatalogController {
         @RequestParam(required = false) String sort,
         @RequestParam(required = false) String direction,
         @RequestParam(required = false) String genre,
+        @RequestParam(required = false) String originalLanguage,
+        @RequestParam(required = false) String availableInLanguage,
         @RequestParam(name = "page", defaultValue = "1") @Min(1) int page,
         @AuthenticationPrincipal AuthenticatedUser principal
     ) {
-        var pageResult = catalogService.browse(mediaType, search, sort, direction, genre, principal.userId(), page);
+        var filters = requestedFilters(genre, originalLanguage, availableInLanguage);
+        var pageResult = catalogService.browse(mediaType, search, sort, direction, filters, principal.userId(), page);
         return CatalogBrowseResponse.from(pageResult, catalogService.availableFilters(mediaType));
     }
 
-    /** The signed-in user's persisted Catalog sort and genre filter for this media type (ADR 0025), or null fields if never set. */
+    /** The signed-in user's persisted Catalog sort and filter selections for this media type (ADR 0025), or null/empty fields if never set. */
     @GetMapping("/{media_type}/preference")
     public CatalogPreferenceResponse preference(
         @PathVariable("media_type") String mediaType, @AuthenticationPrincipal AuthenticatedUser principal
     ) {
         var preference = catalogService.preference(principal.userId(), mediaType);
-        return new CatalogPreferenceResponse(preference.sortKey(), preference.sortDirection(), preference.genre());
+        return new CatalogPreferenceResponse(preference.sortKey(), preference.sortDirection(), preference.filters());
+    }
+
+    // Only fields the request actually mentioned end up in the map — an
+    // absent query param stays absent here too, which is what lets
+    // CatalogService tell "not mentioned" (fall back to whatever's
+    // persisted) apart from "mentioned but empty" (an explicit clear).
+    private static Map<String, String> requestedFilters(String genre, String originalLanguage, String availableInLanguage) {
+        var filters = new LinkedHashMap<String, String>();
+        if (genre != null) {
+            filters.put(CatalogFilterKeys.GENRE, genre);
+        }
+        if (originalLanguage != null) {
+            filters.put(CatalogFilterKeys.ORIGINAL_LANGUAGE, originalLanguage);
+        }
+        if (availableInLanguage != null) {
+            filters.put(CatalogFilterKeys.AVAILABLE_IN_LANGUAGE, availableInLanguage);
+        }
+        return filters;
     }
 }

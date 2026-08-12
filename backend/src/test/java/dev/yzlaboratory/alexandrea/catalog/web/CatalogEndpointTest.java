@@ -795,7 +795,7 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").doesNotExist())
             .andExpect(jsonPath("$.sortDirection").doesNotExist())
-            .andExpect(jsonPath("$.genre").doesNotExist());
+            .andExpect(jsonPath("$.filters.genre").doesNotExist());
     }
 
     @Test
@@ -964,7 +964,7 @@ class CatalogEndpointTest {
 
         mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9012L)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.genre").value("fantasy"));
+            .andExpect(jsonPath("$.filters.genre").value("fantasy"));
     }
 
     @Test
@@ -977,7 +977,7 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("title"))
             .andExpect(jsonPath("$.sortDirection").value("asc"))
-            .andExpect(jsonPath("$.genre").value("28"));
+            .andExpect(jsonPath("$.filters.genre").value("28"));
     }
 
     @Test
@@ -993,7 +993,7 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("title"))
             .andExpect(jsonPath("$.sortDirection").value("asc"))
-            .andExpect(jsonPath("$.genre").value("28"));
+            .andExpect(jsonPath("$.filters.genre").value("28"));
     }
 
     @Test
@@ -1009,7 +1009,7 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("release_date"))
             .andExpect(jsonPath("$.sortDirection").value("desc"))
-            .andExpect(jsonPath("$.genre").value("28"));
+            .andExpect(jsonPath("$.filters.genre").value("28"));
     }
 
     @Test
@@ -1023,7 +1023,7 @@ class CatalogEndpointTest {
         assertThat(lastDiscoverQuery.get()).contains("with_genres=35").doesNotContain("with_genres=28");
         mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9007L)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.genre").value("35"));
+            .andExpect(jsonPath("$.filters.genre").value("35"));
     }
 
     // A deselected filter chip sends a present-but-empty genre= — distinct
@@ -1044,7 +1044,7 @@ class CatalogEndpointTest {
         mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9008L)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("title"))
-            .andExpect(jsonPath("$.genre").doesNotExist());
+            .andExpect(jsonPath("$.filters.genre").doesNotExist());
     }
 
     private static RequestPostProcessor loggedIn() {

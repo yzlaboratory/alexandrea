@@ -2,16 +2,19 @@ package dev.yzlaboratory.alexandrea.catalog;
 
 import dev.yzlaboratory.alexandrea.surface.SurfacePreference;
 import dev.yzlaboratory.alexandrea.surface.SurfacePreferenceStore;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntFunction;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -42,7 +45,6 @@ public class CatalogService {
     private static final String NO_FILTERS = "";
     private static final String DEFAULT_SORT = "default";
     private static final String CATALOG_SURFACE = "catalog";
-    private static final String GENRE_FIELD = "genre";
     private static final Set<String> SUPPORTED_MEDIA_TYPES = Set.of(
         TmdbClient.MOVIES_MEDIA_TYPE, TmdbClient.TV_MEDIA_TYPE, OpenLibraryClient.BOOKS_MEDIA_TYPE, IgdbClient.GAMES_MEDIA_TYPE
     );
@@ -53,6 +55,7 @@ public class CatalogService {
         CatalogSort.POPULARITY, CatalogSort.RELEASE_DATE, CatalogSort.TITLE, CatalogSort.EXTERNAL_RATING
     );
     private static final Set<String> VALID_DIRECTIONS = Set.of(CatalogSort.ASCENDING, CatalogSort.DESCENDING);
+    private static final TypeReference<Map<String, String>> FILTERS_JSON_TYPE = new TypeReference<>() {};
 
     private final TmdbClient tmdbClient;
     private final OpenLibraryClient openLibraryClient;
@@ -62,6 +65,7 @@ public class CatalogService {
     private final SurfacePreferenceStore surfacePreferenceStore;
     private final GenreVocabulary genreVocabulary;
     private final ObjectMapper objectMapper;
+    private final List<CatalogFilterField> filterFields;
 
     public CatalogService(
         TmdbClient tmdbClient,
@@ -81,6 +85,9 @@ public class CatalogService {
         this.surfacePreferenceStore = surfacePreferenceStore;
         this.genreVocabulary = genreVocabulary;
         this.objectMapper = objectMapper;
+        this.filterFields = List.of(
+            new CatalogFilterField(CatalogFilterKeys.GENRE, genreVocabulary::supports, genreVocabulary::genresFor)
+        );
     }
 
     /** Popular-feed convenience overload — equivalent to {@code browse(mediaType, null, page)}. */
@@ -103,31 +110,32 @@ public class CatalogService {
      * The sort- and filter-aware overload the Catalog controller calls:
      * routes to the search feed exactly as {@link #browse(String, String,
      * int)} does, and ignores {@code sortKey}/{@code sortDirection}/{@code
-     * genre} while a search is active — TMDB's and IGDB's search endpoints
-     * cannot honor an explicit sort or {@code with_genres}/{@code where
-     * genres} at all (ADR 0018's "Behavior under active text search"), and
-     * this issue does not wire OpenLibrary's own ability to combine the two.
-     * Current search is therefore preserved untouched across a sort or
-     * filter change, and vice versa.
+     * filters} while a search is active — TMDB's and IGDB's search endpoints
+     * cannot honor an explicit sort or any filter at all (ADR 0018's
+     * "Behavior under active text search"), and this issue does not wire
+     * OpenLibrary's own ability to combine the two. Current search is
+     * therefore preserved untouched across a sort or filter change, and vice
+     * versa.
      *
-     * <p>An unrecognised sort key/direction, or {@code genre} being {@code
-     * null} (the caller didn't mention genre at all) or an unrecognised
-     * value, falls back to what's already persisted for that piece, so that
-     * a request changing only the sort can't silently clobber a
-     * previously-chosen genre and vice versa (the read-merge-write ADR
-     * 0025's store Javadoc requires, since {@link
-     * SurfacePreferenceStore#upsert} replaces the whole row). {@code genre}
-     * being the <em>empty string</em> is different from {@code null}: it's
-     * the frontend's explicit "no genre selected" signal (a deselected
-     * filter chip) and clears rather than falls back — {@code
-     * CatalogController} can make this distinction because HTTP already
-     * distinguishes an absent query param from a present-but-empty one. The
-     * combined row that results — real or persisted-fallback sort, real,
-     * cleared, or persisted-fallback genre — is what actually gets upserted
-     * and what the page is fetched with.
+     * <p>{@code filters} is keyed by filter field (see {@link
+     * CatalogFilterKeys}); each field is resolved independently by the same
+     * rule an unrecognised sort key/direction already follows: a field
+     * simply absent from the map (the caller didn't mention it) falls back
+     * to whatever's already persisted for that field, so that a request
+     * changing only one field can't silently clobber another (the read-
+     * merge-write ADR 0025's store Javadoc requires, since {@link
+     * SurfacePreferenceStore#upsert} replaces the whole row). A field mapped
+     * to the <em>empty string</em> is different from being absent: it's the
+     * frontend's explicit "no value selected" signal (a deselected filter
+     * chip) and clears rather than falls back — {@code CatalogController}
+     * can make this distinction because HTTP already distinguishes an
+     * absent query param from a present-but-empty one. The combined result —
+     * real or persisted-fallback sort, and each field's real, cleared, or
+     * persisted-fallback value — is what actually gets upserted and what the
+     * page is fetched with.
      */
     public CatalogPageResult browse(
-        String mediaType, String search, String sortKey, String sortDirection, String genre, long userId, int page
+        String mediaType, String search, String sortKey, String sortDirection, Map<String, String> filters, long userId, int page
     ) {
         var query = normalizeSearch(search);
         if (query != null) {
@@ -136,53 +144,61 @@ public class CatalogService {
         if (!SUPPORTED_MEDIA_TYPES.contains(mediaType)) {
             throw new UnsupportedCatalogMediaTypeException(mediaType);
         }
-        var genreExplicitlyCleared = "".equals(genre);
-        if (!isValidSort(sortKey, sortDirection) && !isValidGenre(mediaType, genre) && !genreExplicitlyCleared) {
+        if (!isValidSort(sortKey, sortDirection) && filterFields.stream().noneMatch(field -> isMeaningfulRequest(mediaType, field, filters))) {
             return popularFeedFor(mediaType, page);
         }
 
         var existing = surfacePreferenceStore.get(userId, CATALOG_SURFACE, mediaType);
         var resolvedSort = resolveSort(sortKey, sortDirection, existing);
-        var resolvedGenre = genreExplicitlyCleared ? null : resolveGenre(mediaType, genre, existing);
+        var resolvedFilters = resolveFilters(mediaType, filters, existing);
         var fetchSortKey = resolvedSort.key() != null ? resolvedSort.key() : CatalogSort.POPULARITY;
         var fetchSortDirection = resolvedSort.direction() != null ? resolvedSort.direction() : CatalogSort.DESCENDING;
 
-        var result = filteredFeedFor(mediaType, fetchSortKey, fetchSortDirection, resolvedGenre, page);
+        var result = filteredFeedFor(mediaType, fetchSortKey, fetchSortDirection, resolvedFilters, page);
         surfacePreferenceStore.upsert(
-            userId, CATALOG_SURFACE, mediaType, resolvedSort.key(), resolvedSort.direction(), encodeFilters(resolvedGenre)
+            userId, CATALOG_SURFACE, mediaType, resolvedSort.key(), resolvedSort.direction(), encodeFilters(resolvedFilters)
         );
         return result;
     }
 
-    /** The current user's persisted Catalog sort and genre filter for this media type, if ever set (ADR 0025). */
+    /** The current user's persisted Catalog sort and filter selections for this media type, if ever set (ADR 0025). */
     public CatalogPreference preference(long userId, String mediaType) {
         var stored = surfacePreferenceStore.get(userId, CATALOG_SURFACE, mediaType);
-        var genre = stored.map(SurfacePreference::filters).map(this::decodeGenre)
-            .filter(value -> isValidGenre(mediaType, value))
-            .orElse(null);
+        var persisted = stored.map(SurfacePreference::filters).map(this::decodeFilters).orElse(Map.of());
+        var validFilters = new LinkedHashMap<String, String>();
+        for (var field : filterFields) {
+            var value = persisted.get(field.key());
+            if (value != null && field.isValidValue(mediaType, value)) {
+                validFilters.put(field.key(), value);
+            }
+        }
         return new CatalogPreference(
             stored.map(SurfacePreference::sortKey).orElse(null),
             stored.map(SurfacePreference::sortDirection).orElse(null),
-            genre
+            Map.copyOf(validFilters)
         );
     }
 
     /**
-     * Which filters {@code FilterControls} should offer for this media type
-     * right now (ADR 0018's per-type capability table) — currently just
-     * genre. Omits genre (rather than failing the whole browse response)
-     * when the vocabulary is temporarily unreachable.
+     * Which filter kinds {@code FilterControls} should offer for this media
+     * type right now (ADR 0018's per-type capability table), keyed by filter
+     * field — a media type can report more than one (e.g. Movies: genre and
+     * original language). Omits a field (rather than failing the whole
+     * browse response) when its vocabulary is temporarily unreachable.
      */
     public Map<String, List<CatalogFilterOption>> availableFilters(String mediaType) {
-        if (!genreVocabulary.supports(mediaType)) {
-            return Map.of();
+        var result = new LinkedHashMap<String, List<CatalogFilterOption>>();
+        for (var field : filterFields) {
+            if (!field.supports().test(mediaType)) {
+                continue;
+            }
+            try {
+                result.put(field.key(), field.optionsFor().apply(mediaType));
+            } catch (CatalogUpstreamException e) {
+                LOG.warn("{} vocabulary temporarily unavailable for {}; omitting it from the capability payload", field.key(), mediaType, e);
+            }
         }
-        try {
-            return Map.of(GENRE_FIELD, genreVocabulary.genresFor(mediaType));
-        } catch (CatalogUpstreamException e) {
-            LOG.warn("Genre vocabulary temporarily unavailable for {}; omitting it from the capability payload", mediaType, e);
-            return Map.of();
-        }
+        return result;
     }
 
     private record ResolvedSort(String key, String direction) {
@@ -199,44 +215,64 @@ public class CatalogService {
             .orElse(ResolvedSort.NONE);
     }
 
-    private String resolveGenre(String mediaType, String genre, Optional<SurfacePreference> existing) {
-        if (isValidGenre(mediaType, genre)) {
-            return genre;
-        }
-        var persistedGenre = existing.map(SurfacePreference::filters).map(this::decodeGenre).orElse(null);
-        return isValidGenre(mediaType, persistedGenre) ? persistedGenre : null;
-    }
-
     private static boolean isValidSort(String sortKey, String sortDirection) {
         return sortKey != null && VALID_SORT_KEYS.contains(sortKey)
             && sortDirection != null && VALID_DIRECTIONS.contains(sortDirection);
     }
 
-    private boolean isValidGenre(String mediaType, String genre) {
-        if (genre == null || genre.isBlank() || !genreVocabulary.supports(mediaType)) {
+    private boolean isMeaningfulRequest(String mediaType, CatalogFilterField field, Map<String, String> requested) {
+        if (!requested.containsKey(field.key())) {
             return false;
         }
-        try {
-            return genreVocabulary.genresFor(mediaType).stream().anyMatch(option -> option.value().equals(genre));
-        } catch (CatalogUpstreamException e) {
-            LOG.warn("Could not verify genre {} for {} against a temporarily-unavailable vocabulary; dropping it", genre, mediaType, e);
-            return false;
-        }
+        var value = requested.get(field.key());
+        return "".equals(value) || field.isValidValue(mediaType, value);
     }
 
-    private String encodeFilters(String genre) {
-        if (genre == null) {
+    // Each field is resolved independently: an explicit clear ("") drops it
+    // regardless of what's persisted; a valid requested value takes it;
+    // anything else (not mentioned, or an invalid value) falls back to
+    // whatever's already persisted for that field, provided that value is
+    // still valid for the current media type and vocabulary.
+    private Map<String, String> resolveFilters(String mediaType, Map<String, String> requested, Optional<SurfacePreference> existing) {
+        var persisted = existing.map(SurfacePreference::filters).map(this::decodeFilters).orElse(Map.<String, String>of());
+        var resolved = new LinkedHashMap<String, String>();
+        for (var field : filterFields) {
+            var key = field.key();
+            if (requested.containsKey(key)) {
+                var requestedValue = requested.get(key);
+                if ("".equals(requestedValue)) {
+                    continue;
+                }
+                if (field.isValidValue(mediaType, requestedValue)) {
+                    resolved.put(key, requestedValue);
+                    continue;
+                }
+            }
+            var persistedValue = persisted.get(key);
+            if (persistedValue != null && field.isValidValue(mediaType, persistedValue)) {
+                resolved.put(key, persistedValue);
+            }
+        }
+        return resolved;
+    }
+
+    private String encodeFilters(Map<String, String> filters) {
+        if (filters.isEmpty()) {
             return null;
         }
-        return objectMapper.createObjectNode().put(GENRE_FIELD, genre).toString();
+        return objectMapper.writeValueAsString(filters);
     }
 
-    private String decodeGenre(String filtersJson) {
+    private Map<String, String> decodeFilters(String filtersJson) {
+        if (filtersJson == null) {
+            return Map.of();
+        }
         try {
-            return objectMapper.readTree(filtersJson).path(GENRE_FIELD).asString(null);
+            var decoded = objectMapper.readValue(filtersJson, FILTERS_JSON_TYPE);
+            return decoded != null ? decoded : Map.<String, String>of();
         } catch (JacksonException e) {
             LOG.warn("Could not parse persisted catalog filters {}; treating as none", filtersJson, e);
-            return null;
+            return Map.of();
         }
     }
 
@@ -267,22 +303,23 @@ public class CatalogService {
         };
     }
 
-    private CatalogPageResult filteredFeedFor(String mediaType, String sortKey, String sortDirection, String genre, int page) {
+    private CatalogPageResult filteredFeedFor(String mediaType, String sortKey, String sortDirection, Map<String, String> filters, int page) {
+        var genre = filters.get(CatalogFilterKeys.GENRE);
         return switch (mediaType) {
             case TmdbClient.MOVIES_MEDIA_TYPE -> filteredFeed(
-                TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, sortKey, sortDirection, genre,
+                TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, sortKey, sortDirection, filters,
                 pageToFetch -> tmdbClient.discoverMovies(sortKey, sortDirection, genre, pageToFetch), page
             );
             case TmdbClient.TV_MEDIA_TYPE -> filteredFeed(
-                TmdbClient.PROVIDER, TmdbClient.TV_MEDIA_TYPE, sortKey, sortDirection, genre,
+                TmdbClient.PROVIDER, TmdbClient.TV_MEDIA_TYPE, sortKey, sortDirection, filters,
                 pageToFetch -> tmdbClient.discoverTv(sortKey, sortDirection, genre, pageToFetch), page
             );
             case OpenLibraryClient.BOOKS_MEDIA_TYPE -> filteredFeed(
-                OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, sortKey, sortDirection, genre,
+                OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, sortKey, sortDirection, filters,
                 pageToFetch -> openLibraryClient.sortedBooks(sortKey, sortDirection, booksSubjectAliases(genre), pageToFetch), page
             );
             case IgdbClient.GAMES_MEDIA_TYPE -> filteredFeed(
-                IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, sortKey, sortDirection, genre,
+                IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, sortKey, sortDirection, filters,
                 pageToFetch -> igdbClient.discoverGames(sortKey, sortDirection, genre, pageToFetch), page
             );
             default -> throw new UnsupportedCatalogMediaTypeException(mediaType);
@@ -328,20 +365,26 @@ public class CatalogService {
         return cachedFeed(provider, key, fetchPage, page);
     }
 
-    // A "popular sorted by X, optionally filtered by genre Y" page is cached
+    // A "popular sorted by X, optionally filtered by Y" page is cached
     // separately from both the plain popular feed and any search — it
     // shares the "popular" feed/query slot (it's still the unfiltered-by-
-    // search browse) but carries the real sort and genre in the slots
+    // search browse) but carries the real sort and filters in the slots
     // popularFeed always fills with DEFAULT_SORT/NO_FILTERS, so choosing a
-    // sort or a genre can never collide with — or be served by — the
-    // default popular page's cache entry, and a genre change is its own
-    // distinct cache entry from the same sort with no genre.
+    // sort or a filter can never collide with — or be served by — the
+    // default popular page's cache entry. Filters are sorted by key before
+    // joining so the same filter combination always produces the same cache
+    // key regardless of the map's iteration order.
     private CatalogPageResult filteredFeed(
-        String provider, String mediaType, String sortKey, String sortDirection, String genre,
+        String provider, String mediaType, String sortKey, String sortDirection, Map<String, String> filters,
         IntFunction<CatalogPageResult> fetchPage, int page
     ) {
-        var filters = genre != null ? GENRE_FIELD + ":" + genre : NO_FILTERS;
-        var key = CatalogCache.pageKey(provider, mediaType, POPULAR_FEED, filters, sortKey + ":" + sortDirection, page);
+        var filtersKeyPart = filters.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .map(entry -> entry.getKey() + ":" + entry.getValue())
+            .collect(Collectors.joining(","));
+        var key = CatalogCache.pageKey(
+            provider, mediaType, POPULAR_FEED, filtersKeyPart.isEmpty() ? NO_FILTERS : filtersKeyPart, sortKey + ":" + sortDirection, page
+        );
         return cachedFeed(provider, key, fetchPage, page);
     }
 
