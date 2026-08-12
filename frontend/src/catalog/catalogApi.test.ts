@@ -230,18 +230,20 @@ describe('catalogApi', () => {
     ).toEqual({ status: 'ok', result });
   });
 
-  it('appends a url-encoded genre param when a genre is given', async () => {
+  it('appends a url-encoded filter param when a filter value is given', async () => {
     fetchMock.mockResolvedValueOnce(
       response(200, { items: [], page: 1, hasMore: false }),
     );
 
-    await fetchCatalogPage('movies', 1, undefined, undefined, undefined, '28');
+    await fetchCatalogPage('movies', 1, undefined, undefined, undefined, {
+      genre: '28',
+    });
 
     const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(path).toBe('/api/catalog/movies?page=1&genre=28');
   });
 
-  it('omits the genre param entirely when no genre is given', async () => {
+  it('omits filter params entirely when no filters are given', async () => {
     fetchMock.mockResolvedValueOnce(
       response(200, { items: [], page: 1, hasMore: false }),
     );
@@ -252,32 +254,52 @@ describe('catalogApi', () => {
     expect(path).toBe('/api/catalog/movies?page=1');
   });
 
-  it('sends a present-but-empty genre param when genre is explicitly null, distinct from omitted', async () => {
-    // null signals an explicit "clear the genre filter" (a deselected
-    // chip) — CatalogService must be able to tell this apart from the
-    // param being absent entirely (which falls back to whatever's
-    // persisted), so this can never collapse to the same URL as the
-    // "omitted" case above.
+  it('sends a present-but-empty param when a filter value is explicitly null, distinct from omitted', async () => {
+    // null signals an explicit "clear this filter" (a deselected chip) —
+    // CatalogService must be able to tell this apart from the field being
+    // absent from the filters object entirely (which falls back to
+    // whatever's persisted), so this can never collapse to the same URL as
+    // the "omitted" case above.
     fetchMock.mockResolvedValueOnce(
       response(200, { items: [], page: 1, hasMore: false }),
     );
 
-    await fetchCatalogPage('movies', 1, undefined, undefined, undefined, null);
+    await fetchCatalogPage('movies', 1, undefined, undefined, undefined, {
+      genre: null,
+    });
 
     const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(path).toBe('/api/catalog/movies?page=1&genre=');
   });
 
-  it('combines sort, direction, and genre params in one request', async () => {
+  it('combines sort, direction, and a filter param in one request', async () => {
     fetchMock.mockResolvedValueOnce(
       response(200, { items: [], page: 1, hasMore: false }),
     );
 
-    await fetchCatalogPage('movies', 1, undefined, 'popularity', 'desc', '28');
+    await fetchCatalogPage('movies', 1, undefined, 'popularity', 'desc', {
+      genre: '28',
+    });
 
     const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(path).toBe(
       '/api/catalog/movies?page=1&sort=popularity&direction=desc&genre=28',
+    );
+  });
+
+  it('appends multiple filter params from different fields in one request', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { items: [], page: 1, hasMore: false }),
+    );
+
+    await fetchCatalogPage('movies', 1, undefined, undefined, undefined, {
+      genre: '28',
+      originalLanguage: 'ja',
+    });
+
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe(
+      '/api/catalog/movies?page=1&genre=28&originalLanguage=ja',
     );
   });
 
@@ -302,14 +324,9 @@ describe('catalogApi', () => {
     fetchMock.mockResolvedValueOnce(response(200, result));
 
     expect(
-      await fetchCatalogPage(
-        'movies',
-        1,
-        undefined,
-        undefined,
-        undefined,
-        '28',
-      ),
+      await fetchCatalogPage('movies', 1, undefined, undefined, undefined, {
+        genre: '28',
+      }),
     ).toEqual({ status: 'ok', result });
   });
 });
@@ -328,7 +345,7 @@ describe('fetchCatalogPreference', () => {
 
   it('requests the preference for the given media type with same-origin credentials', async () => {
     fetchMock.mockResolvedValueOnce(
-      response(200, { sortKey: 'title', sortDirection: 'asc', genre: null }),
+      response(200, { sortKey: 'title', sortDirection: 'asc', filters: {} }),
     );
 
     await fetchCatalogPreference('books');
@@ -338,67 +355,71 @@ describe('fetchCatalogPreference', () => {
     expect(init.credentials).toBe('same-origin');
   });
 
-  it('resolves to the stored sort key, direction, and genre on a 200', async () => {
+  it('resolves to the stored sort key, direction, and filters on a 200', async () => {
     fetchMock.mockResolvedValueOnce(
       response(200, {
         sortKey: 'external_rating',
         sortDirection: 'desc',
-        genre: '28',
+        filters: { genre: '28', originalLanguage: 'ja' },
       }),
     );
 
     expect(await fetchCatalogPreference('books')).toEqual({
       sortKey: 'external_rating',
       sortDirection: 'desc',
-      genre: '28',
+      filters: { genre: '28', originalLanguage: 'ja' },
     });
   });
 
-  it('resolves to null fields when nothing is stored', async () => {
+  it('resolves to null sort fields and empty filters when nothing is stored', async () => {
     fetchMock.mockResolvedValueOnce(
-      response(200, { sortKey: null, sortDirection: null, genre: null }),
+      response(200, { sortKey: null, sortDirection: null, filters: {} }),
     );
 
     expect(await fetchCatalogPreference('movies')).toEqual({
       sortKey: null,
       sortDirection: null,
-      genre: null,
+      filters: {},
     });
   });
 
   it('resolves to a stored genre with no sort chosen yet', async () => {
     fetchMock.mockResolvedValueOnce(
-      response(200, { sortKey: null, sortDirection: null, genre: '28' }),
+      response(200, {
+        sortKey: null,
+        sortDirection: null,
+        filters: { genre: '28' },
+      }),
     );
 
     expect(await fetchCatalogPreference('movies')).toEqual({
       sortKey: null,
       sortDirection: null,
-      genre: '28',
+      filters: { genre: '28' },
     });
   });
 
-  it('degrades to null fields rather than rejecting on a non-2xx response', async () => {
+  it('degrades to null sort fields and empty filters rather than rejecting on a non-2xx response', async () => {
     fetchMock.mockResolvedValueOnce(response(401));
 
     expect(await fetchCatalogPreference('movies')).toEqual({
       sortKey: null,
       sortDirection: null,
-      genre: null,
+      filters: {},
     });
   });
 
-  it('degrades to null fields rather than rejecting when fetch itself fails', async () => {
+  it('degrades to null sort fields and empty filters rather than rejecting when fetch itself fails', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
     await expect(fetchCatalogPreference('movies')).resolves.toEqual({
       sortKey: null,
       sortDirection: null,
-      genre: null,
+      filters: {},
     });
   });
 
-  it('degrades to null fields when the body is not valid JSON', async () => {
+  it('degrades to null sort fields and empty filters when the body is not valid JSON', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -408,7 +429,7 @@ describe('fetchCatalogPreference', () => {
     expect(await fetchCatalogPreference('movies')).toEqual({
       sortKey: null,
       sortDirection: null,
-      genre: null,
+      filters: {},
     });
   });
 });

@@ -5,7 +5,8 @@ import CatalogSurfaceRoute from './CatalogSurfaceRoute';
 import { MEDIA_TYPES, type MediaType } from './AppShell';
 import * as catalogApi from '../catalog/catalogApi';
 
-vi.mock('../catalog/catalogApi', () => ({
+vi.mock('../catalog/catalogApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../catalog/catalogApi')>()),
   fetchCatalogPage: vi.fn(),
   fetchCatalogPreference: vi.fn(),
 }));
@@ -42,7 +43,7 @@ describe('CatalogSurfaceRoute', () => {
     });
     mockedFetchCatalogPreference
       .mockReset()
-      .mockResolvedValue({ sortKey: null, sortDirection: null, genre: null });
+      .mockResolvedValue({ sortKey: null, sortDirection: null, filters: {} });
   });
 
   it.each(MEDIA_TYPES)(
@@ -61,7 +62,7 @@ describe('CatalogSurfaceRoute', () => {
         undefined,
         'popularity',
         'desc',
-        null,
+        { genre: null, originalLanguage: null, availableInLanguage: null },
       );
     },
   );

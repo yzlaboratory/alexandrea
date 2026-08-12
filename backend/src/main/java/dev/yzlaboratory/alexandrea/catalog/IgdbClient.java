@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -45,7 +46,13 @@ public class IgdbClient {
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}");
     private static final ParameterizedTypeReference<List<IgdbGame>> GAME_LIST_TYPE = new ParameterizedTypeReference<>() {};
     private static final ParameterizedTypeReference<List<IgdbGenre>> GENRE_LIST_TYPE = new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<List<IgdbLanguage>> LANGUAGE_LIST_TYPE = new ParameterizedTypeReference<>() {};
     private static final String GENRE_LIST_REQUEST_BODY = """
+        fields name;
+        limit 500;
+        sort name asc;
+        """;
+    private static final String LANGUAGE_LIST_REQUEST_BODY = """
         fields name;
         limit 500;
         sort name asc;
@@ -67,18 +74,21 @@ public class IgdbClient {
 
     // IGDB's own default feed is already "sorted by popularity desc" (ADR
     // 0018's "nothing applied" row), so this is the same request discoverGames
-    // would build for that exact (sortKey, direction) pair with no genre.
+    // would build for that exact (sortKey, direction) pair with no filters.
     public CatalogPageResult popularGames(int page) {
-        return discoverGames(CatalogSort.POPULARITY, CatalogSort.DESCENDING, null, page);
+        return discoverGames(CatalogSort.POPULARITY, CatalogSort.DESCENDING, null, null, page);
     }
 
     // ADR 0018's "filter/sort applied" row: same /games endpoint as popular,
     // parameterized by the caller's chosen sort field/direction instead of
-    // the fixed total_rating_count desc, and an optional genre (IGDB's
-    // native genre id, ADR 0013's "native enum" for Games) added as a
-    // `where` clause when present.
-    public CatalogPageResult discoverGames(String sortKey, String direction, String genre, int page) {
-        return fetchPage(page, discoverRequestBody(sortKey, direction, genre, page));
+    // the fixed total_rating_count desc, with an optional genre (IGDB's
+    // native genre id, ADR 0013's "native enum" for Games) and an optional
+    // availableInLanguage (IGDB's native language id, ADR 0018's available-
+    // in-language filter for Games) each added as their own `where` clause
+    // when present — combined with `&` when both are given, so the result
+    // narrows to entries matching both rather than either.
+    public CatalogPageResult discoverGames(String sortKey, String direction, String genre, String availableInLanguage, int page) {
+        return fetchPage(page, discoverRequestBody(sortKey, direction, genre, availableInLanguage, page));
     }
 
     // ADR 0018's "text search active" row: IGDB's search is an Apicalypse
@@ -94,6 +104,12 @@ public class IgdbClient {
     public List<CatalogFilterOption> genres() {
         var genres = postApicalypse("/genres", GENRE_LIST_REQUEST_BODY, GENRE_LIST_TYPE, false);
         return genres.stream().map(genre -> new CatalogFilterOption(String.valueOf(genre.id()), genre.name())).toList();
+    }
+
+    /** IGDB's native language enum (ADR 0018's available-in-language filter for Games), for {@link LanguageVocabulary} to cache. */
+    public List<CatalogFilterOption> languages() {
+        var languages = postApicalypse("/languages", LANGUAGE_LIST_REQUEST_BODY, LANGUAGE_LIST_TYPE, false);
+        return languages.stream().map(language -> new CatalogFilterOption(String.valueOf(language.id()), language.name())).toList();
     }
 
     // Shared by the popular feed and search: same 401-retry-once handling,
@@ -137,9 +153,16 @@ public class IgdbClient {
         }
     }
 
-    private static String discoverRequestBody(String sortKey, String direction, String genre, int page) {
+    private static String discoverRequestBody(String sortKey, String direction, String genre, String availableInLanguage, int page) {
         var offset = (page - 1) * PAGE_SIZE;
-        var whereClause = genre != null ? "where genres = (%s);\n".formatted(genre) : "";
+        var conditions = new ArrayList<String>();
+        if (genre != null) {
+            conditions.add("genres = (%s)".formatted(genre));
+        }
+        if (availableInLanguage != null) {
+            conditions.add("language_supports.language = (%s)".formatted(availableInLanguage));
+        }
+        var whereClause = conditions.isEmpty() ? "" : "where " + String.join(" & ", conditions) + ";\n";
         return """
             fields name,cover.image_id,first_release_date,total_rating;
             %ssort %s %s;
@@ -288,4 +311,7 @@ public class IgdbClient {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record IgdbGenre(long id, String name) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record IgdbLanguage(long id, String name) {}
 }

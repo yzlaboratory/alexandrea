@@ -90,6 +90,9 @@ class CatalogEndpointTest {
     private static final AtomicReference<String> igdbGenreListResponseBody = new AtomicReference<>("""
         [{"id": 5, "name": "Shooter"}, {"id": 12, "name": "Role-playing (RPG)"}]
         """);
+    private static final AtomicReference<String> igdbLanguageListResponseBody = new AtomicReference<>("""
+        [{"id": 1, "name": "English"}, {"id": 2, "name": "German"}]
+        """);
 
     private static HttpServer openLibraryServer;
     private static final AtomicReference<String> nextOpenLibraryResponseBody = new AtomicReference<>();
@@ -175,6 +178,7 @@ class CatalogEndpointTest {
             respond(exchange, nextIgdbGamesResponseStatus.get(), nextIgdbGamesResponseBody.get());
         });
         igdbGamesServer.createContext("/genres", exchange -> respond(exchange, 200, igdbGenreListResponseBody.get()));
+        igdbGamesServer.createContext("/languages", exchange -> respond(exchange, 200, igdbLanguageListResponseBody.get()));
         igdbGamesServer.start();
         var igdbGamesPort = igdbGamesServer.getAddress().getPort();
         registry.add("alexandrea.catalog.igdb.base-url", () -> "http://localhost:" + igdbGamesPort);
@@ -226,7 +230,8 @@ class CatalogEndpointTest {
     // one class-level database.
     private static final long DEFAULT_TEST_USER_ID = 1L;
     private static final List<Long> TEST_USER_IDS = List.of(
-        DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L, 9009L, 9010L, 9011L, 9012L
+        DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L, 9009L, 9010L, 9011L, 9012L,
+        9013L, 9014L, 9015L, 9016L, 9017L, 9018L, 9019L, 9020L, 9021L, 9022L, 9023L, 9024L
     );
 
     @BeforeEach
@@ -795,7 +800,7 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").doesNotExist())
             .andExpect(jsonPath("$.sortDirection").doesNotExist())
-            .andExpect(jsonPath("$.genre").doesNotExist());
+            .andExpect(jsonPath("$.filters.genre").doesNotExist());
     }
 
     @Test
@@ -894,12 +899,180 @@ class CatalogEndpointTest {
     }
 
     @Test
+    void theBrowseResponseListsTheIgdbLanguageEnumAsAnAvailableInLanguageFilterForGames() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("page", "109").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[0].value").value("1"))
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[0].label").value("English"))
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[1].value").value("2"))
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[1].label").value("German"));
+    }
+
+    @Test
+    void theBrowseResponseDoesNotListAvailableInLanguageForMoviesOrTv() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("page", "110").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage").doesNotExist());
+
+        mockMvc.perform(get("/api/catalog/tv").param("page", "111").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage").doesNotExist());
+    }
+
+    @Test
+    void anAvailableInLanguageParamRoutesGamesToIgdbWithAWhereLanguageSupportsClause() throws Exception {
+        // A dedicated user id, not the shared loggedIn() — this persists
+        // availableInLanguage for (userId, games), and a later test using
+        // the shared loggedIn() id for games (e.g. the plain genre-only
+        // test above) must not inherit it as an unexpected extra where
+        // clause.
+        mockMvc.perform(get("/api/catalog/games").param("availableInLanguage", "2").param("page", "112").with(loggedInAs(9019L)))
+            .andExpect(status().isOk());
+
+        assertThat(igdbGamesRequestCount.get()).isEqualTo(1);
+        assertThat(lastIgdbGamesRequestBody.get()).contains("where language_supports.language = (2);");
+    }
+
+    @Test
+    void anInvalidAvailableInLanguageValueIsDroppedAndFallsBackToThePopularFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("availableInLanguage", "not-a-real-language-id").param("page", "113").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(lastIgdbGamesRequestBody.get()).doesNotContain("where");
+    }
+
+    @Test
+    void combiningGenreAndAvailableInLanguageNarrowsGamesToTheIntersection() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("genre", "5").param("availableInLanguage", "2")
+                .param("page", "114").with(loggedInAs(9016L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastIgdbGamesRequestBody.get()).contains("where genres = (5) & language_supports.language = (2);");
+    }
+
+    @Test
+    void anAvailableInLanguageSelectionForGamesPersistsAndIsReadBackFromThePreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("availableInLanguage", "2").param("page", "115").with(loggedInAs(9017L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/games/preference").with(loggedInAs(9017L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.availableInLanguage").value("2"));
+    }
+
+    @Test
+    void settingAvailableInLanguageDoesNotClobberAPreviouslyPersistedGenreForGames() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("genre", "5").param("page", "116").with(loggedInAs(9018L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/games").param("availableInLanguage", "2").param("page", "117").with(loggedInAs(9018L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/games/preference").with(loggedInAs(9018L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.genre").value("5"))
+            .andExpect(jsonPath("$.filters.availableInLanguage").value("2"));
+    }
+
+    @Test
     void anInvalidGenreValueIsDroppedAndFallsBackToThePopularFeed() throws Exception {
         mockMvc.perform(get("/api/catalog/movies").param("genre", "not-a-real-tmdb-genre-id").param("page", "87").with(loggedIn()))
             .andExpect(status().isOk());
 
         assertThat(requestCount.get()).isEqualTo(1);
         assertThat(discoverRequestCount.get()).isZero();
+    }
+
+    @Test
+    void theBrowseResponseListsOriginalLanguageAsAnAvailableFilterForMovies() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("page", "98").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.originalLanguage[0].value").value("en"))
+            .andExpect(jsonPath("$.availableFilters.originalLanguage[0].label").value("English"));
+    }
+
+    @Test
+    void theBrowseResponseListsOriginalLanguageAsAnAvailableFilterForTv() throws Exception {
+        mockMvc.perform(get("/api/catalog/tv").param("page", "99").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.originalLanguage[0].value").value("en"));
+    }
+
+    @Test
+    void theBrowseResponseDoesNotListOriginalLanguageAsAnAvailableFilterForBooksOrGames() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("page", "100").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.originalLanguage").doesNotExist());
+
+        mockMvc.perform(get("/api/catalog/games").param("page", "101").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.originalLanguage").doesNotExist());
+    }
+
+    @Test
+    void anOriginalLanguageParamRoutesMoviesToDiscoverWithTheGivenIsoCode() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("originalLanguage", "ja").param("page", "102").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(discoverRequestCount.get()).isEqualTo(1);
+        assertThat(requestCount.get()).isZero();
+        assertThat(lastDiscoverQuery.get()).contains("with_original_language=ja");
+    }
+
+    @Test
+    void anOriginalLanguageParamRoutesTvToDiscoverTvWithTheGivenIsoCode() throws Exception {
+        mockMvc.perform(get("/api/catalog/tv").param("originalLanguage", "ko").param("page", "103").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(tvDiscoverRequestCount.get()).isEqualTo(1);
+        assertThat(tvRequestCount.get()).isZero();
+        assertThat(lastTvDiscoverQuery.get()).contains("with_original_language=ko");
+    }
+
+    @Test
+    void anInvalidOriginalLanguageValueIsDroppedAndFallsBackToThePopularFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("originalLanguage", "not-a-real-code").param("page", "104").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(requestCount.get()).isEqualTo(1);
+        assertThat(discoverRequestCount.get()).isZero();
+    }
+
+    // Two DIFFERENT filter kinds (genre and original language) combine to
+    // the intersection in one request — distinct from, and not in tension
+    // with, single-select-per-kind (selectingADifferentGenreReplaces...
+    // below), which is about two values of the SAME kind.
+    @Test
+    void combiningGenreAndOriginalLanguageNarrowsMoviesToTheIntersection() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "28").param("originalLanguage", "ja")
+                .param("page", "105").with(loggedInAs(9013L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastDiscoverQuery.get()).contains("with_genres=28").contains("with_original_language=ja");
+    }
+
+    @Test
+    void anOriginalLanguageSelectionPersistsAndIsReadBackFromThePreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("originalLanguage", "ja").param("page", "106").with(loggedInAs(9014L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9014L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.originalLanguage").value("ja"));
+    }
+
+    @Test
+    void settingOriginalLanguageDoesNotClobberAPreviouslyPersistedGenre() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "28").param("page", "107").with(loggedInAs(9015L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies").param("originalLanguage", "ja").param("page", "108").with(loggedInAs(9015L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9015L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.genre").value("28"))
+            .andExpect(jsonPath("$.filters.originalLanguage").value("ja"));
     }
 
     @Test
@@ -930,6 +1103,71 @@ class CatalogEndpointTest {
 
         assertThat(openLibraryRequestCount.get()).isEqualTo(1);
         assertThat(openLibrarySearchRequestCount.get()).isZero();
+    }
+
+    @Test
+    void theBrowseResponseListsTheCuratedMarc3VocabularyAsAnAvailableInLanguageFilterForBooks() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("page", "118").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[0].value").value("eng"))
+            .andExpect(jsonPath("$.availableFilters.availableInLanguage[0].label").value("English"));
+    }
+
+    @Test
+    void anAvailableInLanguageParamRoutesBooksToOpenLibrarySearchWithALanguageQuery() throws Exception {
+        // A dedicated user id, not the shared loggedIn() — this persists
+        // availableInLanguage for (userId, books), which a later test using
+        // the shared loggedIn() id for books must not inherit.
+        mockMvc.perform(get("/api/catalog/books").param("availableInLanguage", "ger").param("page", "119").with(loggedInAs(9020L)))
+            .andExpect(status().isOk());
+
+        assertThat(openLibrarySearchRequestCount.get()).isEqualTo(1);
+        assertThat(openLibraryRequestCount.get()).isZero();
+        assertThat(lastOpenLibrarySearchQuery.get()).contains("q=language:ger");
+    }
+
+    @Test
+    void anInvalidBooksAvailableInLanguageValueIsDroppedAndFallsBackToTheTrendingFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("availableInLanguage", "not-a-real-marc3-code")
+                .param("page", "120").with(loggedInAs(9021L)))
+            .andExpect(status().isOk());
+
+        assertThat(openLibraryRequestCount.get()).isEqualTo(1);
+        assertThat(openLibrarySearchRequestCount.get()).isZero();
+    }
+
+    @Test
+    void combiningGenreAndAvailableInLanguageNarrowsBooksToTheIntersection() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("genre", "science_fiction").param("availableInLanguage", "ger")
+                .param("page", "121").with(loggedInAs(9022L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastOpenLibrarySearchQuery.get())
+            .contains("q=subject:(\"Science fiction\" OR \"Sci-Fi\" OR \"Science-fiction\" OR \"Speculative fiction\") AND language:ger");
+    }
+
+    @Test
+    void anAvailableInLanguageSelectionForBooksPersistsAndIsReadBackFromThePreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("availableInLanguage", "ger").param("page", "122").with(loggedInAs(9023L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9023L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.availableInLanguage").value("ger"));
+    }
+
+    @Test
+    void settingAvailableInLanguageDoesNotClobberAPreviouslyPersistedGenreForBooks() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("genre", "science_fiction").param("page", "123").with(loggedInAs(9024L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books").param("availableInLanguage", "ger").param("page", "124").with(loggedInAs(9024L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9024L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.genre").value("science_fiction"))
+            .andExpect(jsonPath("$.filters.availableInLanguage").value("ger"));
     }
 
     // OpenLibrary's own subject tagging (not something this app enforces)
@@ -964,7 +1202,7 @@ class CatalogEndpointTest {
 
         mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9012L)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.genre").value("fantasy"));
+            .andExpect(jsonPath("$.filters.genre").value("fantasy"));
     }
 
     @Test
@@ -977,7 +1215,7 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("title"))
             .andExpect(jsonPath("$.sortDirection").value("asc"))
-            .andExpect(jsonPath("$.genre").value("28"));
+            .andExpect(jsonPath("$.filters.genre").value("28"));
     }
 
     @Test
@@ -993,7 +1231,7 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("title"))
             .andExpect(jsonPath("$.sortDirection").value("asc"))
-            .andExpect(jsonPath("$.genre").value("28"));
+            .andExpect(jsonPath("$.filters.genre").value("28"));
     }
 
     @Test
@@ -1009,7 +1247,7 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("release_date"))
             .andExpect(jsonPath("$.sortDirection").value("desc"))
-            .andExpect(jsonPath("$.genre").value("28"));
+            .andExpect(jsonPath("$.filters.genre").value("28"));
     }
 
     @Test
@@ -1023,7 +1261,7 @@ class CatalogEndpointTest {
         assertThat(lastDiscoverQuery.get()).contains("with_genres=35").doesNotContain("with_genres=28");
         mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9007L)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.genre").value("35"));
+            .andExpect(jsonPath("$.filters.genre").value("35"));
     }
 
     // A deselected filter chip sends a present-but-empty genre= — distinct
@@ -1044,7 +1282,7 @@ class CatalogEndpointTest {
         mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9008L)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("title"))
-            .andExpect(jsonPath("$.genre").doesNotExist());
+            .andExpect(jsonPath("$.filters.genre").doesNotExist());
     }
 
     private static RequestPostProcessor loggedIn() {

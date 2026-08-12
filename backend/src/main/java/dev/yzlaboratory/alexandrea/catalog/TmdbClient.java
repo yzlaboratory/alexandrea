@@ -44,6 +44,7 @@ public class TmdbClient {
     private static final String QUERY_PARAM = "query";
     private static final String SORT_BY_PARAM = "sort_by";
     private static final String WITH_GENRES_PARAM = "with_genres";
+    private static final String WITH_ORIGINAL_LANGUAGE_PARAM = "with_original_language";
 
     private final RestClient restClient;
     private final CatalogProperties properties;
@@ -82,24 +83,27 @@ public class TmdbClient {
     }
 
     // ADR 0018's "filter/sort applied" row: /discover/* replaces /*/popular
-    // once a sort or a genre filter is chosen, since /movie/popular and
-    // /tv/popular accept neither a sort_by nor a with_genres param of their
-    // own. genre is TMDB's native genre id (ADR 0013's "native enum" for
-    // Movies/TV) and is omitted from the request entirely when null.
-    public CatalogPageResult discoverMovies(String sortKey, String direction, String genre, int page) {
-        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page, withGenre(genre,
+    // once a sort or a filter is chosen, since /movie/popular and
+    // /tv/popular accept neither a sort_by, a with_genres, nor a
+    // with_original_language param of their own. genre is TMDB's native
+    // genre id (ADR 0013's "native enum" for Movies/TV); originalLanguage is
+    // an ISO 639-1 code (ADR 0018's original-language filter, Movies/TV
+    // only) — either is omitted from the request entirely when null.
+    public CatalogPageResult discoverMovies(String sortKey, String direction, String genre, String originalLanguage, int page) {
+        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page, withFilters(genre, originalLanguage,
             uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction))));
     }
 
-    public CatalogPageResult discoverTv(String sortKey, String direction, String genre, int page) {
-        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page, withGenre(genre,
+    public CatalogPageResult discoverTv(String sortKey, String direction, String genre, String originalLanguage, int page) {
+        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page, withFilters(genre, originalLanguage,
             uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction))));
     }
 
-    private static UnaryOperator<UriBuilder> withGenre(String genre, UnaryOperator<UriBuilder> sortParam) {
+    private static UnaryOperator<UriBuilder> withFilters(String genre, String originalLanguage, UnaryOperator<UriBuilder> sortParam) {
         return uriBuilder -> {
             var withSort = sortParam.apply(uriBuilder);
-            return genre != null ? withSort.queryParam(WITH_GENRES_PARAM, genre) : withSort;
+            var withGenre = genre != null ? withSort.queryParam(WITH_GENRES_PARAM, genre) : withSort;
+            return originalLanguage != null ? withGenre.queryParam(WITH_ORIGINAL_LANGUAGE_PARAM, originalLanguage) : withGenre;
         };
     }
 

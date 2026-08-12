@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CatalogPage from './CatalogPage';
 import * as catalogApi from './catalogApi';
 
-vi.mock('./catalogApi', () => ({
+vi.mock('./catalogApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./catalogApi')>()),
   fetchCatalogPage: vi.fn(),
   fetchCatalogPreference: vi.fn(),
 }));
@@ -13,6 +14,16 @@ const mockedFetchCatalogPreference = vi.mocked(
   catalogApi.fetchCatalogPreference,
 );
 
+// What CatalogPage sends once its persisted preference has loaded and no
+// filter has ever been touched — every known field explicitly cleared,
+// not omitted, the same "always manages every field" contract the single
+// genre field had before generalizing past it.
+const NO_FILTERS_SENT = {
+  genre: null,
+  originalLanguage: null,
+  availableInLanguage: null,
+};
+
 describe('CatalogPage', () => {
   beforeEach(() => {
     mockedFetchCatalogPage.mockReset().mockResolvedValue({
@@ -21,7 +32,7 @@ describe('CatalogPage', () => {
     });
     mockedFetchCatalogPreference
       .mockReset()
-      .mockResolvedValue({ sortKey: null, sortDirection: null, genre: null });
+      .mockResolvedValue({ sortKey: null, sortDirection: null, filters: {} });
   });
 
   afterEach(() => {
@@ -54,7 +65,7 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
-        null,
+        NO_FILTERS_SENT,
       );
     });
   });
@@ -91,7 +102,7 @@ describe('CatalogPage', () => {
     mockedFetchCatalogPreference.mockResolvedValue({
       sortKey: 'title',
       sortDirection: 'asc',
-      genre: null,
+      filters: {},
     });
 
     render(<CatalogPage mediaType="movies" />);
@@ -110,7 +121,7 @@ describe('CatalogPage', () => {
         undefined,
         'title',
         'asc',
-        null,
+        NO_FILTERS_SENT,
       );
     });
   });
@@ -230,7 +241,7 @@ describe('CatalogPage', () => {
       undefined,
       'popularity',
       'desc',
-      null,
+      NO_FILTERS_SENT,
     );
   });
 
@@ -273,7 +284,7 @@ describe('CatalogPage', () => {
         undefined,
         'title',
         'desc',
-        null,
+        NO_FILTERS_SENT,
       );
     });
   });
@@ -289,7 +300,7 @@ describe('CatalogPage', () => {
     });
   });
 
-  it('renders no genre control when the fetched page reports no available filters', async () => {
+  it('renders no filter controls when the fetched page reports no available filters', async () => {
     render(<CatalogPage mediaType="books" />);
     await screen.findByLabelText('Descending');
 
@@ -316,11 +327,62 @@ describe('CatalogPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders both a genre and an original-language control for Movies when both are reported available', async () => {
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [{ value: '28', label: 'Action' }],
+          originalLanguage: [{ value: 'ja', label: 'Japanese' }],
+        },
+      },
+    });
+
+    render(<CatalogPage mediaType="movies" />);
+
+    expect(
+      await screen.findByRole('combobox', { name: 'Genre' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Original language' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders a genre and an available-in-language control for Books when both are reported available', async () => {
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [{ value: 'science_fiction', label: 'Science Fiction' }],
+          availableInLanguage: [{ value: 'ger', label: 'German' }],
+        },
+      },
+    });
+
+    render(<CatalogPage mediaType="books" />);
+
+    expect(
+      await screen.findByRole('combobox', { name: 'Genre' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Available in language' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: 'Original language' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('restores a persisted genre into the filter control and its chip on mount', async () => {
     mockedFetchCatalogPreference.mockResolvedValue({
       sortKey: null,
       sortDirection: null,
-      genre: '28',
+      filters: { genre: '28' },
     });
     mockedFetchCatalogPage.mockResolvedValue({
       status: 'ok',
@@ -345,7 +407,46 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
-        '28',
+        { ...NO_FILTERS_SENT, genre: '28' },
+      );
+    });
+  });
+
+  it('restores a persisted original language alongside genre, each in its own control', async () => {
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: null,
+      sortDirection: null,
+      filters: { genre: '28', originalLanguage: 'ja' },
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [{ value: '28', label: 'Action' }],
+          originalLanguage: [{ value: 'ja', label: 'Japanese' }],
+        },
+      },
+    });
+
+    render(<CatalogPage mediaType="movies" />);
+
+    expect(
+      await screen.findByRole('combobox', { name: 'Genre' }),
+    ).toHaveTextContent('Action');
+    expect(
+      screen.getByRole('combobox', { name: 'Original language' }),
+    ).toHaveTextContent('Japanese');
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+        'movies',
+        1,
+        undefined,
+        'popularity',
+        'desc',
+        { genre: '28', originalLanguage: 'ja', availableInLanguage: null },
       );
     });
   });
@@ -379,9 +480,53 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
-        '35',
+        { ...NO_FILTERS_SENT, genre: '35' },
       );
     });
+  });
+
+  it('selecting an original language updates the grid and preserves the current genre', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: null,
+      sortDirection: null,
+      filters: { genre: '28' },
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [{ value: '28', label: 'Action' }],
+          originalLanguage: [{ value: 'ja', label: 'Japanese' }],
+        },
+      },
+    });
+    render(<CatalogPage mediaType="movies" />);
+    await screen.findByRole('combobox', { name: 'Original language' });
+
+    await user.click(
+      screen.getByRole('combobox', { name: 'Original language' }),
+    );
+    await user.click(await screen.findByRole('option', { name: 'Japanese' }));
+
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
+        'movies',
+        1,
+        undefined,
+        'popularity',
+        'desc',
+        { genre: '28', originalLanguage: 'ja', availableInLanguage: null },
+      );
+    });
+    // The genre chip survives selecting the unrelated original-language
+    // control — two different filter kinds combine rather than one
+    // replacing the other. "Action" appears twice: once as the genre
+    // dropdown's selected display value, once as the chip's label.
+    expect(screen.getAllByText('Action')).toHaveLength(2);
   });
 
   it('selecting a different genre replaces rather than combines with the previous one', async () => {
@@ -389,7 +534,7 @@ describe('CatalogPage', () => {
     mockedFetchCatalogPreference.mockResolvedValue({
       sortKey: null,
       sortDirection: null,
-      genre: '28',
+      filters: { genre: '28' },
     });
     mockedFetchCatalogPage.mockResolvedValue({
       status: 'ok',
@@ -418,7 +563,7 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
-        '35',
+        { ...NO_FILTERS_SENT, genre: '35' },
       );
     });
     expect(screen.queryByText('Action')).not.toBeInTheDocument();
@@ -429,7 +574,7 @@ describe('CatalogPage', () => {
     mockedFetchCatalogPreference.mockResolvedValue({
       sortKey: null,
       sortDirection: null,
-      genre: '28',
+      filters: { genre: '28' },
     });
     mockedFetchCatalogPage.mockResolvedValue({
       status: 'ok',
@@ -456,7 +601,7 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
-        null,
+        NO_FILTERS_SENT,
       );
     });
   });
