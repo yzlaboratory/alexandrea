@@ -43,6 +43,13 @@ public class IgdbClient {
     private static final int PAGE_SIZE = 20;
     private static final String CLIENT_ID_HEADER = "Client-ID";
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}");
+    private static final ParameterizedTypeReference<List<IgdbGame>> GAME_LIST_TYPE = new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<List<IgdbGenre>> GENRE_LIST_TYPE = new ParameterizedTypeReference<>() {};
+    private static final String GENRE_LIST_REQUEST_BODY = """
+        fields name;
+        limit 500;
+        sort name asc;
+        """;
 
     private final RestClient gamesRestClient;
     private final RestClient twitchRestClient;
@@ -60,16 +67,18 @@ public class IgdbClient {
 
     // IGDB's own default feed is already "sorted by popularity desc" (ADR
     // 0018's "nothing applied" row), so this is the same request discoverGames
-    // would build for that exact (sortKey, direction) pair.
+    // would build for that exact (sortKey, direction) pair with no genre.
     public CatalogPageResult popularGames(int page) {
-        return discoverGames(CatalogSort.POPULARITY, CatalogSort.DESCENDING, page);
+        return discoverGames(CatalogSort.POPULARITY, CatalogSort.DESCENDING, null, page);
     }
 
     // ADR 0018's "filter/sort applied" row: same /games endpoint as popular,
     // parameterized by the caller's chosen sort field/direction instead of
-    // the fixed total_rating_count desc.
-    public CatalogPageResult discoverGames(String sortKey, String direction, int page) {
-        return fetchPage(page, discoverRequestBody(sortKey, direction, page));
+    // the fixed total_rating_count desc, and an optional genre (IGDB's
+    // native genre id, ADR 0013's "native enum" for Games) added as a
+    // `where` clause when present.
+    public CatalogPageResult discoverGames(String sortKey, String direction, String genre, int page) {
+        return fetchPage(page, discoverRequestBody(sortKey, direction, genre, page));
     }
 
     // ADR 0018's "text search active" row: IGDB's search is an Apicalypse
@@ -81,10 +90,16 @@ public class IgdbClient {
         return fetchPage(page, searchRequestBody(query, page));
     }
 
+    /** IGDB's native genre enum (ADR 0013), for {@link GenreVocabulary} to cache. */
+    public List<CatalogFilterOption> genres() {
+        var genres = postApicalypse("/genres", GENRE_LIST_REQUEST_BODY, GENRE_LIST_TYPE, false);
+        return genres.stream().map(genre -> new CatalogFilterOption(String.valueOf(genre.id()), genre.name())).toList();
+    }
+
     // Shared by the popular feed and search: same 401-retry-once handling,
     // same response mapping — only the Apicalypse request body differs.
     private CatalogPageResult fetchPage(int page, String requestBody) {
-        var games = fetchGames(requestBody, false);
+        var games = postApicalypse("/games", requestBody, GAME_LIST_TYPE, false);
         var items = games.stream().map(this::toItem).toList();
         // IGDB's /games response carries no total-count field, so a full
         // page is the only available signal that more might follow, the
@@ -93,16 +108,22 @@ public class IgdbClient {
         return new CatalogPageResult(items, page, hasMore);
     }
 
-    private List<IgdbGame> fetchGames(String requestBody, boolean isRetryAfterUnauthorized) {
+    // Shared by every Apicalypse endpoint this client calls (/games,
+    // /genres): same 401-retry-once handling, same "empty body on a genuine
+    // 200" tolerance — only the path, request body, and response element
+    // type differ per call site.
+    private <T> List<T> postApicalypse(
+        String path, String requestBody, ParameterizedTypeReference<List<T>> responseType, boolean isRetryAfterUnauthorized
+    ) {
         try {
             var response = gamesRestClient.post()
-                .uri("/games")
+                .uri(path)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
                 .header(CLIENT_ID_HEADER, properties.igdb().clientId())
                 .contentType(MediaType.TEXT_PLAIN)
                 .body(requestBody)
                 .retrieve()
-                .body(new ParameterizedTypeReference<List<IgdbGame>>() {});
+                .body(responseType);
             return response != null ? response : List.of();
         } catch (HttpClientErrorException.Unauthorized unauthorized) {
             if (isRetryAfterUnauthorized) {
@@ -110,20 +131,21 @@ public class IgdbClient {
             }
             LOG.info("IGDB rejected the cached Twitch token; fetching a fresh one and retrying once");
             invalidateToken();
-            return fetchGames(requestBody, true);
+            return postApicalypse(path, requestBody, responseType, true);
         } catch (RestClientException e) {
             throw new CatalogUpstreamException(PROVIDER, e);
         }
     }
 
-    private static String discoverRequestBody(String sortKey, String direction, int page) {
+    private static String discoverRequestBody(String sortKey, String direction, String genre, int page) {
         var offset = (page - 1) * PAGE_SIZE;
+        var whereClause = genre != null ? "where genres = (%s);\n".formatted(genre) : "";
         return """
             fields name,cover.image_id,first_release_date,total_rating;
-            sort %s %s;
+            %ssort %s %s;
             limit %d;
             offset %d;
-            """.formatted(igdbSortField(sortKey), direction, PAGE_SIZE, offset);
+            """.formatted(whereClause, igdbSortField(sortKey), direction, PAGE_SIZE, offset);
     }
 
     // ADR 0018 pins only the default direction's literal Apicalypse clause
@@ -263,4 +285,7 @@ public class IgdbClient {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record IgdbCover(@JsonProperty("image_id") String imageId) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record IgdbGenre(long id, String name) {}
 }

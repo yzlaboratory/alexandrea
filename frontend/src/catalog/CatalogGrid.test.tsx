@@ -487,6 +487,254 @@ describe('CatalogGrid', () => {
     );
   });
 
+  it('requests the given genre alone alongside the media type and page', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Action Movie' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+
+    render(<CatalogGrid mediaType="movies" genre="28" />);
+
+    expect(await screen.findByText('Action Movie')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      undefined,
+      undefined,
+      '28',
+    );
+  });
+
+  it('requests the given sort and genre together alongside the media type and page', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Sorted Action Movie' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        sort="title"
+        direction="asc"
+        genre="28"
+      />,
+    );
+
+    expect(await screen.findByText('Sorted Action Movie')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      'title',
+      'asc',
+      '28',
+    );
+  });
+
+  it('carries the same genre into the next page fetch when the sentinel intersects', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ externalId: '1', title: 'Page One' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+    render(<CatalogGrid mediaType="movies" genre="28" />);
+    await screen.findByText('Page One');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ externalId: '2', title: 'Page Two' })],
+        page: 2,
+        hasMore: false,
+      },
+    });
+    lastObserver().trigger(true);
+
+    expect(await screen.findByText('Page Two')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(
+      2,
+      'movies',
+      2,
+      undefined,
+      undefined,
+      undefined,
+      '28',
+    );
+  });
+
+  it('sends an explicit null genre rather than omitting it, alongside a sort', async () => {
+    // null is CatalogPage's definite "no genre selected" (e.g. a
+    // deselected chip) and must reach fetchCatalogPage as an explicit
+    // value, not be collapsed into "not mentioned" — CatalogService relies
+    // on that distinction to actually clear a previously-chosen genre
+    // rather than falling back to it.
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [item()], page: 1, hasMore: true },
+    });
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        sort="title"
+        direction="asc"
+        genre={null}
+      />,
+    );
+
+    await screen.findByText('A Movie');
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      'title',
+      'asc',
+      null,
+    );
+  });
+
+  it('sends an explicit null genre rather than omitting it, with no sort given', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [item()], page: 1, hasMore: true },
+    });
+
+    render(<CatalogGrid mediaType="movies" genre={null} />);
+
+    await screen.findByText('A Movie');
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      undefined,
+      undefined,
+      null,
+    );
+  });
+
+  it('ignores genre entirely once a search is active, requesting the plain search shape', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Blade Runner' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+
+    render(<CatalogGrid mediaType="movies" search="blade runner" genre="28" />);
+
+    expect(await screen.findByText('Blade Runner')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      'blade runner',
+    );
+  });
+
+  it('starts a fresh feed when remounted for a different genre, as CatalogPage does via key', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Action Movie' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+    const { rerender } = render(
+      <CatalogGrid key="genre-28" mediaType="movies" genre="28" />,
+    );
+    await screen.findByText('Action Movie');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'Comedy Movie' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+    rerender(<CatalogGrid key="genre-35" mediaType="movies" genre="35" />);
+
+    expect(await screen.findByText('Comedy Movie')).toBeInTheDocument();
+    expect(screen.queryByText('Action Movie')).not.toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(
+      2,
+      'movies',
+      1,
+      undefined,
+      undefined,
+      undefined,
+      '35',
+    );
+  });
+
+  it('reports the availableFilters from a successful fetch to onAvailableFiltersChange', async () => {
+    const availableFilters = { genre: [{ value: '28', label: 'Action' }] };
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [item()], page: 1, hasMore: false, availableFilters },
+    });
+    const onAvailableFiltersChange = vi.fn();
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        onAvailableFiltersChange={onAvailableFiltersChange}
+      />,
+    );
+
+    await screen.findByText('A Movie');
+    expect(onAvailableFiltersChange).toHaveBeenCalledExactlyOnceWith(
+      availableFilters,
+    );
+  });
+
+  it('reports an empty availableFilters object when the response omits it', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [item()], page: 1, hasMore: false },
+    });
+    const onAvailableFiltersChange = vi.fn();
+
+    render(
+      <CatalogGrid
+        mediaType="books"
+        onAvailableFiltersChange={onAvailableFiltersChange}
+      />,
+    );
+
+    await screen.findByText('A Movie');
+    expect(onAvailableFiltersChange).toHaveBeenCalledExactlyOnceWith({});
+  });
+
+  it('does not report availableFilters when a fetch fails', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({ status: 'error' });
+    const onAvailableFiltersChange = vi.fn();
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        onAvailableFiltersChange={onAvailableFiltersChange}
+      />,
+    );
+
+    await screen.findByText(/temporarily unavailable/i);
+    expect(onAvailableFiltersChange).not.toHaveBeenCalled();
+  });
+
   it('invokes onClearSearch when the clear-search affordance is clicked', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',

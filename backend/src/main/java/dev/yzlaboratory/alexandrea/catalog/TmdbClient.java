@@ -43,6 +43,7 @@ public class TmdbClient {
     private static final String PAGE_PARAM = "page";
     private static final String QUERY_PARAM = "query";
     private static final String SORT_BY_PARAM = "sort_by";
+    private static final String WITH_GENRES_PARAM = "with_genres";
 
     private final RestClient restClient;
     private final CatalogProperties properties;
@@ -54,6 +55,16 @@ public class TmdbClient {
 
     public CatalogPageResult popularMovies(int page) {
         return fetchPage("/movie/popular", MOVIES_MEDIA_TYPE, page, UnaryOperator.identity());
+    }
+
+    /** TMDB's native Movies genre enum (ADR 0013), for {@link GenreVocabulary} to cache. */
+    public List<CatalogFilterOption> movieGenres() {
+        return genreList("/genre/movie/list");
+    }
+
+    /** TMDB's native TV genre enum (ADR 0013), for {@link GenreVocabulary} to cache. */
+    public List<CatalogFilterOption> tvGenres() {
+        return genreList("/genre/tv/list");
     }
 
     public CatalogPageResult popularTv(int page) {
@@ -71,16 +82,25 @@ public class TmdbClient {
     }
 
     // ADR 0018's "filter/sort applied" row: /discover/* replaces /*/popular
-    // once a sort is chosen, since /movie/popular and /tv/popular accept no
-    // sort_by param of their own.
-    public CatalogPageResult discoverMovies(String sortKey, String direction, int page) {
-        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page,
-            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction)));
+    // once a sort or a genre filter is chosen, since /movie/popular and
+    // /tv/popular accept neither a sort_by nor a with_genres param of their
+    // own. genre is TMDB's native genre id (ADR 0013's "native enum" for
+    // Movies/TV) and is omitted from the request entirely when null.
+    public CatalogPageResult discoverMovies(String sortKey, String direction, String genre, int page) {
+        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page, withGenre(genre,
+            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction))));
     }
 
-    public CatalogPageResult discoverTv(String sortKey, String direction, int page) {
-        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page,
-            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction)));
+    public CatalogPageResult discoverTv(String sortKey, String direction, String genre, int page) {
+        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page, withGenre(genre,
+            uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction))));
+    }
+
+    private static UnaryOperator<UriBuilder> withGenre(String genre, UnaryOperator<UriBuilder> sortParam) {
+        return uriBuilder -> {
+            var withSort = sortParam.apply(uriBuilder);
+            return genre != null ? withSort.queryParam(WITH_GENRES_PARAM, genre) : withSort;
+        };
     }
 
     // TMDB's sort_by accepts "<field>.<asc|desc>" for every field below in
@@ -149,6 +169,19 @@ public class TmdbClient {
         );
     }
 
+    private List<CatalogFilterOption> genreList(String path) {
+        try {
+            var response = restClient.get()
+                .uri(uriBuilder -> uriBuilder.path(path).queryParam(API_KEY_PARAM, properties.tmdb().apiKey()).build())
+                .retrieve()
+                .body(TmdbGenreListResponse.class);
+            var genres = response != null && response.genres() != null ? response.genres() : List.<TmdbGenre>of();
+            return genres.stream().map(genre -> new CatalogFilterOption(String.valueOf(genre.id()), genre.name())).toList();
+        } catch (RestClientException e) {
+            throw new CatalogUpstreamException(PROVIDER, e);
+        }
+    }
+
     private String coverUrl(String posterPath) {
         if (posterPath == null || posterPath.isBlank()) {
             return null;
@@ -193,4 +226,10 @@ public class TmdbClient {
         @JsonProperty("first_air_date") String firstAirDate,
         @JsonProperty("vote_average") Double voteAverage
     ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record TmdbGenreListResponse(List<TmdbGenre> genres) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record TmdbGenre(long id, String name) {}
 }

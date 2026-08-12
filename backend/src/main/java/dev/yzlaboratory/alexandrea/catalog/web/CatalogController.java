@@ -1,7 +1,6 @@
 package dev.yzlaboratory.alexandrea.catalog.web;
 
 import dev.yzlaboratory.alexandrea.auth.AuthenticatedUser;
-import dev.yzlaboratory.alexandrea.catalog.CatalogPageResult;
 import dev.yzlaboratory.alexandrea.catalog.CatalogService;
 import jakarta.validation.constraints.Min;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -31,24 +30,25 @@ public class CatalogController {
     }
 
     @GetMapping("/{media_type}")
-    public CatalogPageResult browse(
+    public CatalogBrowseResponse browse(
         @PathVariable("media_type") String mediaType,
         @RequestParam(required = false) String search,
         @RequestParam(required = false) String sort,
         @RequestParam(required = false) String direction,
+        @RequestParam(required = false) String genre,
         @RequestParam(name = "page", defaultValue = "1") @Min(1) int page,
         @AuthenticationPrincipal AuthenticatedUser principal
     ) {
-        return catalogService.browse(mediaType, search, sort, direction, principal.userId(), page);
+        var pageResult = catalogService.browse(mediaType, search, sort, direction, genre, principal.userId(), page);
+        return CatalogBrowseResponse.from(pageResult, catalogService.availableFilters(mediaType));
     }
 
-    /** The signed-in user's persisted Catalog sort for this media type (ADR 0025), or both fields null if never set. */
-    @GetMapping("/{media_type}/sort-preference")
-    public SortPreferenceResponse sortPreference(
+    /** The signed-in user's persisted Catalog sort and genre filter for this media type (ADR 0025), or null fields if never set. */
+    @GetMapping("/{media_type}/preference")
+    public CatalogPreferenceResponse preference(
         @PathVariable("media_type") String mediaType, @AuthenticationPrincipal AuthenticatedUser principal
     ) {
-        return catalogService.sortPreference(principal.userId(), mediaType)
-            .map(preference -> new SortPreferenceResponse(preference.sortKey(), preference.sortDirection()))
-            .orElseGet(() -> new SortPreferenceResponse(null, null));
+        var preference = catalogService.preference(principal.userId(), mediaType);
+        return new CatalogPreferenceResponse(preference.sortKey(), preference.sortDirection(), preference.genre());
     }
 }

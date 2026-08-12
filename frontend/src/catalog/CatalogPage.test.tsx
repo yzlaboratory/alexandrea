@@ -5,11 +5,13 @@ import * as catalogApi from './catalogApi';
 
 vi.mock('./catalogApi', () => ({
   fetchCatalogPage: vi.fn(),
-  fetchSortPreference: vi.fn(),
+  fetchCatalogPreference: vi.fn(),
 }));
 
 const mockedFetchCatalogPage = vi.mocked(catalogApi.fetchCatalogPage);
-const mockedFetchSortPreference = vi.mocked(catalogApi.fetchSortPreference);
+const mockedFetchCatalogPreference = vi.mocked(
+  catalogApi.fetchCatalogPreference,
+);
 
 describe('CatalogPage', () => {
   beforeEach(() => {
@@ -17,9 +19,9 @@ describe('CatalogPage', () => {
       status: 'ok',
       result: { items: [], page: 1, hasMore: false },
     });
-    mockedFetchSortPreference
+    mockedFetchCatalogPreference
       .mockReset()
-      .mockResolvedValue({ sortKey: null, sortDirection: null });
+      .mockResolvedValue({ sortKey: null, sortDirection: null, genre: null });
   });
 
   afterEach(() => {
@@ -52,18 +54,19 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
+        null,
       );
     });
   });
 
-  it('fetches the persisted sort preference for the given media type on mount', () => {
+  it('fetches the persisted preference for the given media type on mount', () => {
     render(<CatalogPage mediaType="books" />);
 
-    expect(mockedFetchSortPreference).toHaveBeenCalledWith('books');
+    expect(mockedFetchCatalogPreference).toHaveBeenCalledWith('books');
   });
 
-  it('shows a loading indicator until the persisted sort preference resolves', () => {
-    mockedFetchSortPreference.mockImplementation(
+  it('shows a loading indicator until the persisted preference resolves', () => {
+    mockedFetchCatalogPreference.mockImplementation(
       () => new Promise(() => undefined),
     );
 
@@ -85,9 +88,10 @@ describe('CatalogPage', () => {
   });
 
   it('restores a persisted sort preference into the sort control on mount', async () => {
-    mockedFetchSortPreference.mockResolvedValue({
+    mockedFetchCatalogPreference.mockResolvedValue({
       sortKey: 'title',
       sortDirection: 'asc',
+      genre: null,
     });
 
     render(<CatalogPage mediaType="movies" />);
@@ -106,6 +110,7 @@ describe('CatalogPage', () => {
         undefined,
         'title',
         'asc',
+        null,
       );
     });
   });
@@ -225,6 +230,7 @@ describe('CatalogPage', () => {
       undefined,
       'popularity',
       'desc',
+      null,
     );
   });
 
@@ -267,18 +273,191 @@ describe('CatalogPage', () => {
         undefined,
         'title',
         'desc',
+        null,
       );
     });
   });
 
-  it('re-fetches the persisted sort preference when the media type changes', async () => {
+  it('re-fetches the persisted preference when the media type changes', async () => {
     const { rerender } = render(<CatalogPage mediaType="movies" />);
     await screen.findByLabelText('Descending');
 
     rerender(<CatalogPage mediaType="books" />);
 
     await waitFor(() => {
-      expect(mockedFetchSortPreference).toHaveBeenCalledWith('books');
+      expect(mockedFetchCatalogPreference).toHaveBeenCalledWith('books');
+    });
+  });
+
+  it('renders no genre control when the fetched page reports no available filters', async () => {
+    render(<CatalogPage mediaType="books" />);
+    await screen.findByLabelText('Descending');
+
+    expect(
+      screen.queryByRole('combobox', { name: 'Genre' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders a genre control once the grid reports genre as an available filter', async () => {
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '28', label: 'Action' }] },
+      },
+    });
+
+    render(<CatalogPage mediaType="movies" />);
+
+    expect(
+      await screen.findByRole('combobox', { name: 'Genre' }),
+    ).toBeInTheDocument();
+  });
+
+  it('restores a persisted genre into the filter control and its chip on mount', async () => {
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: null,
+      sortDirection: null,
+      genre: '28',
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '28', label: 'Action' }] },
+      },
+    });
+
+    render(<CatalogPage mediaType="movies" />);
+
+    expect(
+      await screen.findByRole('combobox', { name: 'Genre' }),
+    ).toHaveTextContent('Action');
+    expect(await screen.findAllByText('Action')).toHaveLength(2);
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+        'movies',
+        1,
+        undefined,
+        'popularity',
+        'desc',
+        '28',
+      );
+    });
+  });
+
+  it('selecting a genre updates the grid and preserves the current sort and search', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [
+            { value: '28', label: 'Action' },
+            { value: '35', label: 'Comedy' },
+          ],
+        },
+      },
+    });
+    render(<CatalogPage mediaType="movies" />);
+    await screen.findByRole('combobox', { name: 'Genre' });
+
+    await user.click(screen.getByRole('combobox', { name: 'Genre' }));
+    await user.click(await screen.findByRole('option', { name: 'Comedy' }));
+
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
+        'movies',
+        1,
+        undefined,
+        'popularity',
+        'desc',
+        '35',
+      );
+    });
+  });
+
+  it('selecting a different genre replaces rather than combines with the previous one', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: null,
+      sortDirection: null,
+      genre: '28',
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [
+            { value: '28', label: 'Action' },
+            { value: '35', label: 'Comedy' },
+          ],
+        },
+      },
+    });
+    render(<CatalogPage mediaType="movies" />);
+    await screen.findByRole('combobox', { name: 'Genre' });
+
+    await user.click(screen.getByRole('combobox', { name: 'Genre' }));
+    await user.click(await screen.findByRole('option', { name: 'Comedy' }));
+
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
+        'movies',
+        1,
+        undefined,
+        'popularity',
+        'desc',
+        '35',
+      );
+    });
+    expect(screen.queryByText('Action')).not.toBeInTheDocument();
+  });
+
+  it('deselecting the genre chip clears the filter and reverts to the unfiltered grid', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: null,
+      sortDirection: null,
+      genre: '28',
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '28', label: 'Action' }] },
+      },
+    });
+    render(<CatalogPage mediaType="movies" />);
+    await screen.findByTestId('CancelIcon');
+
+    await user.click(screen.getByTestId('CancelIcon'));
+
+    // null, not omitted: CatalogService distinguishes an explicit clear
+    // from "genre wasn't mentioned" (which falls back to whatever's
+    // persisted) — sending undefined here would silently resurrect the
+    // just-deselected genre server-side instead of clearing it.
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
+        'movies',
+        1,
+        undefined,
+        'popularity',
+        'desc',
+        null,
+      );
     });
   });
 });

@@ -13,7 +13,11 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import { fetchCatalogPage, type CatalogItem } from './catalogApi';
+import {
+  fetchCatalogPage,
+  type CatalogFilterOption,
+  type CatalogItem,
+} from './catalogApi';
 import CatalogTile from './CatalogTile';
 
 interface CatalogGridProps {
@@ -21,16 +25,33 @@ interface CatalogGridProps {
   // Undefined/empty means "no active search" — the popular feed. A present,
   // non-empty value replaces it with title-search results.
   search?: string;
-  // sort/direction are ignored server-side whenever search is active
-  // (CatalogService) — CatalogPage never passes both at once, but this
-  // component stays a plain pass-through either way rather than encoding
-  // that rule itself.
+  // sort/direction/genre are ignored server-side whenever search is active
+  // (CatalogService) — CatalogPage never passes any of them at once with a
+  // search, but this component stays a plain pass-through either way rather
+  // than encoding that rule itself.
   sort?: string;
   direction?: string;
+  // Three states, not just present/absent: a string applies that genre;
+  // null is CatalogPage's definite "no genre selected" (the user cleared a
+  // previously-chosen filter, or never had one) and must reach the backend
+  // as an explicit clear rather than being silently dropped; undefined
+  // means this caller doesn't manage genre at all, so nothing is sent and
+  // CatalogService falls back to whatever's already persisted. Collapsing
+  // null into undefined here would make "explicitly cleared" indistinguishable
+  // from "not mentioned", and CatalogService would then resurrect a
+  // deselected filter from the persisted row instead of clearing it.
+  genre?: string | null | undefined;
   // Only used to render the "clear search" affordance on a no-results
   // search page — CatalogGrid doesn't own the search box itself, so
   // clearing it is delegated back to whichever component does (CatalogPage).
   onClearSearch?: () => void;
+  // Reports each fetch's capability payload back up so CatalogPage can pass
+  // it into FilterControls — CatalogGrid is the only component that ever
+  // sees a raw fetch response, so this is the one seam that payload has to
+  // cross rather than CatalogPage re-fetching it separately.
+  onAvailableFiltersChange?: (
+    availableFilters: Record<string, CatalogFilterOption[]>,
+  ) => void;
 }
 
 type LoadState = 'idle' | 'loading' | 'error';
@@ -52,7 +73,9 @@ function CatalogGrid({
   search,
   sort,
   direction,
+  genre,
   onClearSearch,
+  onAvailableFiltersChange,
 }: CatalogGridProps): ReactNode {
   const [items, setItems] = useState<CatalogItem[]>([]);
   // Starts 'loading', not 'idle': the mount effect below always calls
@@ -66,32 +89,58 @@ function CatalogGrid({
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
+  // Four call shapes, not one call with every param always passed (even as
+  // undefined), so each request looks on the wire exactly like what a
+  // caller not using that feature would send — no incidental "search=",
+  // "sort="/"direction=", or "genre=" params for the cases that don't use
+  // them. search never combines with sort or genre (CatalogService ignores
+  // both while a search is active); sort and genre do combine with each
+  // other, so a page fetch threads through whichever of the two is active.
+  const fetchPage = useCallback(
+    (page: number) => {
+      if (search) return fetchCatalogPage(mediaType, page, search);
+      // genre !== undefined, not a truthy check: null is a definite "no
+      // genre" the backend must apply/persist as a clear, distinct from
+      // undefined ("this caller doesn't mention genre at all") — see the
+      // genre prop's own doc comment above.
+      if (sort && genre !== undefined) {
+        return fetchCatalogPage(
+          mediaType,
+          page,
+          undefined,
+          sort,
+          direction,
+          genre,
+        );
+      }
+      if (sort)
+        return fetchCatalogPage(mediaType, page, undefined, sort, direction);
+      if (genre !== undefined) {
+        return fetchCatalogPage(
+          mediaType,
+          page,
+          undefined,
+          undefined,
+          undefined,
+          genre,
+        );
+      }
+      return fetchCatalogPage(mediaType, page);
+    },
+    [mediaType, search, sort, direction, genre],
+  );
+
   const loadNextPage = useCallback(async (): Promise<void> => {
     if (loadingRef.current || !hasMoreRef.current) return;
     loadingRef.current = true;
     setStatus('loading');
-    // Three distinct call shapes, not one call with every param always
-    // passed (even as undefined), so each request looks on the wire exactly
-    // like what a caller not using that feature would send — no incidental
-    // "search=" or "sort="/"direction=" params for the cases that don't use
-    // them. search and sort are never both active (CatalogPage never sets
-    // both), so this is an if/else-if, not a combined branch.
-    const outcome = search
-      ? await fetchCatalogPage(mediaType, nextPageRef.current, search)
-      : sort
-        ? await fetchCatalogPage(
-            mediaType,
-            nextPageRef.current,
-            undefined,
-            sort,
-            direction,
-          )
-        : await fetchCatalogPage(mediaType, nextPageRef.current);
+    const outcome = await fetchPage(nextPageRef.current);
     loadingRef.current = false;
     if (outcome.status === 'error') {
       setStatus('error');
       return;
     }
+    onAvailableFiltersChange?.(outcome.result.availableFilters ?? {});
     setItems((previous) => {
       // TMDB's "popular" ranking can shift between successive page fetches,
       // so the same title can legitimately reappear on a later page. Without
@@ -108,7 +157,7 @@ function CatalogGrid({
     nextPageRef.current = outcome.result.page + 1;
     hasMoreRef.current = outcome.result.hasMore;
     setStatus('idle');
-  }, [mediaType, search, sort, direction]);
+  }, [fetchPage, onAvailableFiltersChange]);
 
   // Loads this instance's first page. loadNextPage's identity is stable for
   // the lifetime of one mounted instance (mediaType is fixed per instance —
