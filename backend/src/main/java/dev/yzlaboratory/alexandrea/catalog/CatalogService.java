@@ -170,10 +170,8 @@ public class CatalogService {
     /**
      * Which filters {@code FilterControls} should offer for this media type
      * right now (ADR 0018's per-type capability table) — currently just
-     * genre, keyed so #43 can add a Books entry to this same map without
-     * the frontend or this method's callers changing shape. Omits genre
-     * (rather than failing the whole browse response) when the vocabulary
-     * is temporarily unreachable.
+     * genre. Omits genre (rather than failing the whole browse response)
+     * when the vocabulary is temporarily unreachable.
      */
     public Map<String, List<CatalogFilterOption>> availableFilters(String mediaType) {
         if (!genreVocabulary.supports(mediaType)) {
@@ -279,12 +277,9 @@ public class CatalogService {
                 TmdbClient.PROVIDER, TmdbClient.TV_MEDIA_TYPE, sortKey, sortDirection, genre,
                 pageToFetch -> tmdbClient.discoverTv(sortKey, sortDirection, genre, pageToFetch), page
             );
-            // Books has no genre entry in GenreVocabulary yet (#43), so
-            // resolveGenre never produces a non-null value for this
-            // media type — sortedBooks needs no genre param of its own.
             case OpenLibraryClient.BOOKS_MEDIA_TYPE -> filteredFeed(
                 OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, sortKey, sortDirection, genre,
-                pageToFetch -> openLibraryClient.sortedBooks(sortKey, sortDirection, pageToFetch), page
+                pageToFetch -> openLibraryClient.sortedBooks(sortKey, sortDirection, booksSubjectAliases(genre), pageToFetch), page
             );
             case IgdbClient.GAMES_MEDIA_TYPE -> filteredFeed(
                 IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, sortKey, sortDirection, genre,
@@ -292,6 +287,14 @@ public class CatalogService {
             );
             default -> throw new UnsupportedCatalogMediaTypeException(mediaType);
         };
+    }
+
+    // Books' curated genre (ADR 0013) resolves to its OpenLibrary subject
+    // aliases here, not inside OpenLibraryClient — the same split as TMDB/
+    // IGDB, where this class resolves and validates the genre value and the
+    // provider client only knows how to turn it into its own query syntax.
+    private List<String> booksSubjectAliases(String genre) {
+        return genre != null ? genreVocabulary.booksSubjectAliases(genre) : List.of();
     }
 
     private CatalogPageResult searchFeedFor(String mediaType, String query, int page) {

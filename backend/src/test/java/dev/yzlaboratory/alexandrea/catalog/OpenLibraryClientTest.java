@@ -6,13 +6,17 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
@@ -271,10 +275,38 @@ class OpenLibraryClientTest {
     }
 
     @Test
-    void anUpstream5xxOnSearchIsWrappedAsACatalogUpstreamException() {
+    void searchRetriesOnceAfterATransient500ThenSucceeds() {
         expectSearchRequest("q", "anything").andRespond(withServerError());
+        expectSearchRequest("q", "anything").andRespond(withSuccess("""
+            {"docs": [{"key": "/works/OL1W", "title": "Recovered Book"}]}
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.search("anything", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("Recovered Book");
+        server.verify();
+    }
+
+    @Test
+    void anUpstream5xxOnSearchIsRetriedAndEventuallyWrappedAsACatalogUpstreamException() {
+        server.expect(ExpectedCount.times(3), requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "anything"))
+            .andRespond(withServerError());
 
         assertThatThrownBy(() -> client.search("anything", 1)).isInstanceOf(CatalogUpstreamException.class);
+
+        server.verify();
+    }
+
+    @Test
+    void searchDoesNotRetryOnANonServerErrorFailure() {
+        expectSearchRequest("q", "anything").andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        assertThatThrownBy(() -> client.search("anything", 1)).isInstanceOf(CatalogUpstreamException.class);
+
+        server.verify();
     }
 
     @Test
@@ -296,7 +328,7 @@ class OpenLibraryClientTest {
             {"docs": []}
             """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", 1);
+        client.sortedBooks("popularity", "desc", List.of(), 1);
 
         server.verify();
     }
@@ -344,7 +376,7 @@ class OpenLibraryClientTest {
                 {"docs": []}
                 """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", 3);
+        client.sortedBooks("popularity", "desc", List.of(), 3);
 
         server.verify();
     }
@@ -359,7 +391,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("title", "asc", 1);
+        var result = client.sortedBooks("title", "asc", List.of(), 1);
 
         assertThat(result.items()).hasSize(1);
         var item = result.items().getFirst();
@@ -382,7 +414,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Has A Key");
@@ -398,7 +430,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().externalRating()).isNull();
@@ -415,7 +447,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("external_rating", "desc", 1);
+        var result = client.sortedBooks("external_rating", "desc", List.of(), 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Rated Book");
@@ -433,7 +465,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("external_rating", "desc", 1);
+        var result = client.sortedBooks("external_rating", "desc", List.of(), 1);
 
         assertThat(result.items()).isEmpty();
     }
@@ -442,7 +474,7 @@ class OpenLibraryClientTest {
     void sortedBooksByExternalRatingStillReportsMoreAvailableWhenTheFullUpstreamPageWasFilteredToEmpty() {
         expectSortedRequest("rating").andRespond(withSuccess(fullPageOfUnratedDocsJson(), MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("external_rating", "desc", 1);
+        var result = client.sortedBooks("external_rating", "desc", List.of(), 1);
 
         // The upstream page was full (20 keyed docs) even though every one of
         // them lacked a rating and got filtered out — hasMore must reflect
@@ -459,17 +491,106 @@ class OpenLibraryClientTest {
             {"docs": null}
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), 1);
 
         assertThat(result.items()).isEmpty();
     }
 
     @Test
-    void anUpstream5xxOnSortedBooksIsWrappedAsACatalogUpstreamException() {
+    void sortedBooksRetriesOnceAfterATransient500ThenSucceeds() {
         expectSortedRequest("trending").andRespond(withServerError());
+        expectSortedRequest("trending").andRespond(withSuccess("""
+            {"docs": [{"key": "/works/OL1W", "title": "Recovered Book"}]}
+            """, MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", 1))
+        var result = client.sortedBooks("popularity", "desc", List.of(), 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("Recovered Book");
+        server.verify();
+    }
+
+    @Test
+    void anUpstream5xxOnSortedBooksIsRetriedAndEventuallyWrappedAsACatalogUpstreamException() {
+        server.expect(ExpectedCount.times(3), requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "*"))
+            .andExpect(queryParam("sort", "trending"))
+            .andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), 1))
             .isInstanceOf(CatalogUpstreamException.class);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksDoesNotRetryOnANonServerErrorFailure() {
+        expectSortedRequest("trending").andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), 1))
+            .isInstanceOf(CatalogUpstreamException.class);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithACuratedGenreReplacesTheWildcardQueryWithASubjectOrClause() {
+        var aliases = List.of("Science fiction", "Sci-Fi");
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "subject:(%22Science%20fiction%22%20OR%20%22Sci-Fi%22)"))
+            .andExpect(queryParam("sort", "trending"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", aliases, 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithNoGenreStillSendsTheWildcardQuery() {
+        expectSortedRequest("trending").andRespond(withSuccess("""
+            {"docs": []}
+            """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of(), 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithACuratedGenreMapsAMatchingDocIntoCatalogItems() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("sort", "trending"))
+            .andRespond(withSuccess("""
+                {"docs": [{"key": "/works/OL1W", "title": "A Sci-Fi Book"}]}
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("popularity", "desc", List.of("Sci-Fi"), 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("A Sci-Fi Book");
+    }
+
+    @Test
+    void subjectQueryPhraseQuotesEachAliasAndJoinsWithOr() {
+        assertThat(OpenLibraryClient.subjectQuery(List.of("Science fiction", "Sci-Fi")))
+            .isEqualTo("subject:(\"Science fiction\" OR \"Sci-Fi\")");
+    }
+
+    @Test
+    void subjectQueryWithASingleAliasNeedsNoOr() {
+        assertThat(OpenLibraryClient.subjectQuery(List.of("Horror"))).isEqualTo("subject:(\"Horror\")");
+    }
+
+    @Test
+    void subjectQueryEscapesEmbeddedQuotesAndBackslashesInAnAlias() {
+        assertThat(OpenLibraryClient.subjectQuery(List.of("Weird \"Alias\" \\ Name")))
+            .isEqualTo("subject:(\"Weird \\\"Alias\\\" \\\\ Name\")");
     }
 
     private void assertSortedBooksSortParam(String sortKey, String direction, String expectedSortParam) {
@@ -477,7 +598,7 @@ class OpenLibraryClientTest {
             {"docs": []}
             """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks(sortKey, direction, 1);
+        client.sortedBooks(sortKey, direction, List.of(), 1);
     }
 
     private static String fullPageOfUnratedDocsJson() {
