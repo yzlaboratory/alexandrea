@@ -107,69 +107,17 @@ function CatalogGrid({
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Eight call shapes (search × sort × filters, each independently present
-  // or not), not one call with every param always passed (even as
-  // undefined), so each request looks on the wire exactly like what a
-  // caller not using that feature would send — no incidental "search=",
-  // "sort="/"direction=", or filter params for the cases that don't use
-  // them. search combines with sort and/or filters whenever both are given
-  // — CatalogService decides server-side which of them its provider's
-  // search endpoint can actually honor (ADR 0018) and drops the rest, so
-  // this component sends everything it has rather than guessing.
+  // search combines with sort and/or filters whenever both are given —
+  // CatalogService decides server-side which of them its provider's search
+  // endpoint can actually honor (ADR 0018) and drops the rest, so this
+  // component sends everything it has rather than guessing. fetchCatalogPage
+  // itself treats an absent/falsy search or sort, and an undefined filters,
+  // no differently from those args being omitted entirely, so there is no
+  // wire-visible difference to preserve by branching on which props this
+  // caller happens to be using.
   const fetchPage = useCallback(
-    (page: number) => {
-      // filters !== undefined, not a truthy check: an empty object is a
-      // valid "this caller manages filters, none happen to be set right
-      // now" and must still reach fetchCatalogPage — see the filters prop's
-      // own doc comment above.
-      if (search && sort && filters !== undefined) {
-        return fetchCatalogPage(
-          mediaType,
-          page,
-          search,
-          sort,
-          direction,
-          filters,
-        );
-      }
-      if (search && sort) {
-        return fetchCatalogPage(mediaType, page, search, sort, direction);
-      }
-      if (search && filters !== undefined) {
-        return fetchCatalogPage(
-          mediaType,
-          page,
-          search,
-          undefined,
-          undefined,
-          filters,
-        );
-      }
-      if (search) return fetchCatalogPage(mediaType, page, search);
-      if (sort && filters !== undefined) {
-        return fetchCatalogPage(
-          mediaType,
-          page,
-          undefined,
-          sort,
-          direction,
-          filters,
-        );
-      }
-      if (sort)
-        return fetchCatalogPage(mediaType, page, undefined, sort, direction);
-      if (filters !== undefined) {
-        return fetchCatalogPage(
-          mediaType,
-          page,
-          undefined,
-          undefined,
-          undefined,
-          filters,
-        );
-      }
-      return fetchCatalogPage(mediaType, page);
-    },
+    (page: number) =>
+      fetchCatalogPage(mediaType, page, search, sort, direction, filters),
     [mediaType, search, sort, direction, filters],
   );
 

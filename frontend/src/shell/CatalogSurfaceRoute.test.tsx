@@ -59,7 +59,7 @@ describe('CatalogSurfaceRoute', () => {
       expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
         mediaType,
         1,
-        undefined,
+        '',
         'popularity',
         'desc',
         {

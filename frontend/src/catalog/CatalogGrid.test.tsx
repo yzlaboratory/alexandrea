@@ -86,7 +86,14 @@ describe('CatalogGrid', () => {
     render(<CatalogGrid mediaType="movies" />);
 
     expect(await screen.findByText('First Movie')).toBeInTheDocument();
-    expect(mockedFetchCatalogPage).toHaveBeenCalledWith('movies', 1);
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'movies',
+      1,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it('fetches the next page when the sentinel intersects, appending to the existing items', async () => {
@@ -114,7 +121,15 @@ describe('CatalogGrid', () => {
     expect(await screen.findByText('Page Two Movie')).toBeInTheDocument();
     // The first page's items are still there — appended to, not replaced.
     expect(screen.getByText('Page One Movie')).toBeInTheDocument();
-    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(2, 'movies', 2);
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(
+      2,
+      'movies',
+      2,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it('does not fetch again once the last page has been reached', async () => {
@@ -208,7 +223,15 @@ describe('CatalogGrid', () => {
     await user.click(screen.getByRole('button', { name: /retry/i }));
 
     expect(await screen.findByText('Recovered Movie')).toBeInTheDocument();
-    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(2, 'movies', 1);
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(
+      2,
+      'movies',
+      1,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it('starts a fresh feed when remounted for a different media type, as CatalogPage does via key', async () => {
@@ -241,7 +264,15 @@ describe('CatalogGrid', () => {
 
     expect(await screen.findByText('TV Title')).toBeInTheDocument();
     expect(screen.queryByText('Movies Title')).not.toBeInTheDocument();
-    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(2, 'tv', 1);
+    expect(mockedFetchCatalogPage).toHaveBeenNthCalledWith(
+      2,
+      'tv',
+      1,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it('does not stack a second concurrent fetch while one is already in flight', async () => {
@@ -289,6 +320,9 @@ describe('CatalogGrid', () => {
       'movies',
       1,
       'blade runner',
+      undefined,
+      undefined,
+      undefined,
     );
   });
 
@@ -320,10 +354,13 @@ describe('CatalogGrid', () => {
       'movies',
       2,
       'blade runner',
+      undefined,
+      undefined,
+      undefined,
     );
   });
 
-  it('reverts to the two-argument popular-feed call when search is empty', async () => {
+  it('sends an empty search the same as no search at all', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: { items: [], page: 1, hasMore: false },
@@ -332,7 +369,14 @@ describe('CatalogGrid', () => {
     render(<CatalogGrid mediaType="movies" search="" />);
 
     await waitFor(() => {
-      expect(mockedFetchCatalogPage).toHaveBeenCalledWith('movies', 1);
+      expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+        'movies',
+        1,
+        '',
+        undefined,
+        undefined,
+        undefined,
+      );
     });
   });
 
@@ -390,6 +434,7 @@ describe('CatalogGrid', () => {
       undefined,
       'title',
       'asc',
+      undefined,
     );
   });
 
@@ -423,10 +468,11 @@ describe('CatalogGrid', () => {
       undefined,
       'title',
       'asc',
+      undefined,
     );
   });
 
-  it('reverts to the two-argument popular-feed call when no sort is given', async () => {
+  it('sends no sort params at all when no sort is given', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: { items: [], page: 1, hasMore: false },
@@ -435,7 +481,14 @@ describe('CatalogGrid', () => {
     render(<CatalogGrid mediaType="movies" />);
 
     await waitFor(() => {
-      expect(mockedFetchCatalogPage).toHaveBeenCalledWith('movies', 1);
+      expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+        'movies',
+        1,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
     });
   });
 
@@ -484,6 +537,7 @@ describe('CatalogGrid', () => {
       undefined,
       'title',
       'asc',
+      undefined,
     );
   });
 
@@ -755,6 +809,7 @@ describe('CatalogGrid', () => {
       'witcher',
       'popularity',
       'desc',
+      undefined,
     );
   });
 
@@ -998,6 +1053,9 @@ describe('CatalogGrid', () => {
       'movies',
       1,
       'blade runner',
+      undefined,
+      undefined,
+      undefined,
     );
   });
 });
