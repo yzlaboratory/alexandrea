@@ -82,7 +82,23 @@ public class OpenLibraryClient {
     public CatalogPageResult sortedBooks(
         String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3, String pageCountRange, int page
     ) {
-        var response = fetchSorted(sortKey, direction, genreSubjectAliases, availableInLanguageMarc3, pageCountRange, page);
+        return sortedBooks(null, sortKey, direction, genreSubjectAliases, availableInLanguageMarc3, pageCountRange, page);
+    }
+
+    // ADR 0018's "text search active" row for Books: unlike TMDB/IGDB,
+    // OpenLibrary's /search.json is the exact same endpoint the overload
+    // above already calls for the "filter/sort applied" row — a title
+    // query simply joins the same q= clause as one more ANDed term (see
+    // fetchSorted), rather than routing to a separate, more restricted
+    // endpoint. This is why Books, alone among the three providers,
+    // disables nothing while a search is active (ADR 0018's "Behavior
+    // under active text search"): its one search-capable endpoint was
+    // never restricted to begin with.
+    public CatalogPageResult sortedBooks(
+        String query, String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3,
+        String pageCountRange, int page
+    ) {
+        var response = fetchSorted(query, sortKey, direction, genreSubjectAliases, availableInLanguageMarc3, pageCountRange, page);
         var docs = response.docs() != null ? response.docs() : List.<OpenLibraryWork>of();
         var keyedDocs = docs.stream().filter(work -> work.key() != null).toList();
         // hasMore reflects the upstream page's own fullness, computed before
@@ -151,14 +167,16 @@ public class OpenLibraryClient {
     }
 
     private OpenLibrarySearchResponse fetchSorted(
-        String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3, String pageCountRange, int page
+        String query, String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3,
+        String pageCountRange, int page
     ) {
-        var query = combinedQuery(genreSubjectAliases, availableInLanguageMarc3, pageCountRange);
+        var filterQuery = combinedQuery(genreSubjectAliases, availableInLanguageMarc3, pageCountRange);
+        var q = query != null ? searchQuery(query, filterQuery) : filterQuery;
         return fetchWithRetry(() -> {
             var response = restClient.get()
                 .uri(uriBuilder -> uriBuilder
                     .path("/search.json")
-                    .queryParam("q", query)
+                    .queryParam("q", q)
                     .queryParam("sort", sortParam(sortKey, direction))
                     .queryParam("fields", SORTED_FIELDS)
                     .queryParam("limit", PAGE_SIZE)
@@ -168,6 +186,14 @@ public class OpenLibraryClient {
                 .body(OpenLibrarySearchResponse.class);
             return response != null ? response : OpenLibrarySearchResponse.empty();
         });
+    }
+
+    // A title query joins the filter clauses with AND, the same way those
+    // clauses already join each other in combinedQuery — but MATCH_ALL_QUERY
+    // ("*") contributes nothing of its own to a real query, so it's dropped
+    // rather than ANDed in literally.
+    private static String searchQuery(String query, String filterQuery) {
+        return MATCH_ALL_QUERY.equals(filterQuery) ? query : query + " AND " + filterQuery;
     }
 
     // ADR 0018: /search.json returns intermittent HTTP 500s on some query

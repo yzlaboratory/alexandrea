@@ -97,7 +97,17 @@ public class IgdbClient {
     // combined with an explicit sort, so discoverRequestBody's sort clause is
     // dropped rather than reused here.
     public CatalogPageResult search(String query, int page) {
-        return fetchPage(page, searchRequestBody(query, page));
+        return search(query, null, null, page);
+    }
+
+    // The filtered counterpart of the overload above: a `search` clause
+    // combines with a `where` filter fine (unlike an explicit `sort`, which
+    // still has no place in this request body), so Games' genre and
+    // available-in-language filters stay live during a search per ADR
+    // 0018's "Behavior under active text search" — CatalogService passes
+    // null for whichever of the two isn't currently applied.
+    public CatalogPageResult search(String query, String genre, String availableInLanguage, int page) {
+        return fetchPage(page, searchRequestBody(query, genre, availableInLanguage, page));
     }
 
     /** IGDB's native genre enum (ADR 0013), for {@link GenreVocabulary} to cache. */
@@ -185,14 +195,22 @@ public class IgdbClient {
         };
     }
 
-    private static String searchRequestBody(String query, int page) {
+    private static String searchRequestBody(String query, String genre, String availableInLanguage, int page) {
         var offset = (page - 1) * PAGE_SIZE;
+        var conditions = new ArrayList<String>();
+        if (genre != null) {
+            conditions.add("genres = (%s)".formatted(genre));
+        }
+        if (availableInLanguage != null) {
+            conditions.add("language_supports.language = (%s)".formatted(availableInLanguage));
+        }
+        var whereClause = conditions.isEmpty() ? "" : "where " + String.join(" & ", conditions) + ";\n";
         return """
             search "%s";
-            fields name,cover.image_id,first_release_date,total_rating;
+            %sfields name,cover.image_id,first_release_date,total_rating;
             limit %d;
             offset %d;
-            """.formatted(escapeApicalypseString(query), PAGE_SIZE, offset);
+            """.formatted(escapeApicalypseString(query), whereClause, PAGE_SIZE, offset);
     }
 
     // A query containing a literal quote or backslash would otherwise break

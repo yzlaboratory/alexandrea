@@ -727,6 +727,132 @@ class OpenLibraryClientTest {
         assertThat(result.items().getFirst().title()).isEqualTo("A Medium-Length Book");
     }
 
+    // --- Issue 47: ADR 0018's "text search active" row for Books —
+    // sortedBooks' text-query overload joins a title query with the same
+    // sort=/field-filter clauses the plain overload above already sends,
+    // proving OpenLibrary's one /search.json endpoint never needed a
+    // separate, more restricted search path the way TMDB/IGDB do.
+
+    @Test
+    void sortedBooksWithATextQueryAndNoFiltersSendsJustTheQuery() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "dune"))
+            .andExpect(queryParam("sort", "trending"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("dune", "popularity", "desc", List.of(), null, null, 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithATextQueryAndAGenreJoinsThemWithAnd() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "dune%20AND%20subject:(%22Sci-Fi%22)"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("dune", "popularity", "desc", List.of("Sci-Fi"), null, null, 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithATextQueryStillAppliesTheGivenSort() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "dune"))
+            .andExpect(queryParam("sort", "title"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("dune", "title", "asc", List.of(), null, null, 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithATextQueryAndAllThreeFilterKindsAndsEveryClauseTogether() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam(
+                "q", "dune%20AND%20subject:(%22Sci-Fi%22)%20AND%20language:ger%20AND%20number_of_pages_median:%5B300%20TO%20400%5D"
+            ))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("dune", "popularity", "desc", List.of("Sci-Fi"), "ger", "300,400", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithATextQueryMapsAMatchingDocIntoCatalogItems() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(queryParam("q", "dune"))
+            .andRespond(withSuccess("""
+                {"docs": [{"key": "/works/OL1W", "title": "Dune", "ratings_average": 4.5}]}
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("dune", "popularity", "desc", List.of(), null, null, 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("Dune");
+        assertThat(result.items().getFirst().externalRating()).isEqualTo(4.5);
+    }
+
+    @Test
+    void sortedBooksWithATextQueryAndExternalRatingSortStillExcludesUnratedEntries() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(queryParam("q", "dune"))
+            .andExpect(queryParam("sort", "rating"))
+            .andRespond(withSuccess("""
+                {
+                  "docs": [
+                    {"key": "/works/OL1W", "title": "Rated Dune Edition", "ratings_average": 4.5},
+                    {"key": "/works/OL2W", "title": "Unrated Dune Edition"}
+                  ]
+                }
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("dune", "external_rating", "desc", List.of(), null, null, 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("Rated Dune Edition");
+    }
+
+    @Test
+    void sortedBooksWithATextQueryRequestsLimitAndOffsetComputedFromThePageNumber() {
+        server.expect(requestTo(BASE_URL
+                + "/search.json?q=dune&sort=trending&fields=key,title,cover_i,first_publish_year,ratings_average&limit=20&offset=40"))
+            .andExpect(method(HttpMethod.GET))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("dune", "popularity", "desc", List.of(), null, null, 3);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithANullTextQueryBehavesExactlyLikeTheSixArgOverload() {
+        expectSortedRequest("trending").andRespond(withSuccess("""
+            {"docs": []}
+            """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks(null, "popularity", "desc", List.of(), null, null, 1);
+
+        server.verify();
+    }
+
     @Test
     void subjectQueryPhraseQuotesEachAliasAndJoinsWithOr() {
         assertThat(OpenLibraryClient.subjectQuery(List.of("Science fiction", "Sci-Fi")))
