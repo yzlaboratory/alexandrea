@@ -1812,6 +1812,213 @@ class CatalogServiceTest {
         assertThat(result.sortKey()).isEqualTo("title");
     }
 
+    // --- Issue 47: a text search disables the sort/filter fields ADR
+    // 0018's "Behavior under active text search" table says the provider's
+    // search endpoint can't honor — Movies/TV disable everything (genre,
+    // original language, runtime, and sort), Games disables sort only, and
+    // Books disables nothing. searchCapabilities() is the signal exposed to
+    // the frontend; the browse() tests below prove the backend enforces the
+    // same rule defensively even when a disabled param is sent anyway.
+
+    @Test
+    void searchCapabilitiesDisablesNothingWhenNoSearchIsActive() {
+        assertThat(service.searchCapabilities("movies", null)).isEqualTo(CatalogSearchCapabilities.NONE_DISABLED);
+        assertThat(service.searchCapabilities("movies", "")).isEqualTo(CatalogSearchCapabilities.NONE_DISABLED);
+        assertThat(service.searchCapabilities("movies", "   ")).isEqualTo(CatalogSearchCapabilities.NONE_DISABLED);
+    }
+
+    @Test
+    void searchCapabilitiesDisablesGenreOriginalLanguageRuntimeAndSortForMovies() {
+        var capabilities = service.searchCapabilities("movies", "blade runner");
+
+        assertThat(capabilities.sortDisabled()).isTrue();
+        assertThat(capabilities.disabledFilters())
+            .containsExactlyInAnyOrder(CatalogFilterKeys.GENRE, CatalogFilterKeys.ORIGINAL_LANGUAGE, CatalogFilterKeys.RUNTIME);
+    }
+
+    @Test
+    void searchCapabilitiesDisablesTheSameFieldsForTvAsMovies() {
+        var capabilities = service.searchCapabilities("tv", "stranger things");
+
+        assertThat(capabilities.sortDisabled()).isTrue();
+        assertThat(capabilities.disabledFilters())
+            .containsExactlyInAnyOrder(CatalogFilterKeys.GENRE, CatalogFilterKeys.ORIGINAL_LANGUAGE, CatalogFilterKeys.RUNTIME);
+    }
+
+    @Test
+    void searchCapabilitiesDisablesOnlySortForGames() {
+        var capabilities = service.searchCapabilities("games", "witcher");
+
+        assertThat(capabilities.sortDisabled()).isTrue();
+        assertThat(capabilities.disabledFilters()).isEmpty();
+    }
+
+    @Test
+    void searchCapabilitiesDisablesNothingForBooks() {
+        assertThat(service.searchCapabilities("books", "dune")).isEqualTo(CatalogSearchCapabilities.NONE_DISABLED);
+    }
+
+    @Test
+    void searchCapabilitiesForAnUnsupportedMediaTypeDisablesNothingRatherThanThrowing() {
+        assertThat(service.searchCapabilities("podcasts", "anything")).isEqualTo(CatalogSearchCapabilities.NONE_DISABLED);
+    }
+
+    @Test
+    void aGenreAndRuntimeAreIgnoredAndNotPersistedWhileAMoviesSearchIsActive() {
+        var page = new CatalogPageResult(List.of(ITEM), 1, false);
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(page);
+        var filters = new LinkedHashMap<>(genreFilter("28"));
+        filters.putAll(runtimeFilter("90,180"));
+
+        var result = service.browse("movies", "blade runner", "popularity", "desc", filters, 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).searchMovies("blade runner", 1);
+        verify(tmdbClient, never()).discoverMovies(any(), any(), any(), any(), any(), anyInt());
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void clearingAMoviesSearchRestoresThePreviouslyPersistedGenreAndSortUnaffectedByTheIgnoredSearchRequest() {
+        stubGenre("movies", "28", "Action");
+        var existing = new SurfacePreference(42L, "catalog", "movies", "title", "asc", encodedGenre("28"), clock.instant());
+        when(surfacePreferenceStore.get(42L, "catalog", "movies")).thenReturn(Optional.of(existing));
+        when(tmdbClient.searchMovies("blade runner", 1)).thenReturn(new CatalogPageResult(List.of(), 1, false));
+        // While searching, the frontend would never send a changed genre for
+        // a locked control — this simulates a misbehaving/defensive-bypass
+        // client sending one anyway ("35" instead of the persisted "28").
+        service.browse("movies", "blade runner", "popularity", "desc", genreFilter("35"), 42L, 1);
+        when(tmdbClient.discoverMovies("title", "asc", "28", null, null, 1)).thenReturn(new CatalogPageResult(List.of(ITEM), 1, true));
+
+        // The frontend's own local sort/filter state was never touched by
+        // the ignored search request above (SortControl/FilterControls just
+        // rendered it locked) — clearing the search resends that same,
+        // never-wiped "title"/"asc"/"28", not the "35" the locked genre
+        // control could never actually submit.
+        var result = service.browse("movies", null, "title", "asc", genreFilter("28"), 42L, 1);
+
+        assertThat(result.items()).containsExactly(ITEM);
+        verify(tmdbClient, times(1)).discoverMovies("title", "asc", "28", null, null, 1);
+    }
+
+    @Test
+    void searchingGamesWithAGenreFilterCombinesTheSearchClauseWithAWhereClause() {
+        stubGenre("games", "5", "Shooter");
+        var shooterItem = new CatalogItem("IGDB", "42", "games", "A Shooter", "cover", null, 84.0, 100.0);
+        var page = new CatalogPageResult(List.of(shooterItem), 1, false);
+        when(igdbClient.search("witcher", "5", null, 1)).thenReturn(page);
+
+        var result = service.browse("games", "witcher", "popularity", "desc", genreFilter("5"), 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(igdbClient, times(1)).search("witcher", "5", null, 1);
+        verify(igdbClient, never()).search(any(), anyInt());
+        verify(igdbClient, never()).discoverGames(any(), any(), any(), any(), anyInt());
+    }
+
+    @Test
+    void combiningGenreAndAvailableInLanguageDuringAGamesSearchNarrowsToTheIntersection() {
+        stubGenre("games", "5", "Shooter");
+        stubAvailableInLanguage("games", "2");
+        var page = new CatalogPageResult(List.of(), 1, false);
+        when(igdbClient.search("witcher", "5", "2", 1)).thenReturn(page);
+        var combined = new LinkedHashMap<>(genreFilter("5"));
+        combined.putAll(availableInLanguageFilter("2"));
+
+        var result = service.browse("games", "witcher", null, null, combined, 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(igdbClient, times(1)).search("witcher", "5", "2", 1);
+    }
+
+    @Test
+    void searchingGamesIgnoresTheSortWhenCallingIgdbSearchButStillPersistsIt() {
+        var page = new CatalogPageResult(List.of(), 1, false);
+        when(igdbClient.search("witcher", null, null, 1)).thenReturn(page);
+
+        var result = service.browse("games", "witcher", "title", "asc", NO_FILTERS, 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        // IgdbClient#search(query, genre, availableInLanguage, page) has no
+        // sort parameter at all to receive "title"/"asc" — a defensive
+        // backstop beyond just the frontend withholding a disabled sort.
+        verify(igdbClient, times(1)).search("witcher", null, null, 1);
+        verify(igdbClient, never()).discoverGames(any(), any(), any(), any(), anyInt());
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "games", "title", "asc", null);
+    }
+
+    @Test
+    void clearingAGamesSearchRestoresThePreviouslyPersistedSortAndGenreOnTheNextFetch() {
+        stubGenre("games", "5", "Shooter");
+        var existing = new SurfacePreference(42L, "catalog", "games", "title", "asc", encodedGenre("5"), clock.instant());
+        when(surfacePreferenceStore.get(42L, "catalog", "games")).thenReturn(Optional.of(existing));
+        when(igdbClient.discoverGames("title", "asc", "5", null, 1)).thenReturn(new CatalogPageResult(List.of(), 1, false));
+
+        // The sort control was locked (not reset) while searching — clearing
+        // the search resends the same "title"/"asc"/"5" the frontend held
+        // onto the whole time.
+        service.browse("games", null, "title", "asc", genreFilter("5"), 42L, 1);
+
+        verify(igdbClient, times(1)).discoverGames("title", "asc", "5", null, 1);
+    }
+
+    @Test
+    void searchingBooksCombinesTheQueryWithTheGivenSortAndGenreFilter() {
+        stubGenre("books", "science_fiction", "Science Fiction");
+        var aliases = List.of("Science fiction", "Sci-Fi");
+        when(genreVocabulary.booksSubjectAliases("science_fiction")).thenReturn(aliases);
+        var bookItem = new CatalogItem("OpenLibrary", "OL1W", "books", "A Sci-Fi Book", "cover", null, 4.2, 5.0);
+        var page = new CatalogPageResult(List.of(bookItem), 1, false);
+        when(openLibraryClient.sortedBooks("dune", "external_rating", "desc", aliases, null, null, 1)).thenReturn(page);
+
+        var result = service.browse("books", "dune", "external_rating", "desc", genreFilter("science_fiction"), 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(openLibraryClient, times(1)).sortedBooks("dune", "external_rating", "desc", aliases, null, null, 1);
+        verify(openLibraryClient, never()).search(any(), anyInt());
+        verify(openLibraryClient, never()).trendingBooks(anyInt());
+    }
+
+    @Test
+    void searchingBooksWithNoSortAppliesTheDefaultSortForFetchingAndPersists() {
+        var page = new CatalogPageResult(List.of(), 1, false);
+        when(openLibraryClient.sortedBooks("dune", "popularity", "desc", List.of(), null, null, 1)).thenReturn(page);
+
+        service.browse("books", "dune", null, null, NO_FILTERS, 42L, 1);
+
+        verify(openLibraryClient, times(1)).sortedBooks("dune", "popularity", "desc", List.of(), null, null, 1);
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "books", null, null, null);
+    }
+
+    @Test
+    void searchingBooksPersistsTheAppliedSortAndFilterJustLikeANonSearchRequest() {
+        stubGenre("books", "science_fiction", "Science Fiction");
+        when(genreVocabulary.booksSubjectAliases("science_fiction")).thenReturn(List.of("Science fiction"));
+        when(openLibraryClient.sortedBooks("dune", "title", "asc", List.of("Science fiction"), null, null, 1))
+            .thenReturn(new CatalogPageResult(List.of(), 1, false));
+
+        service.browse("books", "dune", "title", "asc", genreFilter("science_fiction"), 42L, 1);
+
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "books", "title", "asc", encodedGenre("science_fiction"));
+    }
+
+    @Test
+    void searchedAndFilteredBooksAreCachedSeparatelyFromAPlainSearchForTheSamePage() {
+        var plainSearchItem = new CatalogItem("OpenLibrary", "OL2W", "books", "Plain Search", "cover", null, null, 5.0);
+        var sortedSearchItem = new CatalogItem("OpenLibrary", "OL1W", "books", "Sorted Search", "cover", null, 4.2, 5.0);
+        when(openLibraryClient.search("dune", 1)).thenReturn(new CatalogPageResult(List.of(plainSearchItem), 1, false));
+        when(openLibraryClient.sortedBooks("dune", "popularity", "desc", List.of(), null, null, 1))
+            .thenReturn(new CatalogPageResult(List.of(sortedSearchItem), 1, false));
+
+        var plain = service.browse("books", "dune", 1);
+        var sorted = service.browse("books", "dune", "popularity", "desc", NO_FILTERS, 42L, 1);
+
+        assertThat(plain.items()).containsExactly(plainSearchItem);
+        assertThat(sorted.items()).containsExactly(sortedSearchItem);
+        verify(openLibraryClient, times(1)).search("dune", 1);
+        verify(openLibraryClient, times(1)).sortedBooks("dune", "popularity", "desc", List.of(), null, null, 1);
+    }
+
     private void stubGenre(String mediaType, String value, String label) {
         when(genreVocabulary.supports(mediaType)).thenReturn(true);
         when(genreVocabulary.genresFor(mediaType)).thenReturn(List.of(new CatalogFilterOption(value, label)));
