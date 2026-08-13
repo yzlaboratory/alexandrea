@@ -69,19 +69,20 @@ public class OpenLibraryClient {
     // ADR 0018's "filter/sort applied" row: /search.json replaces
     // /trending/daily.json once a sort is chosen, with q=* matching every
     // work (the same Solr "match everything" idiom as an empty query) when
-    // neither a curated Books genre (ADR 0013) nor an available-in-language
-    // filter is applied — genreSubjectAliases empty means no genre filter;
-    // availableInLanguageMarc3 null means no language filter; either or both
-    // replace q=* with their own clause, ANDed together when both are given.
-    // OpenLibrary's language field on a work reflects every edition's
-    // language, not the work's original language (a concept it has no
-    // notion of at all), so filtering by it already matches ADR 0018's
-    // "has an edition in this language" semantics without any extra
+    // none of a curated Books genre (ADR 0013), an available-in-language
+    // filter, or a page-count range is applied — genreSubjectAliases empty
+    // means no genre filter; availableInLanguageMarc3 null means no
+    // language filter; pageCountRange null/unparseable means no page-count
+    // filter; any combination of the three replaces q=* with their clauses,
+    // ANDed together. OpenLibrary's language field on a work reflects every
+    // edition's language, not the work's original language (a concept it
+    // has no notion of at all), so filtering by it already matches ADR
+    // 0018's "has an edition in this language" semantics without any extra
     // original-language exclusion to apply.
     public CatalogPageResult sortedBooks(
-        String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3, int page
+        String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3, String pageCountRange, int page
     ) {
-        var response = fetchSorted(sortKey, direction, genreSubjectAliases, availableInLanguageMarc3, page);
+        var response = fetchSorted(sortKey, direction, genreSubjectAliases, availableInLanguageMarc3, pageCountRange, page);
         var docs = response.docs() != null ? response.docs() : List.<OpenLibraryWork>of();
         var keyedDocs = docs.stream().filter(work -> work.key() != null).toList();
         // hasMore reflects the upstream page's own fullness, computed before
@@ -150,9 +151,9 @@ public class OpenLibraryClient {
     }
 
     private OpenLibrarySearchResponse fetchSorted(
-        String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3, int page
+        String sortKey, String direction, List<String> genreSubjectAliases, String availableInLanguageMarc3, String pageCountRange, int page
     ) {
-        var query = combinedQuery(genreSubjectAliases, availableInLanguageMarc3);
+        var query = combinedQuery(genreSubjectAliases, availableInLanguageMarc3, pageCountRange);
         return fetchWithRetry(() -> {
             var response = restClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -211,11 +212,12 @@ public class OpenLibraryClient {
             .collect(Collectors.joining(" OR ", "subject:(", ")"));
     }
 
-    // Package-private for the same reason as subjectQuery. The genre and
-    // available-in-language clauses are independent Solr fields, so ANDing
-    // them narrows to their intersection exactly like TMDB's with_genres and
-    // with_original_language combining in the same discover request.
-    static String combinedQuery(List<String> genreSubjectAliases, String availableInLanguageMarc3) {
+    // Package-private for the same reason as subjectQuery. The genre,
+    // available-in-language, and page-count clauses are independent Solr
+    // fields, so ANDing them narrows to their intersection exactly like
+    // TMDB's with_genres, with_original_language, and with_runtime combining
+    // in the same discover request.
+    static String combinedQuery(List<String> genreSubjectAliases, String availableInLanguageMarc3, String pageCountRange) {
         var clauses = new ArrayList<String>();
         if (!genreSubjectAliases.isEmpty()) {
             clauses.add(subjectQuery(genreSubjectAliases));
@@ -223,7 +225,20 @@ public class OpenLibraryClient {
         if (availableInLanguageMarc3 != null) {
             clauses.add("language:" + availableInLanguageMarc3);
         }
+        CatalogRange.parse(pageCountRange).ifPresent(range -> clauses.add(pageCountQuery(range)));
         return clauses.isEmpty() ? MATCH_ALL_QUERY : String.join(" AND ", clauses);
+    }
+
+    // ADR 0018: number_of_pages_median is a live-verified queryable Solr
+    // range field despite being absent from OpenLibrary's documented
+    // searchable-field list — "[min TO max]" is the same range-query idiom
+    // the ADR's own live-verified example uses, with either bound replaced
+    // by "*" for CatalogRange's open-ended side rather than omitting the
+    // clause's bracket structure entirely.
+    private static String pageCountQuery(CatalogRange range) {
+        var min = range.min() != null ? range.min().toString() : "*";
+        var max = range.max() != null ? range.max().toString() : "*";
+        return "number_of_pages_median:[" + min + " TO " + max + "]";
     }
 
     private static String quotedPhrase(String value) {

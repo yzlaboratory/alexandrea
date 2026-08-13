@@ -328,7 +328,7 @@ class OpenLibraryClientTest {
             {"docs": []}
             """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", List.of(), null, 1);
+        client.sortedBooks("popularity", "desc", List.of(), null, null, 1);
 
         server.verify();
     }
@@ -376,7 +376,7 @@ class OpenLibraryClientTest {
                 {"docs": []}
                 """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", List.of(), null, 3);
+        client.sortedBooks("popularity", "desc", List.of(), null, null, 3);
 
         server.verify();
     }
@@ -391,7 +391,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("title", "asc", List.of(), null, 1);
+        var result = client.sortedBooks("title", "asc", List.of(), null, null, 1);
 
         assertThat(result.items()).hasSize(1);
         var item = result.items().getFirst();
@@ -414,7 +414,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of(), null, 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Has A Key");
@@ -430,7 +430,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of(), null, 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().externalRating()).isNull();
@@ -447,7 +447,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("external_rating", "desc", List.of(), null, 1);
+        var result = client.sortedBooks("external_rating", "desc", List.of(), null, null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Rated Book");
@@ -465,7 +465,7 @@ class OpenLibraryClientTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("external_rating", "desc", List.of(), null, 1);
+        var result = client.sortedBooks("external_rating", "desc", List.of(), null, null, 1);
 
         assertThat(result.items()).isEmpty();
     }
@@ -474,7 +474,7 @@ class OpenLibraryClientTest {
     void sortedBooksByExternalRatingStillReportsMoreAvailableWhenTheFullUpstreamPageWasFilteredToEmpty() {
         expectSortedRequest("rating").andRespond(withSuccess(fullPageOfUnratedDocsJson(), MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("external_rating", "desc", List.of(), null, 1);
+        var result = client.sortedBooks("external_rating", "desc", List.of(), null, null, 1);
 
         // The upstream page was full (20 keyed docs) even though every one of
         // them lacked a rating and got filtered out — hasMore must reflect
@@ -491,7 +491,7 @@ class OpenLibraryClientTest {
             {"docs": null}
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of(), null, 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, null, 1);
 
         assertThat(result.items()).isEmpty();
     }
@@ -503,7 +503,7 @@ class OpenLibraryClientTest {
             {"docs": [{"key": "/works/OL1W", "title": "Recovered Book"}]}
             """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of(), null, 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Recovered Book");
@@ -518,7 +518,7 @@ class OpenLibraryClientTest {
             .andExpect(queryParam("sort", "trending"))
             .andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), null, 1))
+        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), null, null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
 
         server.verify();
@@ -528,7 +528,7 @@ class OpenLibraryClientTest {
     void sortedBooksDoesNotRetryOnANonServerErrorFailure() {
         expectSortedRequest("trending").andRespond(withStatus(HttpStatus.NOT_FOUND));
 
-        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), null, 1))
+        assertThatThrownBy(() -> client.sortedBooks("popularity", "desc", List.of(), null, null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
 
         server.verify();
@@ -545,7 +545,7 @@ class OpenLibraryClientTest {
                 {"docs": []}
                 """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", aliases, null, 1);
+        client.sortedBooks("popularity", "desc", aliases, null, null, 1);
 
         server.verify();
     }
@@ -556,7 +556,7 @@ class OpenLibraryClientTest {
             {"docs": []}
             """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", List.of(), null, 1);
+        client.sortedBooks("popularity", "desc", List.of(), null, null, 1);
 
         server.verify();
     }
@@ -570,7 +570,7 @@ class OpenLibraryClientTest {
                 {"docs": [{"key": "/works/OL1W", "title": "A Sci-Fi Book"}]}
                 """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of("Sci-Fi"), null, 1);
+        var result = client.sortedBooks("popularity", "desc", List.of("Sci-Fi"), null, null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("A Sci-Fi Book");
@@ -586,7 +586,7 @@ class OpenLibraryClientTest {
                 {"docs": []}
                 """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", List.of(), "ger", 1);
+        client.sortedBooks("popularity", "desc", List.of(), "ger", null, 1);
 
         server.verify();
     }
@@ -600,7 +600,7 @@ class OpenLibraryClientTest {
                 {"docs": []}
                 """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks("popularity", "desc", List.of("Sci-Fi"), "ger", 1);
+        client.sortedBooks("popularity", "desc", List.of("Sci-Fi"), "ger", null, 1);
 
         server.verify();
     }
@@ -618,10 +618,113 @@ class OpenLibraryClientTest {
                 {"docs": [{"key": "/works/OL1W", "title": "Dune"}]}
                 """, MediaType.APPLICATION_JSON));
 
-        var result = client.sortedBooks("popularity", "desc", List.of(), "ger", 1);
+        var result = client.sortedBooks("popularity", "desc", List.of(), "ger", null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Dune");
+    }
+
+    @Test
+    void sortedBooksWithAPageCountRangeReplacesTheWildcardQueryWithANumberOfPagesMedianClause() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(method(HttpMethod.GET))
+            .andExpect(queryParam("q", "number_of_pages_median:%5B300%20TO%20400%5D"))
+            .andExpect(queryParam("sort", "trending"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of(), null, "300,400", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithAnOpenEndedMinOnlyPageCountRangeUsesAWildcardMax() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(queryParam("q", "number_of_pages_median:%5B300%20TO%20*%5D"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of(), null, "300,", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithAnOpenEndedMaxOnlyPageCountRangeUsesAWildcardMin() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(queryParam("q", "number_of_pages_median:%5B*%20TO%20400%5D"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of(), null, ",400", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithAMinEqualsMaxPageCountRangeStillSendsTheClause() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(queryParam("q", "number_of_pages_median:%5B300%20TO%20300%5D"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of(), null, "300,300", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithAMalformedPageCountRangeFallsBackToTheWildcardQueryRatherThanThrowing() {
+        expectSortedRequest("trending").andRespond(withSuccess("""
+            {"docs": []}
+            """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of(), null, "not-a-range", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithAnInvertedPageCountRangeFallsBackToTheWildcardQueryRatherThanThrowing() {
+        expectSortedRequest("trending").andRespond(withSuccess("""
+            {"docs": []}
+            """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of(), null, "400,300", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksCombinesGenreAvailableInLanguageAndPageCountWithAndWhenAllThreeAreGiven() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(queryParam("q", "subject:(%22Sci-Fi%22)%20AND%20language:ger%20AND%20number_of_pages_median:%5B300%20TO%20400%5D"))
+            .andRespond(withSuccess("""
+                {"docs": []}
+                """, MediaType.APPLICATION_JSON));
+
+        client.sortedBooks("popularity", "desc", List.of("Sci-Fi"), "ger", "300,400", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void sortedBooksWithAPageCountRangeMapsAMatchingDocIntoCatalogItems() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
+            .andExpect(queryParam("q", "number_of_pages_median:%5B300%20TO%20400%5D"))
+            .andRespond(withSuccess("""
+                {"docs": [{"key": "/works/OL1W", "title": "A Medium-Length Book"}]}
+                """, MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, "300,400", 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("A Medium-Length Book");
     }
 
     @Test
@@ -631,23 +734,63 @@ class OpenLibraryClientTest {
     }
 
     @Test
-    void combinedQueryWithNeitherGenreNorLanguageIsTheWildcard() {
-        assertThat(OpenLibraryClient.combinedQuery(List.of(), null)).isEqualTo("*");
+    void combinedQueryWithNeitherGenreNorLanguageNorPageCountIsTheWildcard() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), null, null)).isEqualTo("*");
     }
 
     @Test
     void combinedQueryWithOnlyGenreIsJustTheSubjectClause() {
-        assertThat(OpenLibraryClient.combinedQuery(List.of("Sci-Fi"), null)).isEqualTo("subject:(\"Sci-Fi\")");
+        assertThat(OpenLibraryClient.combinedQuery(List.of("Sci-Fi"), null, null)).isEqualTo("subject:(\"Sci-Fi\")");
     }
 
     @Test
     void combinedQueryWithOnlyLanguageIsJustTheLanguageClause() {
-        assertThat(OpenLibraryClient.combinedQuery(List.of(), "ger")).isEqualTo("language:ger");
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), "ger", null)).isEqualTo("language:ger");
     }
 
     @Test
-    void combinedQueryWithBothAndsTheSubjectAndLanguageClauses() {
-        assertThat(OpenLibraryClient.combinedQuery(List.of("Sci-Fi"), "ger")).isEqualTo("subject:(\"Sci-Fi\") AND language:ger");
+    void combinedQueryWithGenreAndLanguageAndsTheTwoClauses() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of("Sci-Fi"), "ger", null)).isEqualTo("subject:(\"Sci-Fi\") AND language:ger");
+    }
+
+    @Test
+    void combinedQueryWithOnlyAFullPageCountRangeIsJustTheNumberOfPagesClause() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), null, "300,400"))
+            .isEqualTo("number_of_pages_median:[300 TO 400]");
+    }
+
+    @Test
+    void combinedQueryWithAnOpenEndedMinOnlyPageCountRangeUsesAWildcardMax() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), null, "300,"))
+            .isEqualTo("number_of_pages_median:[300 TO *]");
+    }
+
+    @Test
+    void combinedQueryWithAnOpenEndedMaxOnlyPageCountRangeUsesAWildcardMin() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), null, ",400"))
+            .isEqualTo("number_of_pages_median:[* TO 400]");
+    }
+
+    @Test
+    void combinedQueryWithAMinEqualsMaxPageCountRangeIsAOneValueBracket() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), null, "300,300"))
+            .isEqualTo("number_of_pages_median:[300 TO 300]");
+    }
+
+    @Test
+    void combinedQueryWithAMalformedPageCountRangeOmitsTheClauseRatherThanThrowing() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), null, "not-a-range")).isEqualTo("*");
+    }
+
+    @Test
+    void combinedQueryWithAnInvertedPageCountRangeOmitsTheClauseRatherThanThrowing() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of(), null, "400,300")).isEqualTo("*");
+    }
+
+    @Test
+    void combinedQueryAndsAllThreeClausesWhenGenreLanguageAndPageCountAreAllGiven() {
+        assertThat(OpenLibraryClient.combinedQuery(List.of("Sci-Fi"), "ger", "300,400"))
+            .isEqualTo("subject:(\"Sci-Fi\") AND language:ger AND number_of_pages_median:[300 TO 400]");
     }
 
     @Test
@@ -666,7 +809,7 @@ class OpenLibraryClientTest {
             {"docs": []}
             """, MediaType.APPLICATION_JSON));
 
-        client.sortedBooks(sortKey, direction, List.of(), null, 1);
+        client.sortedBooks(sortKey, direction, List.of(), null, null, 1);
     }
 
     private static String fullPageOfUnratedDocsJson() {
