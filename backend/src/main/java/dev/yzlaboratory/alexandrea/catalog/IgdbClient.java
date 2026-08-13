@@ -47,12 +47,9 @@ public class IgdbClient {
     private static final ParameterizedTypeReference<List<IgdbGame>> GAME_LIST_TYPE = new ParameterizedTypeReference<>() {};
     private static final ParameterizedTypeReference<List<IgdbGenre>> GENRE_LIST_TYPE = new ParameterizedTypeReference<>() {};
     private static final ParameterizedTypeReference<List<IgdbLanguage>> LANGUAGE_LIST_TYPE = new ParameterizedTypeReference<>() {};
-    private static final String GENRE_LIST_REQUEST_BODY = """
-        fields name;
-        limit 500;
-        sort name asc;
-        """;
-    private static final String LANGUAGE_LIST_REQUEST_BODY = """
+    // Shared by /genres and /languages: both are the same shape of request
+    // (every {id, name} entry, sorted by name) against a different endpoint.
+    private static final String NAME_SORTED_LIST_REQUEST_BODY = """
         fields name;
         limit 500;
         sort name asc;
@@ -112,13 +109,13 @@ public class IgdbClient {
 
     /** IGDB's native genre enum (ADR 0013), for {@link GenreVocabulary} to cache. */
     public List<CatalogFilterOption> genres() {
-        var genres = postApicalypse("/genres", GENRE_LIST_REQUEST_BODY, GENRE_LIST_TYPE, false);
+        var genres = postApicalypse("/genres", NAME_SORTED_LIST_REQUEST_BODY, GENRE_LIST_TYPE, false);
         return genres.stream().map(genre -> new CatalogFilterOption(String.valueOf(genre.id()), genre.name())).toList();
     }
 
     /** IGDB's native language enum (ADR 0018's available-in-language filter for Games), for {@link LanguageVocabulary} to cache. */
     public List<CatalogFilterOption> languages() {
-        var languages = postApicalypse("/languages", LANGUAGE_LIST_REQUEST_BODY, LANGUAGE_LIST_TYPE, false);
+        var languages = postApicalypse("/languages", NAME_SORTED_LIST_REQUEST_BODY, LANGUAGE_LIST_TYPE, false);
         return languages.stream().map(language -> new CatalogFilterOption(String.valueOf(language.id()), language.name())).toList();
     }
 

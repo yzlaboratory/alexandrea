@@ -64,7 +64,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'popularity',
         'desc',
         NO_FILTERS_SENT,
@@ -120,7 +120,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'title',
         'asc',
         NO_FILTERS_SENT,
@@ -246,7 +246,7 @@ describe('CatalogPage', () => {
     expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
       'movies',
       1,
-      undefined,
+      '',
       'popularity',
       'desc',
       NO_FILTERS_SENT,
@@ -292,7 +292,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'title',
         'desc',
         NO_FILTERS_SENT,
@@ -415,7 +415,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'popularity',
         'desc',
         { ...NO_FILTERS_SENT, genre: '28' },
@@ -454,7 +454,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'popularity',
         'desc',
         {
@@ -494,7 +494,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'popularity',
         'desc',
         { ...NO_FILTERS_SENT, genre: '35' },
@@ -533,7 +533,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'popularity',
         'desc',
         {
@@ -583,7 +583,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'popularity',
         'desc',
         { ...NO_FILTERS_SENT, genre: '35' },
@@ -641,7 +641,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'title',
         'asc',
         NO_FILTERS_SENT,
@@ -726,7 +726,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'popularity',
         'desc',
         NO_FILTERS_SENT,
@@ -830,7 +830,7 @@ describe('CatalogPage', () => {
       expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
         'movies',
         1,
-        undefined,
+        '',
         'title',
         'asc',
         { ...NO_FILTERS_SENT, genre: '28' },

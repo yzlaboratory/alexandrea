@@ -118,8 +118,9 @@ public class CatalogCache {
     /**
      * {@code provider|mediaType|feedOrQuery|filters|sort|page}, per ADR 0007's
      * feed/query page key shape. {@code filters} and {@code sort} are empty
-     * for the popular feed this and #37 build — there is no filter/sort/
-     * search yet — and will carry real values once #39/#40+ add them.
+     * for the plain popular feed; a sorted, filtered, and/or searched page
+     * fills them in so it never collides with — or is served by — a
+     * different combination's cache entry.
      */
     public static String pageKey(
         String provider, String mediaType, String feedOrQuery, String filters, String sort, int page
