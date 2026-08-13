@@ -1,5 +1,12 @@
 import type { ReactNode } from 'react';
-import { Chip, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import {
+  Button,
+  Chip,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
 import {
   CATALOG_FILTER_FIELDS,
   CATALOG_RANGE_FILTER_FIELDS,
@@ -53,6 +60,22 @@ function isFieldAvailable(
     : (availableFilters[field]?.length ?? 0) > 0;
 }
 
+// Mirrors exactly what makes SingleFilterControl/RangeFilterControl render
+// their own delete chip for this field, so "Clear filters" derives its
+// visibility and its click action from that same per-field check rather
+// than inventing a new signal.
+function isFieldActive(
+  field: (typeof CATALOG_FILTER_FIELDS)[number],
+  value: string | null,
+  availableFilters: Record<string, CatalogFilterOption[]>,
+): boolean {
+  if (value === null) return false;
+  if (isRangeField(field)) return true;
+  return (availableFilters[field] ?? []).some(
+    (option) => option.value === value,
+  );
+}
+
 interface FilterControlsProps {
   // Driven entirely by the capability payload the backend returns with each
   // page (ADR 0018) — this component never hardcodes which media types get
@@ -75,6 +98,16 @@ function FilterControls({
     isFieldAvailable(field, availableFilters),
   );
   if (fields.length === 0) return null;
+
+  const activeFields = fields.filter((field) =>
+    isFieldActive(field, selectedFilters[field] ?? null, availableFilters),
+  );
+
+  function clearAllFilters(): void {
+    for (const field of activeFields) {
+      onFilterChange(field, null);
+    }
+  }
 
   return (
     <Stack
@@ -103,6 +136,11 @@ function FilterControls({
             }}
           />
         ),
+      )}
+      {activeFields.length > 0 && (
+        <Button size="small" onClick={clearAllFilters}>
+          Clear filters
+        </Button>
       )}
     </Stack>
   );

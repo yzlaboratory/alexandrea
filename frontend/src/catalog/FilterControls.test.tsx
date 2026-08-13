@@ -202,6 +202,110 @@ describe('FilterControls', () => {
     expect(comboboxes[1]).toHaveAccessibleName('Original language');
   });
 
+  it('does not show a "Clear filters" button when no filter is active', () => {
+    render(
+      <FilterControls
+        availableFilters={{ genre: MOVIE_GENRES }}
+        selectedFilters={{}}
+        onFilterChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Clear filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not show a "Clear filters" button when the only selected value is stale (matches no option)', () => {
+    render(
+      <FilterControls
+        availableFilters={{ genre: MOVIE_GENRES }}
+        selectedFilters={{ genre: '999-unknown' }}
+        onFilterChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Clear filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a "Clear filters" button once one filter is active', () => {
+    render(
+      <FilterControls
+        availableFilters={{ genre: MOVIE_GENRES }}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Clear filters' }),
+    ).toBeInTheDocument();
+  });
+
+  it('clicking "Clear filters" with one filter active clears just that field', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    const onFilterChange = vi.fn();
+    render(
+      <FilterControls
+        availableFilters={{ genre: MOVIE_GENRES }}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={onFilterChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    expect(onFilterChange).toHaveBeenCalledExactlyOnceWith('genre', null);
+  });
+
+  it('clicking "Clear filters" with several filters active clears every one of them and none of the untouched fields', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    const onFilterChange = vi.fn();
+    render(
+      <FilterControls
+        availableFilters={{
+          genre: MOVIE_GENRES,
+          originalLanguage: ORIGINAL_LANGUAGES,
+          runtime: [],
+        }}
+        selectedFilters={{
+          genre: '28',
+          originalLanguage: 'ja',
+          runtime: '90,180',
+        }}
+        onFilterChange={onFilterChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    expect(onFilterChange).toHaveBeenCalledTimes(3);
+    expect(onFilterChange).toHaveBeenCalledWith('genre', null);
+    expect(onFilterChange).toHaveBeenCalledWith('originalLanguage', null);
+    expect(onFilterChange).toHaveBeenCalledWith('runtime', null);
+  });
+
+  it('clicking "Clear filters" leaves an already-unset field alone, calling onFilterChange only for the active ones', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    const onFilterChange = vi.fn();
+    render(
+      <FilterControls
+        availableFilters={{
+          genre: MOVIE_GENRES,
+          originalLanguage: ORIGINAL_LANGUAGES,
+        }}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={onFilterChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    expect(onFilterChange).toHaveBeenCalledExactlyOnceWith('genre', null);
+  });
+
   it('renders only the available-in-language control for Books, not original language', () => {
     render(
       <FilterControls
