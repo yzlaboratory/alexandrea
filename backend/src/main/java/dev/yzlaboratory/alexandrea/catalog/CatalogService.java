@@ -55,6 +55,11 @@ public class CatalogService {
         CatalogSort.POPULARITY, CatalogSort.RELEASE_DATE, CatalogSort.TITLE, CatalogSort.EXTERNAL_RATING
     );
     private static final Set<String> VALID_DIRECTIONS = Set.of(CatalogSort.ASCENDING, CatalogSort.DESCENDING);
+    // ADR 0018's capability table: runtime is Movies/TV only (TMDB
+    // with_runtime.gte/.lte); page count is Books only (OpenLibrary
+    // number_of_pages_median). Games gets neither.
+    private static final Set<String> RUNTIME_MEDIA_TYPES = Set.of(TmdbClient.MOVIES_MEDIA_TYPE, TmdbClient.TV_MEDIA_TYPE);
+    private static final Set<String> PAGE_COUNT_MEDIA_TYPES = Set.of(OpenLibraryClient.BOOKS_MEDIA_TYPE);
     private static final TypeReference<Map<String, String>> FILTERS_JSON_TYPE = new TypeReference<>() {};
 
     private final TmdbClient tmdbClient;
@@ -94,6 +99,20 @@ public class CatalogService {
             new CatalogFilterField(
                 CatalogFilterKeys.AVAILABLE_IN_LANGUAGE,
                 languageVocabulary::supportsAvailableInLanguage, languageVocabulary::availableInLanguageOptionsFor
+            ),
+            // Runtime and page count have no enumerable option list (see
+            // CatalogFilterField's Javadoc) — mediaType -> List.of() is
+            // therefore an honest "no discrete options" rather than a
+            // placeholder, and CatalogRange.isValid replaces the
+            // enumeration-based validator the 3-arg constructor would
+            // otherwise derive from that (necessarily empty) list.
+            new CatalogFilterField(
+                CatalogFilterKeys.RUNTIME, RUNTIME_MEDIA_TYPES::contains, mediaType -> List.of(),
+                (mediaType, value) -> CatalogRange.isValid(value)
+            ),
+            new CatalogFilterField(
+                CatalogFilterKeys.PAGE_COUNT, PAGE_COUNT_MEDIA_TYPES::contains, mediaType -> List.of(),
+                (mediaType, value) -> CatalogRange.isValid(value)
             )
         );
     }
@@ -315,19 +334,21 @@ public class CatalogService {
         var genre = filters.get(CatalogFilterKeys.GENRE);
         var originalLanguage = filters.get(CatalogFilterKeys.ORIGINAL_LANGUAGE);
         var availableInLanguage = filters.get(CatalogFilterKeys.AVAILABLE_IN_LANGUAGE);
+        var runtime = filters.get(CatalogFilterKeys.RUNTIME);
+        var pageCount = filters.get(CatalogFilterKeys.PAGE_COUNT);
         return switch (mediaType) {
             case TmdbClient.MOVIES_MEDIA_TYPE -> filteredFeed(
                 TmdbClient.PROVIDER, TmdbClient.MOVIES_MEDIA_TYPE, sortKey, sortDirection, filters,
-                pageToFetch -> tmdbClient.discoverMovies(sortKey, sortDirection, genre, originalLanguage, pageToFetch), page
+                pageToFetch -> tmdbClient.discoverMovies(sortKey, sortDirection, genre, originalLanguage, runtime, pageToFetch), page
             );
             case TmdbClient.TV_MEDIA_TYPE -> filteredFeed(
                 TmdbClient.PROVIDER, TmdbClient.TV_MEDIA_TYPE, sortKey, sortDirection, filters,
-                pageToFetch -> tmdbClient.discoverTv(sortKey, sortDirection, genre, originalLanguage, pageToFetch), page
+                pageToFetch -> tmdbClient.discoverTv(sortKey, sortDirection, genre, originalLanguage, runtime, pageToFetch), page
             );
             case OpenLibraryClient.BOOKS_MEDIA_TYPE -> filteredFeed(
                 OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, sortKey, sortDirection, filters,
                 pageToFetch -> openLibraryClient.sortedBooks(
-                    sortKey, sortDirection, booksSubjectAliases(genre), availableInLanguage, pageToFetch
+                    sortKey, sortDirection, booksSubjectAliases(genre), availableInLanguage, pageCount, pageToFetch
                 ), page
             );
             case IgdbClient.GAMES_MEDIA_TYPE -> filteredFeed(
