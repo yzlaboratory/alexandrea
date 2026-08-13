@@ -236,7 +236,8 @@ class CatalogEndpointTest {
     private static final List<Long> TEST_USER_IDS = List.of(
         DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L, 9009L, 9010L, 9011L, 9012L,
         9013L, 9014L, 9015L, 9016L, 9017L, 9018L, 9019L, 9020L, 9021L, 9022L, 9023L, 9024L,
-        9101L, 9102L, 9103L, 9104L, 9105L, 9106L, 9107L, 9108L, 9109L, 9110L, 9111L, 9112L
+        9101L, 9102L, 9103L, 9104L, 9105L, 9106L, 9107L, 9108L, 9109L, 9110L, 9111L, 9112L,
+        9201L, 9202L, 9203L, 9204L, 9205L, 9206L, 9207L
     );
 
     @BeforeEach
@@ -1518,6 +1519,151 @@ class CatalogEndpointTest {
         assertThat(surfacePreferenceStore.get(9112L, "catalog", "movies")).hasValueSatisfying(
             stored -> assertThat(stored.filters()).isNull()
         );
+    }
+
+    // --- Issue 47: a text search disables the sort/filter fields ADR
+    // 0018's "Behavior under active text search" table says the provider's
+    // search endpoint can't honor, signals which ones via disabledFilters/
+    // sortDisabled on the browse response, and restores the previously
+    // applied sort/filters once the search clears.
+
+    @Test
+    void theBrowseResponseReportsNothingDisabledWhenNoSearchIsActive() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("page", "300").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.disabledFilters").isEmpty())
+            .andExpect(jsonPath("$.sortDisabled").value(false));
+    }
+
+    @Test
+    void theBrowseResponseDisablesGenreOriginalLanguageRuntimeAndSortForMoviesWhileSearching() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("search", "blade runner").param("page", "301").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.disabledFilters", org.hamcrest.Matchers.containsInAnyOrder("genre", "originalLanguage", "runtime")))
+            .andExpect(jsonPath("$.sortDisabled").value(true));
+    }
+
+    @Test
+    void theBrowseResponseDisablesTheSameFieldsForTvWhileSearching() throws Exception {
+        mockMvc.perform(get("/api/catalog/tv").param("search", "stranger things").param("page", "302").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.disabledFilters", org.hamcrest.Matchers.containsInAnyOrder("genre", "originalLanguage", "runtime")))
+            .andExpect(jsonPath("$.sortDisabled").value(true));
+    }
+
+    @Test
+    void theBrowseResponseDisablesOnlySortForGamesWhileSearching() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("search", "witcher").param("page", "303").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.disabledFilters").isEmpty())
+            .andExpect(jsonPath("$.sortDisabled").value(true));
+    }
+
+    @Test
+    void theBrowseResponseDisablesNothingForBooksWhileSearching() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("search", "dune").param("page", "304").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.disabledFilters").isEmpty())
+            .andExpect(jsonPath("$.sortDisabled").value(false));
+    }
+
+    @Test
+    void aGenreParamDuringAGamesSearchCombinesTheSearchClauseWithAWhereClause() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("search", "witcher").param("genre", "5")
+                .param("page", "305").with(loggedInAs(9201L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastIgdbGamesRequestBody.get()).contains("search \"witcher\";").contains("where genres = (5);");
+    }
+
+    @Test
+    void aSortParamDuringAGamesSearchIsDroppedRatherThanReachingIgdb() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("search", "witcher").param("sort", "title").param("direction", "asc")
+                .param("page", "306").with(loggedInAs(9202L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastIgdbGamesRequestBody.get()).contains("search \"witcher\";").doesNotContain("sort");
+    }
+
+    @Test
+    void aSortAndGenreParamDuringABooksSearchCombineIntoOneOpenLibraryRequest() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("search", "dune").param("sort", "external_rating").param("direction", "desc")
+                .param("genre", "science_fiction").param("page", "307").with(loggedInAs(9203L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastOpenLibrarySearchQuery.get())
+            .contains("q=dune")
+            .contains("subject:(\"Science fiction\"")
+            .contains("sort=rating");
+    }
+
+    @Test
+    void sortingBooksByExternalRatingDuringASearchStillExcludesUnratedEntriesPerAdr0006() throws Exception {
+        nextOpenLibrarySearchResponseBody.set("""
+            {
+              "docs": [
+                {"key": "/works/OL1W", "title": "Rated Dune Edition", "ratings_average": 4.5},
+                {"key": "/works/OL2W", "title": "Unrated Dune Edition"}
+              ]
+            }
+            """);
+
+        mockMvc.perform(get("/api/catalog/books").param("search", "dune").param("sort", "external_rating").param("direction", "desc")
+                .param("page", "308").with(loggedInAs(9204L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].title").value("Rated Dune Edition"));
+    }
+
+    @Test
+    void aFilterSelectedDuringAGamesSearchPersistsAndIsReadBackFromThePreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/games").param("search", "witcher").param("genre", "5")
+                .param("page", "309").with(loggedInAs(9205L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/games/preference").with(loggedInAs(9205L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.genre").value("5"));
+    }
+
+    @Test
+    void aSortAndFilterSelectedDuringABooksSearchPersistAndAreReadBackFromThePreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("search", "dune").param("sort", "title").param("direction", "asc")
+                .param("genre", "science_fiction").param("page", "310").with(loggedInAs(9206L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9206L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").value("title"))
+            .andExpect(jsonPath("$.sortDirection").value("asc"))
+            .andExpect(jsonPath("$.filters.genre").value("science_fiction"));
+    }
+
+    // A search attempting to change Movies' locked genre/sort must leave the
+    // previously persisted values completely untouched (defensive
+    // backstop — the real frontend never sends a changed value for a
+    // locked control in the first place) — clearing the search and
+    // resending the original values then reaches TMDB with them intact.
+    @Test
+    void aMoviesSearchNeverClobbersThePreviouslyPersistedGenreAndSortWhichReactivateOnceSearchClears() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "title").param("direction", "asc")
+                .param("genre", "28").param("page", "311").with(loggedInAs(9207L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies").param("search", "blade runner")
+                .param("sort", "popularity").param("direction", "desc").param("genre", "35")
+                .param("page", "312").with(loggedInAs(9207L)))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9207L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").value("title"))
+            .andExpect(jsonPath("$.filters.genre").value("28"));
+
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "title").param("direction", "asc")
+                .param("genre", "28").param("page", "313").with(loggedInAs(9207L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastDiscoverQuery.get()).contains("with_genres=28").contains("sort_by=original_title.asc");
     }
 
     private static RequestPostProcessor loggedIn() {

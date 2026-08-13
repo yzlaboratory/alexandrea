@@ -60,6 +60,21 @@ public class CatalogService {
     // number_of_pages_median). Games gets neither.
     private static final Set<String> RUNTIME_MEDIA_TYPES = Set.of(TmdbClient.MOVIES_MEDIA_TYPE, TmdbClient.TV_MEDIA_TYPE);
     private static final Set<String> PAGE_COUNT_MEDIA_TYPES = Set.of(OpenLibraryClient.BOOKS_MEDIA_TYPE);
+    // ADR 0018's "Behavior under active text search": TMDB's /search/movie
+    // and /search/tv accept only the query itself, so every Movies/TV
+    // filter is disabled alongside sort — browse() never even resolves
+    // them for these two media types, it goes straight to searchFeedFor.
+    // IGDB's search clause combines with a `where` filter fine but not
+    // with an explicit `sort`, so Games disables sort only (its filters
+    // stay in SEARCH_COMBINES_SORT_OR_FILTERS_MEDIA_TYPES below).
+    // OpenLibrary's /search.json already combines q= with sort= and every
+    // field filter (see OpenLibraryClient#sortedBooks), so Books disables
+    // nothing.
+    private static final Set<String> MOVIES_TV_FILTERS_DISABLED_WHILE_SEARCHING =
+        Set.of(CatalogFilterKeys.GENRE, CatalogFilterKeys.ORIGINAL_LANGUAGE, CatalogFilterKeys.RUNTIME);
+    private static final Set<String> SEARCH_COMBINES_SORT_OR_FILTERS_MEDIA_TYPES =
+        Set.of(IgdbClient.GAMES_MEDIA_TYPE, OpenLibraryClient.BOOKS_MEDIA_TYPE);
+    private static final Set<String> SEARCH_DISABLES_SORT_MEDIA_TYPES = Set.of(IgdbClient.GAMES_MEDIA_TYPE);
     private static final TypeReference<Map<String, String>> FILTERS_JSON_TYPE = new TypeReference<>() {};
 
     private final TmdbClient tmdbClient;
@@ -134,15 +149,18 @@ public class CatalogService {
     }
 
     /**
-     * The sort- and filter-aware overload the Catalog controller calls:
-     * routes to the search feed exactly as {@link #browse(String, String,
-     * int)} does, and ignores {@code sortKey}/{@code sortDirection}/{@code
-     * filters} while a search is active — TMDB's and IGDB's search endpoints
-     * cannot honor an explicit sort or any filter at all (ADR 0018's
-     * "Behavior under active text search"), and this issue does not wire
-     * OpenLibrary's own ability to combine the two. Current search is
-     * therefore preserved untouched across a sort or filter change, and vice
-     * versa.
+     * The sort- and filter-aware overload the Catalog controller calls.
+     * While a search is active, {@code sortKey}/{@code sortDirection}/
+     * {@code filters} are honored only as far as ADR 0018's "Behavior under
+     * active text search" table allows: dropped entirely for Movies/TV
+     * (TMDB's search endpoints accept only the query itself, so this method
+     * goes straight to {@link #searchFeedFor(String, String, int)} without
+     * ever resolving or persisting either), sort-only-dropped for Games
+     * (IGDB's search clause can't combine with an explicit sort, but its
+     * filters still apply), and fully honored for Books (OpenLibrary's
+     * search endpoint already combines a query with sort and every filter).
+     * Outside a search, every media type resolves and persists sort/filters
+     * exactly as before.
      *
      * <p>{@code filters} is keyed by filter field (see {@link
      * CatalogFilterKeys}); each field is resolved independently by the same
@@ -159,19 +177,22 @@ public class CatalogService {
      * absent query param from a present-but-empty one. The combined result —
      * real or persisted-fallback sort, and each field's real, cleared, or
      * persisted-fallback value — is what actually gets upserted and what the
-     * page is fetched with.
+     * page is fetched with; this holds even while a media type's search
+     * disables part of that combination for the *fetch*, so a locked field
+     * still round-trips through persistence untouched (the frontend simply
+     * never sends a changed value for a field it's rendering as locked).
      */
     public CatalogPageResult browse(
         String mediaType, String search, String sortKey, String sortDirection, Map<String, String> filters, long userId, int page
     ) {
         var query = normalizeSearch(search);
-        if (query != null) {
+        if (query != null && !SEARCH_COMBINES_SORT_OR_FILTERS_MEDIA_TYPES.contains(mediaType)) {
             return searchFeedFor(mediaType, query, page);
         }
         if (!SUPPORTED_MEDIA_TYPES.contains(mediaType)) {
             throw new UnsupportedCatalogMediaTypeException(mediaType);
         }
-        if (!isValidSort(sortKey, sortDirection) && filterFields.stream().noneMatch(field -> isMeaningfulRequest(mediaType, field, filters))) {
+        if (query == null && !isValidSort(sortKey, sortDirection) && filterFields.stream().noneMatch(field -> isMeaningfulRequest(mediaType, field, filters))) {
             return popularFeedFor(mediaType, page);
         }
 
@@ -180,12 +201,38 @@ public class CatalogService {
         var resolvedFilters = resolveFilters(mediaType, filters, existing);
         var fetchSortKey = resolvedSort.key() != null ? resolvedSort.key() : CatalogSort.POPULARITY;
         var fetchSortDirection = resolvedSort.direction() != null ? resolvedSort.direction() : CatalogSort.DESCENDING;
+        var sortAppliesDuringSearch = !SEARCH_DISABLES_SORT_MEDIA_TYPES.contains(mediaType);
 
-        var result = filteredFeedFor(mediaType, fetchSortKey, fetchSortDirection, resolvedFilters, page);
+        var result = query != null
+            ? searchFilteredFeedFor(
+                mediaType, query, sortAppliesDuringSearch ? fetchSortKey : null, sortAppliesDuringSearch ? fetchSortDirection : null,
+                resolvedFilters, page
+              )
+            : filteredFeedFor(mediaType, fetchSortKey, fetchSortDirection, resolvedFilters, page);
         surfacePreferenceStore.upsert(
             userId, CATALOG_SURFACE, mediaType, resolvedSort.key(), resolvedSort.direction(), encodeFilters(resolvedFilters)
         );
         return result;
+    }
+
+    /**
+     * Which sort/filter fields ADR 0018 locks right now for {@code
+     * mediaType} given whether {@code search} is active — the signal
+     * {@code CatalogController} folds into the browse response so {@code
+     * SortControl}/{@code FilterControls} can show a "not available while
+     * searching" note instead of duplicating this per-provider table
+     * themselves.
+     */
+    public CatalogSearchCapabilities searchCapabilities(String mediaType, String search) {
+        if (normalizeSearch(search) == null) {
+            return CatalogSearchCapabilities.NONE_DISABLED;
+        }
+        return switch (mediaType) {
+            case TmdbClient.MOVIES_MEDIA_TYPE, TmdbClient.TV_MEDIA_TYPE ->
+                new CatalogSearchCapabilities(MOVIES_TV_FILTERS_DISABLED_WHILE_SEARCHING, true);
+            case IgdbClient.GAMES_MEDIA_TYPE -> new CatalogSearchCapabilities(Set.of(), true);
+            default -> CatalogSearchCapabilities.NONE_DISABLED;
+        };
     }
 
     /** The current user's persisted Catalog sort and filter selections for this media type, if ever set (ADR 0025). */
@@ -367,6 +414,34 @@ public class CatalogService {
         return genre != null ? genreVocabulary.booksSubjectAliases(genre) : List.of();
     }
 
+    // The "text search active" counterpart to filteredFeedFor, reached only
+    // for Games and Books (see SEARCH_COMBINES_SORT_OR_FILTERS_MEDIA_TYPES —
+    // Movies/TV never resolve this far). sortKey/sortDirection already
+    // arrive null from browse() for Games, whose IgdbClient#search has no
+    // sort parameter to receive them at all — a defensive backstop beyond
+    // just the frontend withholding them, per ADR 0018.
+    private CatalogPageResult searchFilteredFeedFor(
+        String mediaType, String query, String sortKey, String sortDirection, Map<String, String> filters, int page
+    ) {
+        var genre = filters.get(CatalogFilterKeys.GENRE);
+        var availableInLanguage = filters.get(CatalogFilterKeys.AVAILABLE_IN_LANGUAGE);
+        var pageCount = filters.get(CatalogFilterKeys.PAGE_COUNT);
+        var feedSlot = SEARCH_FEED_PREFIX + query;
+        return switch (mediaType) {
+            case IgdbClient.GAMES_MEDIA_TYPE -> filteredFeed(
+                IgdbClient.PROVIDER, IgdbClient.GAMES_MEDIA_TYPE, feedSlot, sortKey, sortDirection, filters,
+                pageToFetch -> igdbClient.search(query, genre, availableInLanguage, pageToFetch), page
+            );
+            case OpenLibraryClient.BOOKS_MEDIA_TYPE -> filteredFeed(
+                OpenLibraryClient.PROVIDER, OpenLibraryClient.BOOKS_MEDIA_TYPE, feedSlot, sortKey, sortDirection, filters,
+                pageToFetch -> openLibraryClient.sortedBooks(
+                    query, sortKey, sortDirection, booksSubjectAliases(genre), availableInLanguage, pageCount, pageToFetch
+                ), page
+            );
+            default -> throw new UnsupportedCatalogMediaTypeException(mediaType);
+        };
+    }
+
     private CatalogPageResult searchFeedFor(String mediaType, String query, int page) {
         return switch (mediaType) {
             case TmdbClient.MOVIES_MEDIA_TYPE -> searchFeed(
@@ -411,12 +486,23 @@ public class CatalogService {
         String provider, String mediaType, String sortKey, String sortDirection, Map<String, String> filters,
         IntFunction<CatalogPageResult> fetchPage, int page
     ) {
+        return filteredFeed(provider, mediaType, POPULAR_FEED, sortKey, sortDirection, filters, fetchPage, page);
+    }
+
+    // feedSlot is POPULAR_FEED for the plain "filter/sort applied" row and
+    // SEARCH_FEED_PREFIX + query for searchFilteredFeedFor's "text search
+    // active" row (ADR 0018) — either way it keeps that row's cache entries
+    // from colliding with the plain popular feed's or a different search's.
+    private CatalogPageResult filteredFeed(
+        String provider, String mediaType, String feedSlot, String sortKey, String sortDirection, Map<String, String> filters,
+        IntFunction<CatalogPageResult> fetchPage, int page
+    ) {
         var filtersKeyPart = filters.entrySet().stream()
             .sorted(Map.Entry.comparingByKey())
             .map(entry -> entry.getKey() + ":" + entry.getValue())
             .collect(Collectors.joining(","));
         var key = CatalogCache.pageKey(
-            provider, mediaType, POPULAR_FEED, filtersKeyPart.isEmpty() ? NO_FILTERS : filtersKeyPart, sortKey + ":" + sortDirection, page
+            provider, mediaType, feedSlot, filtersKeyPart.isEmpty() ? NO_FILTERS : filtersKeyPart, sortKey + ":" + sortDirection, page
         );
         return cachedFeed(provider, key, fetchPage, page);
     }

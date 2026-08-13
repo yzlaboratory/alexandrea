@@ -516,6 +516,104 @@ class IgdbClientTest {
         gamesServer.verify();
     }
 
+    // --- Issue 47: ADR 0018's "text search active" row for Games — the
+    // search clause combines with a `where` filter fine, but the request
+    // body has no sort clause at all (see searchRequestBody), so a sort can
+    // never reach IGDB alongside a search regardless of what the caller
+    // passes.
+
+    @Test
+    void searchWithAGenreAddsAWhereClauseAlongsideTheSearchClause() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest()
+            .andExpect(content().string("""
+                search "witcher";
+                where genres = (5);
+                fields name,cover.image_id,first_release_date,total_rating;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.search("witcher", "5", null, 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void searchWithAnAvailableInLanguageAddsAWhereClauseAlongsideTheSearchClause() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest()
+            .andExpect(content().string("""
+                search "witcher";
+                where language_supports.language = (2);
+                fields name,cover.image_id,first_release_date,total_rating;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.search("witcher", null, "2", 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void searchCombinesGenreAndAvailableInLanguageWithAnAmpersandWhenBothAreGiven() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest()
+            .andExpect(content().string("""
+                search "witcher";
+                where genres = (5) & language_supports.language = (2);
+                fields name,cover.image_id,first_release_date,total_rating;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.search("witcher", "5", "2", 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void searchWithNeitherGenreNorAvailableInLanguageOmitsTheWhereClauseJustLikeThePlainOverload() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest()
+            .andExpect(content().string("""
+                search "witcher";
+                fields name,cover.image_id,first_release_date,total_rating;
+                limit 20;
+                offset 0;
+                """))
+            .andRespond(emptyGamesResponse());
+
+        client.search("witcher", null, null, 1);
+
+        gamesServer.verify();
+    }
+
+    @Test
+    void searchWithAFilterStillMapsAMatchingResponseIntoCatalogItems() {
+        expectTokenRequest().andRespond(tokenResponse("token-1", 5_000_000));
+        expectGamesRequest().andRespond(withSuccess("""
+            [
+              {
+                "id": 1942,
+                "name": "The Witcher 3: Wild Hunt",
+                "cover": {"id": 89386, "image_id": "co1wyy"},
+                "first_release_date": 1431993600,
+                "total_rating": 92.5
+              }
+            ]
+            """, MediaType.APPLICATION_JSON));
+
+        var result = client.search("witcher", "5", null, 1);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().title()).isEqualTo("The Witcher 3: Wild Hunt");
+    }
+
     @Test
     void popularGamesBuildsTheIdenticalRequestAsDiscoverGamesWithPopularityDescending() {
         // IGDB's default feed is already "sorted by popularity desc" (ADR

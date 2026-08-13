@@ -87,12 +87,21 @@ interface FilterControlsProps {
   // to null means no value is selected for it.
   selectedFilters: Record<string, string | null>;
   onFilterChange: (field: string, value: string | null) => void;
+  // Fields ADR 0018 locks right now because a text search is active
+  // (CatalogService's per-provider "Behavior under active text search"
+  // table) — distinct from availableFilters, which is about whether a
+  // field exists for this media type at all, not whether it's usable this
+  // instant. A locked field keeps rendering with its current value; this
+  // component never clears it, so it reactivates with that value intact
+  // the moment the caller stops passing it in this list.
+  disabledFields?: readonly string[];
 }
 
 function FilterControls({
   availableFilters,
   selectedFilters,
   onFilterChange,
+  disabledFields = [],
 }: FilterControlsProps): ReactNode {
   const fields = CATALOG_FILTER_FIELDS.filter((field) =>
     isFieldAvailable(field, availableFilters),
@@ -102,9 +111,12 @@ function FilterControls({
   const activeFields = fields.filter((field) =>
     isFieldActive(field, selectedFilters[field] ?? null, availableFilters),
   );
+  const clearableFields = activeFields.filter(
+    (field) => !disabledFields.includes(field),
+  );
 
   function clearAllFilters(): void {
-    for (const field of activeFields) {
+    for (const field of clearableFields) {
       onFilterChange(field, null);
     }
   }
@@ -121,6 +133,7 @@ function FilterControls({
             key={field}
             field={field}
             value={selectedFilters[field] ?? null}
+            disabled={disabledFields.includes(field)}
             onChange={(value) => {
               onFilterChange(field, value);
             }}
@@ -131,13 +144,14 @@ function FilterControls({
             field={field}
             options={availableFilters[field] ?? []}
             value={selectedFilters[field] ?? null}
+            disabled={disabledFields.includes(field)}
             onChange={(value) => {
               onFilterChange(field, value);
             }}
           />
         ),
       )}
-      {activeFields.length > 0 && (
+      {clearableFields.length > 0 && (
         <Button size="small" onClick={clearAllFilters}>
           Clear filters
         </Button>
@@ -151,6 +165,7 @@ interface SingleFilterControlProps {
   options: CatalogFilterOption[];
   value: string | null;
   onChange: (value: string | null) => void;
+  disabled?: boolean;
 }
 
 function SingleFilterControl({
@@ -158,6 +173,7 @@ function SingleFilterControl({
   options,
   value,
   onChange,
+  disabled = false,
 }: SingleFilterControlProps): ReactNode {
   const presentation = FILTER_FIELD_PRESENTATION[field] ?? {
     label: field,
@@ -172,6 +188,8 @@ function SingleFilterControl({
         label={presentation.label}
         size="small"
         value={value ?? NO_VALUE_SELECTED}
+        disabled={disabled}
+        helperText={disabled ? 'Not available while searching' : undefined}
         onChange={(event) => {
           const nextValue = event.target.value;
           onChange(nextValue === NO_VALUE_SELECTED ? null : nextValue);
@@ -190,9 +208,14 @@ function SingleFilterControl({
       {selectedOption && (
         <Chip
           label={selectedOption.label}
-          onDelete={() => {
-            onChange(null);
-          }}
+          disabled={disabled}
+          onDelete={
+            disabled
+              ? undefined
+              : () => {
+                  onChange(null);
+                }
+          }
         />
       )}
     </Stack>
@@ -205,12 +228,14 @@ interface RangeFilterControlProps {
   // blank means open-ended); null means no range selected at all.
   value: string | null;
   onChange: (value: string | null) => void;
+  disabled?: boolean;
 }
 
 function RangeFilterControl({
   field,
   value,
   onChange,
+  disabled = false,
 }: RangeFilterControlProps): ReactNode {
   const presentation = FILTER_FIELD_PRESENTATION[field] ?? { label: field };
   const [min, max] = decodeRange(value);
@@ -229,6 +254,7 @@ function RangeFilterControl({
         label="Min"
         size="small"
         value={min}
+        disabled={disabled}
         slotProps={{ htmlInput: { min: 0 } }}
         onChange={(event) => {
           commit(event.target.value, max);
@@ -240,6 +266,8 @@ function RangeFilterControl({
         label="Max"
         size="small"
         value={max}
+        disabled={disabled}
+        helperText={disabled ? 'Not available while searching' : undefined}
         slotProps={{ htmlInput: { min: 0 } }}
         onChange={(event) => {
           commit(min, event.target.value);
@@ -249,9 +277,14 @@ function RangeFilterControl({
       {value !== null && (
         <Chip
           label={presentation.label}
-          onDelete={() => {
-            onChange(null);
-          }}
+          disabled={disabled}
+          onDelete={
+            disabled
+              ? undefined
+              : () => {
+                  onChange(null);
+                }
+          }
         />
       )}
     </Stack>

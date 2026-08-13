@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 import { CircularProgress, Stack, TextField, Typography } from '@mui/material';
-import CatalogGrid from './CatalogGrid';
+import CatalogGrid, { type CatalogSearchCapabilities } from './CatalogGrid';
 import FilterControls from './FilterControls';
 import SortControl from './SortControl';
 import {
@@ -67,6 +67,18 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
   const [availableFilters, setAvailableFilters] = useState<
     Record<string, CatalogFilterOption[]>
   >({});
+  // Which of those fields, plus sort, are locked right now because a
+  // search is active (ADR 0018's "Behavior under active text search"),
+  // also reported by CatalogGrid's most recent fetch. preference.sortKey/
+  // filters are never reset when a search starts — SortControl/
+  // FilterControls just render locked from this signal — so the previous
+  // value is exactly what reactivates once search clears and this reverts
+  // to its default.
+  const [searchCapabilities, setSearchCapabilities] =
+    useState<CatalogSearchCapabilities>({
+      disabledFilters: [],
+      sortDisabled: false,
+    });
 
   useEffect(() => {
     const trimmed = searchInput.trim();
@@ -156,6 +168,7 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
             sortKey={preference.sortKey}
             direction={preference.direction}
             onChange={handleSortChange}
+            disabled={searchCapabilities.sortDisabled}
           />
         )}
         {preference && (
@@ -163,6 +176,7 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
             availableFilters={availableFilters}
             selectedFilters={preference.filters}
             onFilterChange={handleFilterChange}
+            disabledFields={searchCapabilities.disabledFilters}
           />
         )}
       </Stack>
@@ -178,6 +192,7 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
           direction={preference.direction}
           filters={preference.filters}
           onAvailableFiltersChange={setAvailableFilters}
+          onSearchCapabilitiesChange={setSearchCapabilities}
           onClearSearch={clearSearch}
         />
       ) : (

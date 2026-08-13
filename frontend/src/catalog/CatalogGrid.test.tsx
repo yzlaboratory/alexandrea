@@ -673,7 +673,7 @@ describe('CatalogGrid', () => {
     );
   });
 
-  it('ignores filters entirely once a search is active, requesting the plain search shape', async () => {
+  it('combines search with filters when both are given, leaving the backend to decide what survives (issue 47)', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
@@ -696,7 +696,130 @@ describe('CatalogGrid', () => {
       'movies',
       1,
       'blade runner',
+      undefined,
+      undefined,
+      { genre: '28' },
     );
+  });
+
+  it('combines search with sort and filters together when all three are given', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ title: 'A Sci-Fi Book' })],
+        page: 1,
+        hasMore: false,
+      },
+    });
+
+    render(
+      <CatalogGrid
+        mediaType="books"
+        search="dune"
+        sort="title"
+        direction="asc"
+        filters={{ genre: 'science_fiction' }}
+      />,
+    );
+
+    expect(await screen.findByText('A Sci-Fi Book')).toBeInTheDocument();
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'books',
+      1,
+      'dune',
+      'title',
+      'asc',
+      { genre: 'science_fiction' },
+    );
+  });
+
+  it('combines search with sort alone when no filters prop is given', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [item()], page: 1, hasMore: false },
+    });
+
+    render(
+      <CatalogGrid
+        mediaType="games"
+        search="witcher"
+        sort="popularity"
+        direction="desc"
+      />,
+    );
+
+    await screen.findByText('A Movie');
+    expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
+      'games',
+      1,
+      'witcher',
+      'popularity',
+      'desc',
+    );
+  });
+
+  it('reports the disabledFilters/sortDisabled from a successful fetch to onSearchCapabilitiesChange', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item()],
+        page: 1,
+        hasMore: false,
+        disabledFilters: ['genre', 'runtime'],
+        sortDisabled: true,
+      },
+    });
+    const onSearchCapabilitiesChange = vi.fn();
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        search="blade runner"
+        onSearchCapabilitiesChange={onSearchCapabilitiesChange}
+      />,
+    );
+
+    await screen.findByText('A Movie');
+    expect(onSearchCapabilitiesChange).toHaveBeenCalledExactlyOnceWith({
+      disabledFilters: ['genre', 'runtime'],
+      sortDisabled: true,
+    });
+  });
+
+  it('reports nothing disabled when the response omits disabledFilters/sortDisabled', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [item()], page: 1, hasMore: false },
+    });
+    const onSearchCapabilitiesChange = vi.fn();
+
+    render(
+      <CatalogGrid
+        mediaType="books"
+        onSearchCapabilitiesChange={onSearchCapabilitiesChange}
+      />,
+    );
+
+    await screen.findByText('A Movie');
+    expect(onSearchCapabilitiesChange).toHaveBeenCalledExactlyOnceWith({
+      disabledFilters: [],
+      sortDisabled: false,
+    });
+  });
+
+  it('does not report search capabilities when a fetch fails', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({ status: 'error' });
+    const onSearchCapabilitiesChange = vi.fn();
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        onSearchCapabilitiesChange={onSearchCapabilitiesChange}
+      />,
+    );
+
+    await screen.findByText(/temporarily unavailable/i);
+    expect(onSearchCapabilitiesChange).not.toHaveBeenCalled();
   });
 
   it('starts a fresh feed when remounted for different filters, as CatalogPage does via key', async () => {

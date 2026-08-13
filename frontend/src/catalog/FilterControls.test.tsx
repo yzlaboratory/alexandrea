@@ -306,6 +306,152 @@ describe('FilterControls', () => {
     expect(onFilterChange).toHaveBeenCalledExactlyOnceWith('genre', null);
   });
 
+  it('renders a genre control as enabled with no note when disabledFields is not given', () => {
+    render(
+      <FilterControls
+        availableFilters={{ genre: MOVIE_GENRES }}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Genre' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(
+      screen.queryByText('Not available while searching'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('disables a locked field and shows a "not available while searching" note, while every other field stays enabled', () => {
+    render(
+      <FilterControls
+        availableFilters={{
+          genre: MOVIE_GENRES,
+          originalLanguage: ORIGINAL_LANGUAGES,
+        }}
+        selectedFilters={{ genre: '28', originalLanguage: 'ja' }}
+        onFilterChange={vi.fn()}
+        disabledFields={['genre']}
+      />,
+    );
+
+    // MUI's select renders as a div[role=combobox], not a native <select>,
+    // so it signals disabled via aria-disabled rather than the real
+    // disabled attribute jest-dom's toBeDisabled() checks for.
+    expect(screen.getByRole('combobox', { name: 'Genre' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(
+      screen.getByRole('combobox', { name: 'Original language' }),
+    ).not.toHaveAttribute('aria-disabled', 'true');
+    expect(
+      screen.getByText('Not available while searching'),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps showing a locked field's selected value and chip, rather than clearing it", () => {
+    render(
+      <FilterControls
+        availableFilters={{ genre: MOVIE_GENRES }}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={vi.fn()}
+        disabledFields={['genre']}
+      />,
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Genre' })).toHaveTextContent(
+      'Action',
+    );
+    expect(screen.getAllByText('Action')).toHaveLength(2);
+  });
+
+  it('does not open the dropdown for a locked field, so it cannot be changed while disabled', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    render(
+      <FilterControls
+        availableFilters={{ genre: MOVIE_GENRES }}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={vi.fn()}
+        disabledFields={['genre']}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Genre' }));
+
+    expect(
+      screen.queryByRole('option', { name: 'Comedy' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a locked field's chip with no delete affordance, so it cannot be cleared while disabled", () => {
+    render(
+      <FilterControls
+        availableFilters={{ genre: MOVIE_GENRES }}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={vi.fn()}
+        disabledFields={['genre']}
+      />,
+    );
+
+    expect(screen.queryByTestId('CancelIcon')).not.toBeInTheDocument();
+  });
+
+  it('"Clear filters" omits a locked field entirely, clearing only the unlocked active ones', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    const onFilterChange = vi.fn();
+    render(
+      <FilterControls
+        availableFilters={{
+          genre: MOVIE_GENRES,
+          originalLanguage: ORIGINAL_LANGUAGES,
+        }}
+        selectedFilters={{ genre: '28', originalLanguage: 'ja' }}
+        onFilterChange={onFilterChange}
+        disabledFields={['genre']}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    expect(onFilterChange).toHaveBeenCalledExactlyOnceWith(
+      'originalLanguage',
+      null,
+    );
+  });
+
+  it('hides "Clear filters" when every active field is locked', () => {
+    render(
+      <FilterControls
+        availableFilters={{ genre: MOVIE_GENRES }}
+        selectedFilters={{ genre: '28' }}
+        onFilterChange={vi.fn()}
+        disabledFields={['genre']}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Clear filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a range field disables both its Min and Max inputs and its chip when locked', () => {
+    render(
+      <FilterControls
+        availableFilters={{ runtime: [] }}
+        selectedFilters={{ runtime: '90,180' }}
+        onFilterChange={vi.fn()}
+        disabledFields={['runtime']}
+      />,
+    );
+
+    expect(screen.getByLabelText('Min')).toBeDisabled();
+    expect(screen.getByLabelText('Max')).toBeDisabled();
+    expect(screen.queryByTestId('CancelIcon')).not.toBeInTheDocument();
+  });
+
   it('renders only the available-in-language control for Books, not original language', () => {
     render(
       <FilterControls

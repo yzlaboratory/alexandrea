@@ -48,7 +48,8 @@ public class CatalogController {
     ) {
         var filters = requestedFilters(genre, originalLanguage, availableInLanguage, runtime, pageCount);
         var pageResult = catalogService.browse(mediaType, search, sort, direction, filters, principal.userId(), page);
-        return CatalogBrowseResponse.from(pageResult, catalogService.availableFilters(mediaType));
+        var searchCapabilities = catalogService.searchCapabilities(mediaType, search);
+        return CatalogBrowseResponse.from(pageResult, catalogService.availableFilters(mediaType), searchCapabilities);
     }
 
     /** The signed-in user's persisted Catalog sort and filter selections for this media type (ADR 0025), or null/empty fields if never set. */

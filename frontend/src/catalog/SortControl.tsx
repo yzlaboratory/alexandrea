@@ -20,12 +20,19 @@ interface SortControlProps {
   sortKey: string;
   direction: string;
   onChange: (sortKey: string, direction: string) => void;
+  // ADR 0018 locks sort while a search is active for every media type
+  // except Books (its "Behavior under active text search" table) — the
+  // control renders locked with a note rather than disappearing, and
+  // sortKey/direction keep displaying whatever was selected before search
+  // started, since this component never clears them itself.
+  disabled?: boolean;
 }
 
 function SortControl({
   sortKey,
   direction,
   onChange,
+  disabled = false,
 }: SortControlProps): ReactNode {
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
@@ -34,6 +41,8 @@ function SortControl({
         label="Sort by"
         size="small"
         value={sortKey}
+        disabled={disabled}
+        helperText={disabled ? 'Not available while searching' : undefined}
         onChange={(event) => {
           onChange(event.target.value, direction);
         }}
@@ -49,6 +58,7 @@ function SortControl({
         value={direction}
         exclusive
         size="small"
+        disabled={disabled}
         aria-label="Sort direction"
         onChange={(_event, nextDirection: string | null) => {
           if (nextDirection) onChange(sortKey, nextDirection);

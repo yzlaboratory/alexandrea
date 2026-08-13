@@ -146,11 +146,17 @@ describe('CatalogPage', () => {
       'blade runner{Enter}',
     );
 
+    // The still-default sort/filters ride along with the search — the
+    // backend (not CatalogGrid) decides per media type which of them its
+    // search endpoint can honor (issue 47) and drops the rest.
     await waitFor(() => {
       expect(mockedFetchCatalogPage).toHaveBeenCalledWith(
         'movies',
         1,
         'blade runner',
+        'popularity',
+        'desc',
+        NO_FILTERS_SENT,
       );
     });
   });
@@ -260,6 +266,9 @@ describe('CatalogPage', () => {
         'movies',
         1,
         'blade runner',
+        'popularity',
+        'desc',
+        NO_FILTERS_SENT,
       );
     });
     unmount();
@@ -673,11 +682,17 @@ describe('CatalogPage', () => {
     expect(screen.getByRole('textbox', { name: /search movies/i })).toHaveValue(
       'blade runner',
     );
+    // Search stays untouched by "Clear filters", and the just-cleared genre
+    // rides along with the search request too — same "send everything,
+    // let the backend decide" contract as every other search fetch.
     await waitFor(() => {
       expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
         'movies',
         1,
         'blade runner',
+        'popularity',
+        'desc',
+        NO_FILTERS_SENT,
       );
     });
   });
@@ -717,5 +732,292 @@ describe('CatalogPage', () => {
         NO_FILTERS_SENT,
       );
     });
+  });
+
+  // --- Issue 47: a search disables the sort/filter fields ADR 0018's
+  // "Behavior under active text search" table says the provider's search
+  // endpoint can't honor, shows a "not available while searching" note on
+  // the affected controls, and restores their exact prior values once the
+  // search clears.
+
+  it('a Movies search disables genre and sort with a note, and clearing it restores the exact prior values', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: 'title',
+      sortDirection: 'asc',
+      filters: { genre: '28' },
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '28', label: 'Action' }] },
+      },
+    });
+    render(<CatalogPage mediaType="movies" />);
+    expect(
+      await screen.findByRole('combobox', { name: 'Genre' }),
+    ).toHaveTextContent('Action');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '28', label: 'Action' }] },
+        disabledFilters: ['genre', 'originalLanguage', 'runtime'],
+        sortDisabled: true,
+      },
+    });
+    await user.type(
+      screen.getByRole('textbox', { name: /search movies/i }),
+      'blade runner{Enter}',
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Genre' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+    expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(
+      screen.getAllByText('Not available while searching').length,
+    ).toBeGreaterThan(0);
+    // The prior values are preserved, not reset, while locked.
+    expect(screen.getByRole('combobox', { name: 'Genre' })).toHaveTextContent(
+      'Action',
+    );
+    expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveTextContent(
+      'Title',
+    );
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '28', label: 'Action' }] },
+      },
+    });
+    await user.click(screen.getByRole('button', { name: /clear search/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('combobox', { name: 'Genre' }),
+      ).not.toHaveAttribute('aria-disabled', 'true');
+    });
+    expect(screen.getByRole('combobox', { name: 'Genre' })).toHaveTextContent(
+      'Action',
+    );
+    expect(
+      screen.getByRole('combobox', { name: 'Sort by' }),
+    ).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveTextContent(
+      'Title',
+    );
+    expect(
+      screen.queryByText('Not available while searching'),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
+        'movies',
+        1,
+        undefined,
+        'title',
+        'asc',
+        { ...NO_FILTERS_SENT, genre: '28' },
+      );
+    });
+  });
+
+  it('a locked genre control does not open its options while a Movies search is active', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: null,
+      sortDirection: null,
+      filters: { genre: '28' },
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [
+            { value: '28', label: 'Action' },
+            { value: '35', label: 'Comedy' },
+          ],
+        },
+      },
+    });
+    render(<CatalogPage mediaType="movies" />);
+    await screen.findByRole('combobox', { name: 'Genre' });
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [
+            { value: '28', label: 'Action' },
+            { value: '35', label: 'Comedy' },
+          ],
+        },
+        disabledFilters: ['genre', 'originalLanguage', 'runtime'],
+        sortDisabled: true,
+      },
+    });
+    await user.type(
+      screen.getByRole('textbox', { name: /search movies/i }),
+      'blade runner{Enter}',
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Genre' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Genre' }));
+
+    expect(
+      screen.queryByRole('option', { name: 'Comedy' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a Games search disables only sort, leaving genre selectable and combined with the search request', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: 'title',
+      sortDirection: 'asc',
+      filters: { genre: '5' },
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '5', label: 'Shooter' }] },
+      },
+    });
+    render(<CatalogPage mediaType="games" />);
+    await screen.findByRole('combobox', { name: 'Genre' });
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '5', label: 'Shooter' }] },
+        disabledFilters: [],
+        sortDisabled: true,
+      },
+    });
+    await user.type(
+      screen.getByRole('textbox', { name: /search games/i }),
+      'witcher{Enter}',
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+    expect(screen.getByRole('combobox', { name: 'Genre' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('combobox', { name: 'Genre' })).toHaveTextContent(
+      'Shooter',
+    );
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
+        'games',
+        1,
+        'witcher',
+        'title',
+        'asc',
+        { ...NO_FILTERS_SENT, genre: '5' },
+      );
+    });
+  });
+
+  it('a Books search disables nothing — sort, genre, and page count all stay active and combine with the search', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: 'external_rating',
+      sortDirection: 'desc',
+      filters: { genre: 'science_fiction', pageCount: '300,400' },
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [{ value: 'science_fiction', label: 'Science Fiction' }],
+          pageCount: [],
+        },
+      },
+    });
+    render(<CatalogPage mediaType="books" />);
+    await screen.findByRole('combobox', { name: 'Genre' });
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [{ value: 'science_fiction', label: 'Science Fiction' }],
+          pageCount: [],
+        },
+        disabledFilters: [],
+        sortDisabled: false,
+      },
+    });
+    await user.type(
+      screen.getByRole('textbox', { name: /search books/i }),
+      'dune{Enter}',
+    );
+
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
+        'books',
+        1,
+        'dune',
+        'external_rating',
+        'desc',
+        { ...NO_FILTERS_SENT, genre: 'science_fiction', pageCount: '300,400' },
+      );
+    });
+    expect(
+      screen.getByRole('combobox', { name: 'Sort by' }),
+    ).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('combobox', { name: 'Genre' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByLabelText('Min')).not.toBeDisabled();
+    expect(screen.getByLabelText('Max')).not.toBeDisabled();
+    expect(
+      screen.queryByText('Not available while searching'),
+    ).not.toBeInTheDocument();
   });
 });
