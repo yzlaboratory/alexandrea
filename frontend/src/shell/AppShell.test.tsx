@@ -81,7 +81,7 @@ describe('AppShell', () => {
     });
   });
 
-  it('shows a placeholder body since browsing is not built yet', async () => {
+  it('shows a placeholder body for the not-yet-built Watchlist surface', async () => {
     renderShell('/movies/watchlist');
 
     expect(await screen.findByText(/nothing to show/i)).toBeInTheDocument();
