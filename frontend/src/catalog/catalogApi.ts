@@ -94,10 +94,10 @@ export async function fetchCatalogPage(
   // leaving the grid stuck in a permanent loading spinner with no visible
   // way to retry.
   const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
-  // Backend ignores sort and every filter while a search is active
-  // (CatalogService), so CatalogGrid never sends either alongside search —
-  // but this helper stays permissive about it, the same "just build the
-  // query string from whatever's given" shape the search param already has.
+  // search, sort, and filters are each built independently and just
+  // concatenated below — CatalogService (not this helper) decides per media
+  // type which of sort/filters its provider's search endpoint can honor
+  // alongside an active search (ADR 0018) and drops the rest.
   const sortParam = sort ? `&sort=${sort}&direction=${direction ?? ''}` : '';
   const filtersParam = filters
     ? Object.entries(filters)
