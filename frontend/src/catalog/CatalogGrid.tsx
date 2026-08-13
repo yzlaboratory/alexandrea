@@ -25,10 +25,13 @@ interface CatalogGridProps {
   // Undefined/empty means "no active search" — the popular feed. A present,
   // non-empty value replaces it with title-search results.
   search?: string;
-  // sort/direction/filters are ignored server-side whenever search is
-  // active (CatalogService) — CatalogPage never passes any of them at once
-  // with a search, but this component stays a plain pass-through either way
-  // rather than encoding that rule itself.
+  // Which of sort/direction/filters a provider's search endpoint can
+  // actually honor alongside `search` varies by media type (ADR 0018's
+  // "Behavior under active text search" table) — CatalogService decides
+  // that server-side, dropping whatever it can't use. This component stays
+  // a plain pass-through of whatever CatalogPage currently has selected,
+  // sending search combined with sort/filters whenever both are given,
+  // rather than duplicating that per-provider rule itself.
   sort?: string;
   direction?: string;
   // Keyed by filter field (see catalogApi's CATALOG_FILTER_FIELDS). A
@@ -55,6 +58,17 @@ interface CatalogGridProps {
   onAvailableFiltersChange?: (
     availableFilters: Record<string, CatalogFilterOption[]>,
   ) => void;
+  // Same seam as onAvailableFiltersChange, for which sort/filter fields ADR
+  // 0018 locks right now because this fetch reflects an active search — so
+  // CatalogPage can pass it into SortControl/FilterControls.
+  onSearchCapabilitiesChange?: (
+    capabilities: CatalogSearchCapabilities,
+  ) => void;
+}
+
+export interface CatalogSearchCapabilities {
+  disabledFilters: string[];
+  sortDisabled: boolean;
 }
 
 type LoadState = 'idle' | 'loading' | 'error';
@@ -79,6 +93,7 @@ function CatalogGrid({
   filters,
   onClearSearch,
   onAvailableFiltersChange,
+  onSearchCapabilitiesChange,
 }: CatalogGridProps): ReactNode {
   const [items, setItems] = useState<CatalogItem[]>([]);
   // Starts 'loading', not 'idle': the mount effect below always calls
@@ -92,21 +107,45 @@ function CatalogGrid({
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Four call shapes, not one call with every param always passed (even as
+  // Eight call shapes (search × sort × filters, each independently present
+  // or not), not one call with every param always passed (even as
   // undefined), so each request looks on the wire exactly like what a
   // caller not using that feature would send — no incidental "search=",
   // "sort="/"direction=", or filter params for the cases that don't use
-  // them. search never combines with sort or filters (CatalogService
-  // ignores both while a search is active); sort and filters do combine
-  // with each other, so a page fetch threads through whichever of the two
-  // is active.
+  // them. search combines with sort and/or filters whenever both are given
+  // — CatalogService decides server-side which of them its provider's
+  // search endpoint can actually honor (ADR 0018) and drops the rest, so
+  // this component sends everything it has rather than guessing.
   const fetchPage = useCallback(
     (page: number) => {
-      if (search) return fetchCatalogPage(mediaType, page, search);
       // filters !== undefined, not a truthy check: an empty object is a
       // valid "this caller manages filters, none happen to be set right
       // now" and must still reach fetchCatalogPage — see the filters prop's
       // own doc comment above.
+      if (search && sort && filters !== undefined) {
+        return fetchCatalogPage(
+          mediaType,
+          page,
+          search,
+          sort,
+          direction,
+          filters,
+        );
+      }
+      if (search && sort) {
+        return fetchCatalogPage(mediaType, page, search, sort, direction);
+      }
+      if (search && filters !== undefined) {
+        return fetchCatalogPage(
+          mediaType,
+          page,
+          search,
+          undefined,
+          undefined,
+          filters,
+        );
+      }
+      if (search) return fetchCatalogPage(mediaType, page, search);
       if (sort && filters !== undefined) {
         return fetchCatalogPage(
           mediaType,
@@ -145,6 +184,10 @@ function CatalogGrid({
       return;
     }
     onAvailableFiltersChange?.(outcome.result.availableFilters ?? {});
+    onSearchCapabilitiesChange?.({
+      disabledFilters: outcome.result.disabledFilters ?? [],
+      sortDisabled: outcome.result.sortDisabled ?? false,
+    });
     setItems((previous) => {
       // TMDB's "popular" ranking can shift between successive page fetches,
       // so the same title can legitimately reappear on a later page. Without
@@ -161,7 +204,7 @@ function CatalogGrid({
     nextPageRef.current = outcome.result.page + 1;
     hasMoreRef.current = outcome.result.hasMore;
     setStatus('idle');
-  }, [fetchPage, onAvailableFiltersChange]);
+  }, [fetchPage, onAvailableFiltersChange, onSearchCapabilitiesChange]);
 
   // Loads this instance's first page. loadNextPage's identity is stable for
   // the lifetime of one mounted instance (mediaType is fixed per instance —

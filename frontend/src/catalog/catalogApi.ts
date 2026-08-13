@@ -58,6 +58,15 @@ export interface CatalogPageResult {
   // keys are present rather than hardcoding a per-media-type table of its
   // own.
   availableFilters?: Record<string, CatalogFilterOption[]>;
+  // Which of availableFilters' fields, plus sort, ADR 0018 locks right now
+  // because this response reflects an active text search (its "Behavior
+  // under active text search" table) — e.g. Movies/TV lock
+  // genre/originalLanguage/runtime/sort, Games locks sort only, Books locks
+  // nothing. Distinct from availableFilters: that's "offered for this media
+  // type at all", this is "usable this instant". Both undefined (same as
+  // an empty array / false) whenever no search is active.
+  disabledFilters?: string[];
+  sortDisabled?: boolean;
 }
 
 export type FetchCatalogPageOutcome =
