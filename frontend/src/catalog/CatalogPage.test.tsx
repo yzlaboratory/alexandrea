@@ -583,6 +583,105 @@ describe('CatalogPage', () => {
     expect(screen.queryByText('Action')).not.toBeInTheDocument();
   });
 
+  it('does not render a "Clear filters" button when no filter is active', async () => {
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '28', label: 'Action' }] },
+      },
+    });
+
+    render(<CatalogPage mediaType="movies" />);
+    await screen.findByRole('combobox', { name: 'Genre' });
+
+    expect(
+      screen.queryByRole('button', { name: 'Clear filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('clicking "Clear filters" with several filters active resets them all in one action, preserving the current sort', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: 'title',
+      sortDirection: 'asc',
+      filters: { genre: '28', originalLanguage: 'ja' },
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: {
+          genre: [{ value: '28', label: 'Action' }],
+          originalLanguage: [{ value: 'ja', label: 'Japanese' }],
+        },
+      },
+    });
+    render(<CatalogPage mediaType="movies" />);
+    await screen.findByRole('button', { name: 'Clear filters' });
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    // One fetch reflecting both fields cleared at once, not one per field —
+    // and the persisted sort (title/asc) survives untouched.
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
+        'movies',
+        1,
+        undefined,
+        'title',
+        'asc',
+        NO_FILTERS_SENT,
+      );
+    });
+    expect(screen.queryByText('Action')).not.toBeInTheDocument();
+    expect(screen.queryByText('Japanese')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Clear filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('clicking "Clear filters" does not touch an active search', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    mockedFetchCatalogPreference.mockResolvedValue({
+      sortKey: null,
+      sortDirection: null,
+      filters: { genre: '28' },
+    });
+    mockedFetchCatalogPage.mockResolvedValue({
+      status: 'ok',
+      result: {
+        items: [],
+        page: 1,
+        hasMore: false,
+        availableFilters: { genre: [{ value: '28', label: 'Action' }] },
+      },
+    });
+    render(<CatalogPage mediaType="movies" />);
+    await user.type(
+      screen.getByRole('textbox', { name: /search movies/i }),
+      'blade runner{Enter}',
+    );
+    await screen.findByRole('button', { name: 'Clear filters' });
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    expect(screen.getByRole('textbox', { name: /search movies/i })).toHaveValue(
+      'blade runner',
+    );
+    await waitFor(() => {
+      expect(mockedFetchCatalogPage).toHaveBeenLastCalledWith(
+        'movies',
+        1,
+        'blade runner',
+      );
+    });
+  });
+
   it('deselecting the genre chip clears the filter and reverts to the unfiltered grid', async () => {
     const user = (await import('@testing-library/user-event')).default.setup();
     mockedFetchCatalogPreference.mockResolvedValue({

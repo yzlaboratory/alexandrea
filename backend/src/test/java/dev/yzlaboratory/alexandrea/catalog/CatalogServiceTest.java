@@ -1260,6 +1260,72 @@ class CatalogServiceTest {
         verify(surfacePreferenceStore).upsert(42L, "catalog", "movies", "popularity", "desc", encodedFilters("genre", "28"));
     }
 
+    // Three DIFFERENT filter kinds at once, not just two — proves the
+    // read-merge-write in resolveFilters generalizes past a pair, since
+    // each field still resolves independently regardless of how many other
+    // fields are present in the same request.
+    @Test
+    void combiningGenreOriginalLanguageAndRuntimeNarrowsMoviesToTheIntersection() {
+        stubGenre("movies", "28", "Action");
+        stubOriginalLanguage("movies", "ja");
+        var page = new CatalogPageResult(List.of(), 1, true);
+        when(tmdbClient.discoverMovies("popularity", "desc", "28", "ja", "90,180", 1)).thenReturn(page);
+        var combined = new LinkedHashMap<>(genreFilter("28"));
+        combined.putAll(originalLanguageFilter("ja"));
+        combined.putAll(runtimeFilter("90,180"));
+
+        var result = service.browse("movies", null, "popularity", "desc", combined, 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, times(1)).discoverMovies("popularity", "desc", "28", "ja", "90,180", 1);
+        verify(surfacePreferenceStore).upsert(
+            42L, "catalog", "movies", "popularity", "desc", encodedFilters("genre", "28", "originalLanguage", "ja", "runtime", "90,180")
+        );
+    }
+
+    // "Clear filters" reuses the same per-field explicit-empty-string
+    // sentinel each filter kind already has (see
+    // anExplicitlyEmptyGenreClearsAPreviouslyPersistedGenreRatherThanFallingBackToIt
+    // above) — clearing several kinds at once is just that same sentinel
+    // sent for every active field in one request, not a new mechanism.
+    @Test
+    void clearingSeveralActiveFiltersInOneRequestResetsThemAllAndPersistsGenuinelyEmptyFilters() {
+        var existing = new SurfacePreference(
+            42L, "catalog", "movies", "title", "asc", encodedFilters("genre", "28", "originalLanguage", "ja"), clock.instant()
+        );
+        when(surfacePreferenceStore.get(42L, "catalog", "movies")).thenReturn(Optional.of(existing));
+        when(tmdbClient.discoverMovies("title", "asc", null, null, null, 1))
+            .thenReturn(new CatalogPageResult(List.of(ITEM), 1, true));
+        var clearBoth = new LinkedHashMap<>(genreFilter(""));
+        clearBoth.putAll(originalLanguageFilter(""));
+
+        var result = service.browse("movies", null, null, null, clearBoth, 42L, 1);
+
+        assertThat(result.items()).containsExactly(ITEM);
+        verify(tmdbClient, times(1)).discoverMovies("title", "asc", null, null, null, 1);
+        // null, not "{}": encodeFilters collapses an empty resolved map to
+        // null, so the persisted row is genuinely empty rather than an
+        // empty-but-present JSON document. Sort ("title"/"asc") survives
+        // untouched even though this request never repeated it.
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "movies", "title", "asc", null);
+    }
+
+    @Test
+    void clearingFiltersThatWereNeverSetIsASafeNoOp() {
+        when(surfacePreferenceStore.get(42L, "catalog", "movies")).thenReturn(Optional.empty());
+        when(tmdbClient.discoverMovies("popularity", "desc", null, null, null, 1))
+            .thenReturn(new CatalogPageResult(List.of(), 1, true));
+        var clearAll = new LinkedHashMap<>(genreFilter(""));
+        clearAll.putAll(originalLanguageFilter(""));
+        clearAll.putAll(runtimeFilter(""));
+
+        var result = service.browse("movies", null, null, null, clearAll, 42L, 1);
+
+        assertThat(result.items()).isEmpty();
+        verify(tmdbClient, times(1)).discoverMovies("popularity", "desc", null, null, null, 1);
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "movies", null, null, null);
+    }
+
     // --- Runtime (Movies/TV) and page count (Books) — ADR 0018's two range
     // filters. Unlike genre/originalLanguage/availableInLanguage, neither
     // needs a vocabulary stub: RUNTIME_MEDIA_TYPES/PAGE_COUNT_MEDIA_TYPES

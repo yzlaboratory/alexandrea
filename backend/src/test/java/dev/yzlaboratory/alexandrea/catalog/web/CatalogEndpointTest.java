@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.sun.net.httpserver.HttpServer;
 import dev.yzlaboratory.alexandrea.auth.AuthenticatedUser;
+import dev.yzlaboratory.alexandrea.surface.SurfacePreferenceStore;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -220,6 +221,9 @@ class CatalogEndpointTest {
     @Autowired
     private JdbcClient jdbcClient;
 
+    @Autowired
+    private SurfacePreferenceStore surfacePreferenceStore;
+
     // loggedIn()/loggedInAs() fabricate a Spring Security principal directly
     // rather than going through real signup — cheap for every other test in
     // this class, but surface_preferences.user_id carries a real FK to
@@ -232,7 +236,7 @@ class CatalogEndpointTest {
     private static final List<Long> TEST_USER_IDS = List.of(
         DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L, 9009L, 9010L, 9011L, 9012L,
         9013L, 9014L, 9015L, 9016L, 9017L, 9018L, 9019L, 9020L, 9021L, 9022L, 9023L, 9024L,
-        9101L, 9102L, 9103L, 9104L, 9105L, 9106L, 9107L, 9108L, 9109L
+        9101L, 9102L, 9103L, 9104L, 9105L, 9106L, 9107L, 9108L, 9109L, 9110L, 9111L, 9112L
     );
 
     @BeforeEach
@@ -1451,6 +1455,69 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.filters.genre").value("science_fiction"))
             .andExpect(jsonPath("$.filters.pageCount").value("300,400"));
+    }
+
+    // Three DIFFERENT filter kinds at once — genre, original language, and
+    // runtime — not just the pairs covered above; proves the read-merge-
+    // write mechanism keeps resolving each field independently regardless
+    // of how many other fields ride along in the same request.
+    @Test
+    void combiningGenreOriginalLanguageAndRuntimeNarrowsMoviesToTheIntersection() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "28").param("originalLanguage", "ja").param("runtime", "90,180")
+                .param("page", "221").with(loggedInAs(9110L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastDiscoverQuery.get())
+            .contains("with_genres=28").contains("with_original_language=ja")
+            .contains("with_runtime.gte=90").contains("with_runtime.lte=180");
+    }
+
+    // "Clear filters" — one request clearing every active filter kind for
+    // this (user, surface, media_type) via the same present-but-empty
+    // sentinel each field already honors individually (see
+    // anExplicitlyEmptyGenreParamClearsAPreviouslySelectedGenre above), while
+    // sort is left completely alone.
+    @Test
+    void clearFiltersResetsAllActiveFiltersInOneRequestButLeavesSortUnchanged() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("sort", "title").param("direction", "asc")
+                .param("genre", "28").param("originalLanguage", "ja").param("runtime", "90,180")
+                .param("page", "222").with(loggedInAs(9111L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies")
+                .param("genre", "").param("originalLanguage", "").param("runtime", "")
+                .param("page", "223").with(loggedInAs(9111L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastDiscoverQuery.get())
+            .doesNotContain("with_genres").doesNotContain("with_original_language").doesNotContain("with_runtime");
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9111L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sortKey").value("title"))
+            .andExpect(jsonPath("$.sortDirection").value("asc"))
+            .andExpect(jsonPath("$.filters.genre").doesNotExist())
+            .andExpect(jsonPath("$.filters.originalLanguage").doesNotExist())
+            .andExpect(jsonPath("$.filters.runtime").doesNotExist());
+        // Verified directly against the store, not just the API response:
+        // encodeFilters collapses an empty resolved map to a SQL NULL, so
+        // the row is genuinely empty rather than an empty-but-present "{}".
+        assertThat(surfacePreferenceStore.get(9111L, "catalog", "movies")).hasValueSatisfying(
+            stored -> assertThat(stored.filters()).isNull()
+        );
+    }
+
+    @Test
+    void clearingFiltersThatWereNeverSetIsASafeNoOp() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies")
+                .param("genre", "").param("originalLanguage", "").param("runtime", "")
+                .param("page", "224").with(loggedInAs(9112L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastDiscoverQuery.get())
+            .doesNotContain("with_genres").doesNotContain("with_original_language").doesNotContain("with_runtime");
+        assertThat(surfacePreferenceStore.get(9112L, "catalog", "movies")).hasValueSatisfying(
+            stored -> assertThat(stored.filters()).isNull()
+        );
     }
 
     private static RequestPostProcessor loggedIn() {
