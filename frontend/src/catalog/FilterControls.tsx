@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react';
-import { Chip, MenuItem, Stack, TextField } from '@mui/material';
-import { CATALOG_FILTER_FIELDS, type CatalogFilterOption } from './catalogApi';
+import { Chip, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import {
+  CATALOG_FILTER_FIELDS,
+  CATALOG_RANGE_FILTER_FIELDS,
+  type CatalogFilterOption,
+} from './catalogApi';
 
 // The MUI select's own "nothing chosen" sentinel — distinct from a filter's
 // value being null, which TextField's controlled value can't represent
@@ -11,10 +15,11 @@ const NO_VALUE_SELECTED = '';
 // 0018) — a fixed lookup here, not part of the capability payload: the
 // backend owns *which* filter kinds are available for a media type,
 // FilterControls owns how each one is presented, the same split CatalogPage
-// already makes for media-type labels.
+// already makes for media-type labels. anyOptionLabel is unused for the two
+// range fields (there's no "any" menu item to render for those).
 const FILTER_FIELD_PRESENTATION: Record<
   string,
-  { label: string; anyOptionLabel: string }
+  { label: string; anyOptionLabel?: string }
 > = {
   genre: { label: 'Genre', anyOptionLabel: 'Any genre' },
   originalLanguage: {
@@ -25,7 +30,28 @@ const FILTER_FIELD_PRESENTATION: Record<
     label: 'Available in language',
     anyOptionLabel: 'Any language',
   },
+  runtime: { label: 'Runtime (minutes)' },
+  pageCount: { label: 'Page count' },
 };
+
+function isRangeField(field: (typeof CATALOG_FILTER_FIELDS)[number]): boolean {
+  return (CATALOG_RANGE_FILTER_FIELDS as readonly string[]).includes(field);
+}
+
+// A range field reports as available via key presence alone (its options
+// array is always empty by construction — see CATALOG_RANGE_FILTER_FIELDS)
+// while the other fields report availability through a non-empty options
+// array; an empty array from one of those means "temporarily unreachable
+// vocabulary" (CatalogService), which correctly hides the control rather
+// than rendering a picker with nothing to pick.
+function isFieldAvailable(
+  field: (typeof CATALOG_FILTER_FIELDS)[number],
+  availableFilters: Record<string, CatalogFilterOption[]>,
+): boolean {
+  return isRangeField(field)
+    ? field in availableFilters
+    : (availableFilters[field]?.length ?? 0) > 0;
+}
 
 interface FilterControlsProps {
   // Driven entirely by the capability payload the backend returns with each
@@ -45,8 +71,8 @@ function FilterControls({
   selectedFilters,
   onFilterChange,
 }: FilterControlsProps): ReactNode {
-  const fields = CATALOG_FILTER_FIELDS.filter(
-    (field) => (availableFilters[field]?.length ?? 0) > 0,
+  const fields = CATALOG_FILTER_FIELDS.filter((field) =>
+    isFieldAvailable(field, availableFilters),
   );
   if (fields.length === 0) return null;
 
@@ -56,17 +82,28 @@ function FilterControls({
       spacing={2}
       sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}
     >
-      {fields.map((field) => (
-        <SingleFilterControl
-          key={field}
-          field={field}
-          options={availableFilters[field] ?? []}
-          value={selectedFilters[field] ?? null}
-          onChange={(value) => {
-            onFilterChange(field, value);
-          }}
-        />
-      ))}
+      {fields.map((field) =>
+        isRangeField(field) ? (
+          <RangeFilterControl
+            key={field}
+            field={field}
+            value={selectedFilters[field] ?? null}
+            onChange={(value) => {
+              onFilterChange(field, value);
+            }}
+          />
+        ) : (
+          <SingleFilterControl
+            key={field}
+            field={field}
+            options={availableFilters[field] ?? []}
+            value={selectedFilters[field] ?? null}
+            onChange={(value) => {
+              onFilterChange(field, value);
+            }}
+          />
+        ),
+      )}
     </Stack>
   );
 }
@@ -122,6 +159,76 @@ function SingleFilterControl({
       )}
     </Stack>
   );
+}
+
+interface RangeFilterControlProps {
+  field: string;
+  // The "<min>,<max>" encoding CatalogRange parses server-side (either side
+  // blank means open-ended); null means no range selected at all.
+  value: string | null;
+  onChange: (value: string | null) => void;
+}
+
+function RangeFilterControl({
+  field,
+  value,
+  onChange,
+}: RangeFilterControlProps): ReactNode {
+  const presentation = FILTER_FIELD_PRESENTATION[field] ?? { label: field };
+  const [min, max] = decodeRange(value);
+
+  function commit(nextMin: string, nextMax: string): void {
+    onChange(nextMin === '' && nextMax === '' ? null : `${nextMin},${nextMax}`);
+  }
+
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+      <Typography variant="body2" color="text.secondary">
+        {presentation.label}
+      </Typography>
+      <TextField
+        type="number"
+        label="Min"
+        size="small"
+        value={min}
+        slotProps={{ htmlInput: { min: 0 } }}
+        onChange={(event) => {
+          commit(event.target.value, max);
+        }}
+        sx={{ width: 90 }}
+      />
+      <TextField
+        type="number"
+        label="Max"
+        size="small"
+        value={max}
+        slotProps={{ htmlInput: { min: 0 } }}
+        onChange={(event) => {
+          commit(min, event.target.value);
+        }}
+        sx={{ width: 90 }}
+      />
+      {value !== null && (
+        <Chip
+          label={presentation.label}
+          onDelete={() => {
+            onChange(null);
+          }}
+        />
+      )}
+    </Stack>
+  );
+}
+
+// The inverse of RangeFilterControl's own commit() encoding — split rather
+// than parsed/validated here, since an invalid or malformed value can only
+// ever originate from this same component's own onChange (CatalogPage just
+// stores whatever string it's given), and CatalogService already validates
+// and drops anything malformed server-side rather than trusting the client.
+function decodeRange(value: string | null): [string, string] {
+  if (value === null) return ['', ''];
+  const [min = '', max = ''] = value.split(',');
+  return [min, max];
 }
 
 export default FilterControls;

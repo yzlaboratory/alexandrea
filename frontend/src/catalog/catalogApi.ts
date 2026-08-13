@@ -34,7 +34,18 @@ export const CATALOG_FILTER_FIELDS = [
   'genre',
   'originalLanguage',
   'availableInLanguage',
+  'runtime',
+  'pageCount',
 ] as const;
+
+// The subset of CATALOG_FILTER_FIELDS with no enumerable option list — a
+// range has infinitely many valid values, so CatalogService reports these
+// as present-but-empty (`[]`) in availableFilters rather than omitted. That
+// empty-but-available signal is what lets FilterControls tell "this range
+// is offered" apart from "not offered for this media type" (which omits
+// the key entirely), and choose the two-number-field range UI over the
+// select-from-options UI the other three fields use.
+export const CATALOG_RANGE_FILTER_FIELDS = ['runtime', 'pageCount'] as const;
 
 export interface CatalogPageResult {
   items: CatalogItem[];
