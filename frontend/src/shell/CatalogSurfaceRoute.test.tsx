@@ -62,7 +62,13 @@ describe('CatalogSurfaceRoute', () => {
         undefined,
         'popularity',
         'desc',
-        { genre: null, originalLanguage: null, availableInLanguage: null },
+        {
+          genre: null,
+          originalLanguage: null,
+          availableInLanguage: null,
+          runtime: null,
+          pageCount: null,
+        },
       );
     },
   );
