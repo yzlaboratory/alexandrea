@@ -231,7 +231,8 @@ class CatalogEndpointTest {
     private static final long DEFAULT_TEST_USER_ID = 1L;
     private static final List<Long> TEST_USER_IDS = List.of(
         DEFAULT_TEST_USER_ID, 9001L, 9002L, 9003L, 9004L, 9005L, 9006L, 9007L, 9008L, 9009L, 9010L, 9011L, 9012L,
-        9013L, 9014L, 9015L, 9016L, 9017L, 9018L, 9019L, 9020L, 9021L, 9022L, 9023L, 9024L
+        9013L, 9014L, 9015L, 9016L, 9017L, 9018L, 9019L, 9020L, 9021L, 9022L, 9023L, 9024L,
+        9101L, 9102L, 9103L, 9104L, 9105L, 9106L, 9107L, 9108L, 9109L
     );
 
     @BeforeEach
@@ -1283,6 +1284,173 @@ class CatalogEndpointTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sortKey").value("title"))
             .andExpect(jsonPath("$.filters.genre").doesNotExist());
+    }
+
+    // --- Runtime (Movies/TV) and page count (Books) — ADR 0018's two range
+    // filters (issue 45). Both encode as a single opaque "<min>,<max>"
+    // string value, the same shape every other filter kind's persisted
+    // value already has, so no new persistence mechanism is exercised here
+    // beyond the existing read-merge-write path.
+
+    @Test
+    void theBrowseResponseListsRuntimeAsAnAvailableFilterForMoviesAndTv() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("page", "200").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.runtime").isArray())
+            .andExpect(jsonPath("$.availableFilters.runtime").isEmpty());
+
+        mockMvc.perform(get("/api/catalog/tv").param("page", "201").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.runtime").isArray());
+    }
+
+    @Test
+    void theBrowseResponseDoesNotListRuntimeForBooksOrGames() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("page", "202").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.runtime").doesNotExist());
+
+        mockMvc.perform(get("/api/catalog/games").param("page", "203").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.runtime").doesNotExist());
+    }
+
+    @Test
+    void aRuntimeParamRoutesMoviesToDiscoverWithTheGivenRange() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("runtime", "90,180").param("page", "204").with(loggedInAs(9101L)))
+            .andExpect(status().isOk());
+
+        assertThat(discoverRequestCount.get()).isEqualTo(1);
+        assertThat(requestCount.get()).isZero();
+        assertThat(lastDiscoverQuery.get()).contains("with_runtime.gte=90").contains("with_runtime.lte=180");
+    }
+
+    @Test
+    void aRuntimeParamRoutesTvToDiscoverTvWithTheGivenRange() throws Exception {
+        mockMvc.perform(get("/api/catalog/tv").param("runtime", "20,60").param("page", "205").with(loggedInAs(9102L)))
+            .andExpect(status().isOk());
+
+        assertThat(tvDiscoverRequestCount.get()).isEqualTo(1);
+        assertThat(tvRequestCount.get()).isZero();
+        assertThat(lastTvDiscoverQuery.get()).contains("with_runtime.gte=20").contains("with_runtime.lte=60");
+    }
+
+    @Test
+    void aMalformedRuntimeValueIsDroppedAndFallsBackToThePopularFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("runtime", "not-a-range").param("page", "206").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(requestCount.get()).isEqualTo(1);
+        assertThat(discoverRequestCount.get()).isZero();
+    }
+
+    @Test
+    void combiningGenreAndRuntimeNarrowsMoviesToTheIntersection() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "28").param("runtime", "90,180")
+                .param("page", "207").with(loggedInAs(9103L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastDiscoverQuery.get()).contains("with_genres=28").contains("with_runtime.gte=90").contains("with_runtime.lte=180");
+    }
+
+    @Test
+    void aRuntimeSelectionPersistsAndIsReadBackFromThePreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("runtime", "90,180").param("page", "208").with(loggedInAs(9104L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9104L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.runtime").value("90,180"));
+    }
+
+    @Test
+    void settingRuntimeDoesNotClobberAPreviouslyPersistedGenre() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("genre", "28").param("page", "209").with(loggedInAs(9105L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies").param("runtime", "90,180").param("page", "210").with(loggedInAs(9105L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/movies/preference").with(loggedInAs(9105L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.genre").value("28"))
+            .andExpect(jsonPath("$.filters.runtime").value("90,180"));
+    }
+
+    @Test
+    void theBrowseResponseListsPageCountAsAnAvailableFilterForBooks() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("page", "211").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.pageCount").isArray())
+            .andExpect(jsonPath("$.availableFilters.pageCount").isEmpty());
+    }
+
+    @Test
+    void theBrowseResponseDoesNotListPageCountForMoviesTvOrGames() throws Exception {
+        mockMvc.perform(get("/api/catalog/movies").param("page", "212").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.pageCount").doesNotExist());
+
+        mockMvc.perform(get("/api/catalog/tv").param("page", "213").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.pageCount").doesNotExist());
+
+        mockMvc.perform(get("/api/catalog/games").param("page", "214").with(loggedIn()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableFilters.pageCount").doesNotExist());
+    }
+
+    @Test
+    void aPageCountParamRoutesBooksToOpenLibrarySearchWithANumberOfPagesMedianClause() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("pageCount", "300,400").param("page", "215").with(loggedInAs(9106L)))
+            .andExpect(status().isOk());
+
+        assertThat(openLibrarySearchRequestCount.get()).isEqualTo(1);
+        assertThat(openLibraryRequestCount.get()).isZero();
+        assertThat(lastOpenLibrarySearchQuery.get()).contains("q=number_of_pages_median:[300 TO 400]");
+    }
+
+    @Test
+    void aMalformedPageCountValueIsDroppedAndFallsBackToTheTrendingFeed() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("pageCount", "not-a-range").param("page", "216").with(loggedIn()))
+            .andExpect(status().isOk());
+
+        assertThat(openLibraryRequestCount.get()).isEqualTo(1);
+        assertThat(openLibrarySearchRequestCount.get()).isZero();
+    }
+
+    @Test
+    void combiningGenreAndPageCountNarrowsBooksToTheIntersection() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("genre", "science_fiction").param("pageCount", "300,400")
+                .param("page", "217").with(loggedInAs(9107L)))
+            .andExpect(status().isOk());
+
+        assertThat(lastOpenLibrarySearchQuery.get())
+            .contains("q=subject:(\"Science fiction\" OR \"Sci-Fi\" OR \"Science-fiction\" OR \"Speculative fiction\") AND number_of_pages_median:[300 TO 400]");
+    }
+
+    @Test
+    void aPageCountSelectionPersistsAndIsReadBackFromThePreferenceEndpoint() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("pageCount", "300,400").param("page", "218").with(loggedInAs(9108L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9108L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.pageCount").value("300,400"));
+    }
+
+    @Test
+    void settingPageCountDoesNotClobberAPreviouslyPersistedGenreForBooks() throws Exception {
+        mockMvc.perform(get("/api/catalog/books").param("genre", "science_fiction").param("page", "219").with(loggedInAs(9109L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books").param("pageCount", "300,400").param("page", "220").with(loggedInAs(9109L)))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/catalog/books/preference").with(loggedInAs(9109L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filters.genre").value("science_fiction"))
+            .andExpect(jsonPath("$.filters.pageCount").value("300,400"));
     }
 
     private static RequestPostProcessor loggedIn() {

@@ -41,10 +41,12 @@ public class CatalogController {
         @RequestParam(required = false) String genre,
         @RequestParam(required = false) String originalLanguage,
         @RequestParam(required = false) String availableInLanguage,
+        @RequestParam(required = false) String runtime,
+        @RequestParam(required = false) String pageCount,
         @RequestParam(name = "page", defaultValue = "1") @Min(1) int page,
         @AuthenticationPrincipal AuthenticatedUser principal
     ) {
-        var filters = requestedFilters(genre, originalLanguage, availableInLanguage);
+        var filters = requestedFilters(genre, originalLanguage, availableInLanguage, runtime, pageCount);
         var pageResult = catalogService.browse(mediaType, search, sort, direction, filters, principal.userId(), page);
         return CatalogBrowseResponse.from(pageResult, catalogService.availableFilters(mediaType));
     }
@@ -62,7 +64,9 @@ public class CatalogController {
     // absent query param stays absent here too, which is what lets
     // CatalogService tell "not mentioned" (fall back to whatever's
     // persisted) apart from "mentioned but empty" (an explicit clear).
-    private static Map<String, String> requestedFilters(String genre, String originalLanguage, String availableInLanguage) {
+    private static Map<String, String> requestedFilters(
+        String genre, String originalLanguage, String availableInLanguage, String runtime, String pageCount
+    ) {
         var filters = new LinkedHashMap<String, String>();
         if (genre != null) {
             filters.put(CatalogFilterKeys.GENRE, genre);
@@ -72,6 +76,12 @@ public class CatalogController {
         }
         if (availableInLanguage != null) {
             filters.put(CatalogFilterKeys.AVAILABLE_IN_LANGUAGE, availableInLanguage);
+        }
+        if (runtime != null) {
+            filters.put(CatalogFilterKeys.RUNTIME, runtime);
+        }
+        if (pageCount != null) {
+            filters.put(CatalogFilterKeys.PAGE_COUNT, pageCount);
         }
         return filters;
     }

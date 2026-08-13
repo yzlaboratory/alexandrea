@@ -22,6 +22,8 @@ const NO_FILTERS_SENT = {
   genre: null,
   originalLanguage: null,
   availableInLanguage: null,
+  runtime: null,
+  pageCount: null,
 };
 
 describe('CatalogPage', () => {
@@ -446,7 +448,13 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
-        { genre: '28', originalLanguage: 'ja', availableInLanguage: null },
+        {
+          genre: '28',
+          originalLanguage: 'ja',
+          availableInLanguage: null,
+          runtime: null,
+          pageCount: null,
+        },
       );
     });
   });
@@ -519,7 +527,13 @@ describe('CatalogPage', () => {
         undefined,
         'popularity',
         'desc',
-        { genre: '28', originalLanguage: 'ja', availableInLanguage: null },
+        {
+          genre: '28',
+          originalLanguage: 'ja',
+          availableInLanguage: null,
+          runtime: null,
+          pageCount: null,
+        },
       );
     });
     // The genre chip survives selecting the unrelated original-language

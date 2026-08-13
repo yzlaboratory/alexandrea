@@ -45,6 +45,8 @@ public class TmdbClient {
     private static final String SORT_BY_PARAM = "sort_by";
     private static final String WITH_GENRES_PARAM = "with_genres";
     private static final String WITH_ORIGINAL_LANGUAGE_PARAM = "with_original_language";
+    private static final String WITH_RUNTIME_GTE_PARAM = "with_runtime.gte";
+    private static final String WITH_RUNTIME_LTE_PARAM = "with_runtime.lte";
 
     private final RestClient restClient;
     private final CatalogProperties properties;
@@ -84,27 +86,51 @@ public class TmdbClient {
 
     // ADR 0018's "filter/sort applied" row: /discover/* replaces /*/popular
     // once a sort or a filter is chosen, since /movie/popular and
-    // /tv/popular accept neither a sort_by, a with_genres, nor a
-    // with_original_language param of their own. genre is TMDB's native
-    // genre id (ADR 0013's "native enum" for Movies/TV); originalLanguage is
-    // an ISO 639-1 code (ADR 0018's original-language filter, Movies/TV
-    // only) — either is omitted from the request entirely when null.
-    public CatalogPageResult discoverMovies(String sortKey, String direction, String genre, String originalLanguage, int page) {
-        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page, withFilters(genre, originalLanguage,
+    // /tv/popular accept neither a sort_by, a with_genres, a
+    // with_original_language, nor a with_runtime param of their own. genre
+    // is TMDB's native genre id (ADR 0013's "native enum" for Movies/TV);
+    // originalLanguage is an ISO 639-1 code (ADR 0018's original-language
+    // filter, Movies/TV only); runtime is the "<min>,<max>" encoding
+    // CatalogRange parses (ADR 0018's runtime filter, Movies/TV only) — each
+    // is omitted from the request entirely when null/unparseable.
+    public CatalogPageResult discoverMovies(
+        String sortKey, String direction, String genre, String originalLanguage, String runtime, int page
+    ) {
+        return fetchPage("/discover/movie", MOVIES_MEDIA_TYPE, page, withFilters(genre, originalLanguage, runtime,
             uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction))));
     }
 
-    public CatalogPageResult discoverTv(String sortKey, String direction, String genre, String originalLanguage, int page) {
-        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page, withFilters(genre, originalLanguage,
+    public CatalogPageResult discoverTv(
+        String sortKey, String direction, String genre, String originalLanguage, String runtime, int page
+    ) {
+        return fetchPage("/discover/tv", TV_MEDIA_TYPE, page, withFilters(genre, originalLanguage, runtime,
             uriBuilder -> uriBuilder.queryParam(SORT_BY_PARAM, sortByValue(sortKey, direction))));
     }
 
-    private static UnaryOperator<UriBuilder> withFilters(String genre, String originalLanguage, UnaryOperator<UriBuilder> sortParam) {
+    private static UnaryOperator<UriBuilder> withFilters(
+        String genre, String originalLanguage, String runtime, UnaryOperator<UriBuilder> sortParam
+    ) {
         return uriBuilder -> {
             var withSort = sortParam.apply(uriBuilder);
             var withGenre = genre != null ? withSort.queryParam(WITH_GENRES_PARAM, genre) : withSort;
-            return originalLanguage != null ? withGenre.queryParam(WITH_ORIGINAL_LANGUAGE_PARAM, originalLanguage) : withGenre;
+            var withLanguage = originalLanguage != null ? withGenre.queryParam(WITH_ORIGINAL_LANGUAGE_PARAM, originalLanguage) : withGenre;
+            return withRuntime(withLanguage, runtime);
         };
+    }
+
+    // with_runtime.gte and .lte are independent params, so an open-ended
+    // CatalogRange (only one bound set) sends only that one param rather
+    // than inventing a sentinel value for the missing side; an unparseable
+    // or absent runtime value adds neither.
+    private static UriBuilder withRuntime(UriBuilder uriBuilder, String runtime) {
+        var range = CatalogRange.parse(runtime);
+        if (range.isEmpty()) {
+            return uriBuilder;
+        }
+        var min = range.get().min();
+        var max = range.get().max();
+        var withMin = min != null ? uriBuilder.queryParam(WITH_RUNTIME_GTE_PARAM, min) : uriBuilder;
+        return max != null ? withMin.queryParam(WITH_RUNTIME_LTE_PARAM, max) : withMin;
     }
 
     // TMDB's sort_by accepts "<field>.<asc|desc>" for every field below in
