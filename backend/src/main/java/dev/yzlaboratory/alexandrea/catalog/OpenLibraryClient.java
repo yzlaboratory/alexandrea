@@ -336,8 +336,9 @@ public class OpenLibraryClient {
 
     // /trending/daily.json exposes only a first-publish *year*, never a full
     // date the way TMDB's release_date does. Jan 1 is the best available
-    // precision; this field is display-only in this slice (sort/filter is
-    // #40+), so the precision loss has no behavioural consequence.
+    // precision; release-date sorting is done provider-side (sortParam's
+    // "new" preset), never against this local field, so the precision loss
+    // is display-only and has no behavioural consequence.
     private static LocalDate firstPublishDate(Integer firstPublishYear) {
         return firstPublishYear != null ? LocalDate.of(firstPublishYear, 1, 1) : null;
     }

@@ -1,8 +1,8 @@
 -- One shared preference store across all four Surfaces (ADR 0025): a typed
 -- sort_key/sort_direction pair plus an opaque JSON filters blob the store
 -- never validates — each surface's own service validates on read/write.
--- Catalog (#40) is the first surface to use it; Watchlist/Library reuse this
--- same table without a schema change when their tickets land.
+-- Catalog is the first surface to use it; Watchlist/Library reuse this same
+-- table without a schema change when their tickets land.
 
 CREATE TABLE surface_preferences (
     user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -16,7 +16,8 @@ CREATE TABLE surface_preferences (
 
     sort_direction TEXT,
 
-    -- Opaque JSON; unpopulated until #42 wires filter persistence in.
+    -- Opaque JSON filter map; the store never parses or validates it — see
+    -- ADR 0025.
     filters        TEXT,
 
     updated_at     TEXT    NOT NULL,
