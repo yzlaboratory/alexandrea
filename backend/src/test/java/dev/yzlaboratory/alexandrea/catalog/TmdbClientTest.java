@@ -364,7 +364,7 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverMovies("popularity", "desc", null, null, 1);
+        client.discoverMovies("popularity", "desc", null, null, null, 1);
 
         server.verify();
     }
@@ -417,7 +417,7 @@ class TmdbClientTest {
                 }
                 """, MediaType.APPLICATION_JSON));
 
-        var result = client.discoverMovies("popularity", "desc", null, null, 1);
+        var result = client.discoverMovies("popularity", "desc", null, null, null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("John Wick: Chapter 4");
@@ -427,7 +427,7 @@ class TmdbClientTest {
     void anUpstream5xxOnDiscoverMoviesIsWrappedAsACatalogUpstreamException() {
         server.expect(requestTo(startsWith(BASE_URL + "/discover/movie"))).andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.discoverMovies("popularity", "desc", null, null, 1))
+        assertThatThrownBy(() -> client.discoverMovies("popularity", "desc", null, null, null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
     }
 
@@ -440,7 +440,7 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverMovies("popularity", "desc", "28", null, 1);
+        client.discoverMovies("popularity", "desc", "28", null, null, 1);
 
         server.verify();
     }
@@ -454,7 +454,7 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverMovies("popularity", "desc", null, null, 1);
+        client.discoverMovies("popularity", "desc", null, null, null, 1);
 
         server.verify();
     }
@@ -468,7 +468,7 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverMovies("popularity", "desc", null, "ja", 1);
+        client.discoverMovies("popularity", "desc", null, "ja", null, 1);
 
         server.verify();
     }
@@ -482,7 +482,7 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverMovies("popularity", "desc", null, null, 1);
+        client.discoverMovies("popularity", "desc", null, null, null, 1);
 
         server.verify();
     }
@@ -496,7 +496,121 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverMovies("popularity", "desc", "28", "ja", 1);
+        client.discoverMovies("popularity", "desc", "28", "ja", null, 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesAddsBothRuntimeBoundsWhenAFullRangeIsGiven() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(queryParam("with_runtime.gte", "90"))
+            .andExpect(queryParam("with_runtime.lte", "180"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", null, null, "90,180", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesAddsOnlyTheGteBoundForAnOpenEndedMinOnlyRuntime() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(queryParam("with_runtime.gte", "90"))
+            .andExpect(request -> assertThat(request.getURI().toString()).doesNotContain("with_runtime.lte"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", null, null, "90,", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesAddsOnlyTheLteBoundForAnOpenEndedMaxOnlyRuntime() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(queryParam("with_runtime.lte", "180"))
+            .andExpect(request -> assertThat(request.getURI().toString()).doesNotContain("with_runtime.gte"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", null, null, ",180", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesAddsBothBoundsIdenticalWhenMinEqualsMax() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(queryParam("with_runtime.gte", "120"))
+            .andExpect(queryParam("with_runtime.lte", "120"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", null, null, "120,120", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesOmitsBothRuntimeBoundsWhenNotGiven() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(request -> assertThat(request.getURI().toString())
+                .doesNotContain("with_runtime.gte").doesNotContain("with_runtime.lte"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", null, null, null, 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesOmitsBothRuntimeBoundsWhenTheRangeIsMalformed() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(request -> assertThat(request.getURI().toString())
+                .doesNotContain("with_runtime.gte").doesNotContain("with_runtime.lte"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", null, null, "not-a-range", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesOmitsBothRuntimeBoundsWhenTheRangeIsInverted() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(request -> assertThat(request.getURI().toString())
+                .doesNotContain("with_runtime.gte").doesNotContain("with_runtime.lte"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", null, null, "180,90", 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverMoviesCombinesGenreOriginalLanguageAndRuntimeWhenAllAreGiven() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/movie")))
+            .andExpect(queryParam("with_genres", "28"))
+            .andExpect(queryParam("with_original_language", "ja"))
+            .andExpect(queryParam("with_runtime.gte", "90"))
+            .andExpect(queryParam("with_runtime.lte", "180"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverMovies("popularity", "desc", "28", "ja", "90,180", 1);
 
         server.verify();
     }
@@ -509,7 +623,7 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverTv("popularity", "desc", null, "ko", 1);
+        client.discoverTv("popularity", "desc", null, "ko", null, 1);
 
         server.verify();
     }
@@ -528,7 +642,7 @@ class TmdbClientTest {
                 }
                 """, MediaType.APPLICATION_JSON));
 
-        var result = client.discoverTv("external_rating", "desc", null, null, 1);
+        var result = client.discoverTv("external_rating", "desc", null, null, null, 1);
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().mediaType()).isEqualTo("tv");
@@ -539,7 +653,7 @@ class TmdbClientTest {
     void anUpstream5xxOnDiscoverTvIsWrappedAsACatalogUpstreamException() {
         server.expect(requestTo(startsWith(BASE_URL + "/discover/tv"))).andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.discoverTv("popularity", "desc", null, null, 1))
+        assertThatThrownBy(() -> client.discoverTv("popularity", "desc", null, null, null, 1))
             .isInstanceOf(CatalogUpstreamException.class);
     }
 
@@ -552,7 +666,21 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverTv("popularity", "desc", "16", null, 1);
+        client.discoverTv("popularity", "desc", "16", null, null, 1);
+
+        server.verify();
+    }
+
+    @Test
+    void discoverTvAddsBothRuntimeBoundsWhenAFullRangeIsGiven() {
+        server.expect(requestTo(startsWith(BASE_URL + "/discover/tv")))
+            .andExpect(queryParam("with_runtime.gte", "20"))
+            .andExpect(queryParam("with_runtime.lte", "60"))
+            .andRespond(withSuccess("""
+                {"page": 1, "results": [], "total_pages": 1}
+                """, MediaType.APPLICATION_JSON));
+
+        client.discoverTv("popularity", "desc", null, null, "20,60", 1);
 
         server.verify();
     }
@@ -617,6 +745,6 @@ class TmdbClientTest {
                 {"page": 1, "results": [], "total_pages": 1}
                 """, MediaType.APPLICATION_JSON));
 
-        client.discoverMovies(sortKey, direction, null, null, 1);
+        client.discoverMovies(sortKey, direction, null, null, null, 1);
     }
 }
