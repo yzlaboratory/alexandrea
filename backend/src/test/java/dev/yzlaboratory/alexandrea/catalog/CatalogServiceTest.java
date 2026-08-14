@@ -1011,6 +1011,32 @@ class CatalogServiceTest {
         verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
     }
 
+    // Regression test for a bug where "nothing meaningful requested" (no
+    // valid sort, and the only filter given is unrecognised) short-circuited
+    // straight to the plain popular feed without ever consulting
+    // surfacePreferenceStore — silently dropping an already-persisted valid
+    // preference instead of falling back to it, contrary to this method's
+    // own documented invariant and ADR 0025's "restored on next visit"
+    // guarantee. Unlike anUnrecognisedGenreValueIsDroppedRatherThanPassedThrough
+    // above, this test stubs an existing persisted genre so the two cases —
+    // "nothing persisted either" vs. "something persisted" — are
+    // distinguishable.
+    @Test
+    void anInvalidFilterValueWithNoSortStillFallsBackToAPersistedFilterRatherThanBypassingPersistence() {
+        stubGenre("movies", "28", "Action");
+        var existing = new SurfacePreference(42L, "catalog", "movies", null, null, encodedGenre("28"), clock.instant());
+        when(surfacePreferenceStore.get(42L, "catalog", "movies")).thenReturn(Optional.of(existing));
+        when(tmdbClient.discoverMovies("popularity", "desc", "28", null, null, 1))
+            .thenReturn(new CatalogPageResult(List.of(ITEM), 1, true));
+
+        var result = service.browse("movies", null, null, null, genreFilter("not-a-real-genre-id"), 42L, 1);
+
+        assertThat(result.items()).containsExactly(ITEM);
+        verify(tmdbClient, times(1)).discoverMovies("popularity", "desc", "28", null, null, 1);
+        verify(tmdbClient, never()).popularMovies(anyInt());
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "movies", null, null, encodedGenre("28"));
+    }
+
     @Test
     void selectingADifferentGenreReplacesRatherThanCombiningWithThePrevious() {
         when(genreVocabulary.supports("movies")).thenReturn(true);

@@ -192,13 +192,22 @@ public class CatalogService {
         if (!SUPPORTED_MEDIA_TYPES.contains(mediaType)) {
             throw new UnsupportedCatalogMediaTypeException(mediaType);
         }
-        if (query == null && !isValidSort(sortKey, sortDirection) && filterFields.stream().noneMatch(field -> isMeaningfulRequest(mediaType, field, filters))) {
-            return popularFeedFor(mediaType, page);
-        }
 
         var existing = surfacePreferenceStore.get(userId, CATALOG_SURFACE, mediaType);
         var resolvedSort = resolveSort(sortKey, sortDirection, existing);
         var resolvedFilters = resolveFilters(mediaType, filters, existing);
+        // "Nothing meaningful requested" (no valid sort, no filter field
+        // worth resolving) is only a safe shortcut to the plain popular feed
+        // once persistence has ALSO been consulted and come up empty — an
+        // already-persisted preference must still be restored (ADR 0025)
+        // rather than silently dropped just because this particular request
+        // didn't repeat it.
+        var requestedNothingMeaningful =
+            !isValidSort(sortKey, sortDirection) && filterFields.stream().noneMatch(field -> isMeaningfulRequest(mediaType, field, filters));
+        if (query == null && requestedNothingMeaningful && resolvedSort.key() == null && resolvedFilters.isEmpty()) {
+            return popularFeedFor(mediaType, page);
+        }
+
         var fetchSortKey = resolvedSort.key() != null ? resolvedSort.key() : CatalogSort.POPULARITY;
         var fetchSortDirection = resolvedSort.direction() != null ? resolvedSort.direction() : CatalogSort.DESCENDING;
         var sortAppliesDuringSearch = !SEARCH_DISABLES_SORT_MEDIA_TYPES.contains(mediaType);
