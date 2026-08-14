@@ -101,12 +101,13 @@ public class OpenLibraryClient {
         var response = fetchSorted(query, sortKey, direction, genreSubjectAliases, availableInLanguageMarc3, pageCountRange, page);
         var docs = response.docs() != null ? response.docs() : List.<OpenLibraryWork>of();
         var keyedDocs = docs.stream().filter(work -> work.key() != null).toList();
-        // hasMore reflects the upstream page's own fullness, computed before
-        // the external_rating null-filter below — a page that upstream filled
-        // but whose books happen to be mostly unrated must not look like the
-        // end of the feed (ADR 0006's shrink is a display concern, not a
-        // pagination one).
-        var hasMore = keyedDocs.size() >= PAGE_SIZE;
+        // hasMore reflects the raw upstream page size, computed before both
+        // the keyless-work filter above and the external_rating null-filter
+        // below — a page that upstream filled but that happens to include a
+        // keyless or mostly-unrated book must not look like the end of the
+        // feed (ADR 0006's shrink is a display concern, not a pagination
+        // one).
+        var hasMore = docs.size() >= PAGE_SIZE;
         var items = keyedDocs.stream().map(this::toSortedItem).toList();
         if (CatalogSort.EXTERNAL_RATING.equals(sortKey)) {
             items = items.stream().filter(item -> item.externalRating() != null).toList();
@@ -127,8 +128,11 @@ public class OpenLibraryClient {
         // Neither endpoint reports a total-count field, so a full page is
         // the only available signal that more might follow; a next page
         // that turns out short or empty ends pagination correctly on its
-        // own.
-        var hasMore = items.size() >= PAGE_SIZE;
+        // own. hasMore is computed from the raw upstream page size, not the
+        // post-keyless-filter item count — a work missing "key" (filtered
+        // out above) must not make a genuinely full upstream page
+        // under-report as the end of the feed.
+        var hasMore = works.size() >= PAGE_SIZE;
         return new CatalogPageResult(items, page, hasMore);
     }
 

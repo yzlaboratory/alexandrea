@@ -128,6 +128,20 @@ class OpenLibraryClientTest {
     }
 
     @Test
+    void aFullUpstreamPageWithAKeylessWorkStillReportsMoreAvailable() {
+        expectTrendingRequest().andRespond(withSuccess(fullPageOfWorksJsonWithOneKeylessWork(), MediaType.APPLICATION_JSON));
+
+        var result = client.trendingBooks(1);
+
+        // The raw upstream page was full (20 works) even though one of them
+        // lacked a key and got filtered out -- hasMore must reflect the raw
+        // upstream count, not the post-keyless-filter item count, or a
+        // genuinely full page under-reports as the end of the feed.
+        assertThat(result.items()).hasSize(19);
+        assertThat(result.hasMore()).isTrue();
+    }
+
+    @Test
     void aWorkWithNoCoverOrPublishYearMapsToNullFieldsRatherThanCrashing() {
         expectTrendingRequest().andRespond(withSuccess("""
             {
@@ -418,6 +432,21 @@ class OpenLibraryClientTest {
 
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().getFirst().title()).isEqualTo("Has A Key");
+    }
+
+    @Test
+    void sortedBooksWithAFullUpstreamPageContainingAKeylessDocStillReportsMoreAvailable() {
+        expectSortedRequest("trending").andRespond(withSuccess(fullPageOfDocsJsonWithOneKeylessDoc(), MediaType.APPLICATION_JSON));
+
+        var result = client.sortedBooks("popularity", "desc", List.of(), null, null, 1);
+
+        // Mirrors aFullUpstreamPageWithAKeylessWorkStillReportsMoreAvailable
+        // for the sorted/discover path: the raw upstream page was full (20
+        // docs) even though one lacked a key and got filtered out --
+        // hasMore must reflect the raw upstream count, not the
+        // post-keyless-filter one.
+        assertThat(result.items()).hasSize(19);
+        assertThat(result.hasMore()).isTrue();
     }
 
     @Test
@@ -949,6 +978,16 @@ class OpenLibraryClientTest {
         return "{\"docs\": [" + docs + "]}";
     }
 
+    // 20 raw docs total: one keyless (filtered out before hasMore's raw-size
+    // check per the fix under test) plus 19 keyed ones.
+    private static String fullPageOfDocsJsonWithOneKeylessDoc() {
+        var docs = new StringBuilder("{\"title\": \"No Key Book\"}");
+        for (var i = 1; i <= 19; i++) {
+            docs.append(',').append("{\"key\": \"/works/OL").append(i).append("W\", \"title\": \"Work ").append(i).append("\"}");
+        }
+        return "{\"docs\": [" + docs + "]}";
+    }
+
     private org.springframework.test.web.client.ResponseActions expectSortedRequest(String expectedSortParam) {
         return server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE_URL + "/search.json")))
             .andExpect(method(HttpMethod.GET))
@@ -975,6 +1014,16 @@ class OpenLibraryClientTest {
                 works.append(',');
             }
             works.append("{\"key\": \"/works/OL").append(i).append("W\", \"title\": \"Work ").append(i).append("\"}");
+        }
+        return "{\"works\": [" + works + "]}";
+    }
+
+    // 20 raw works total: one keyless (filtered out before hasMore's
+    // raw-size check per the fix under test) plus 19 keyed ones.
+    private static String fullPageOfWorksJsonWithOneKeylessWork() {
+        var works = new StringBuilder("{\"title\": \"No Key Book\"}");
+        for (var i = 1; i <= 19; i++) {
+            works.append(',').append("{\"key\": \"/works/OL").append(i).append("W\", \"title\": \"Work ").append(i).append("\"}");
         }
         return "{\"works\": [" + works + "]}";
     }
