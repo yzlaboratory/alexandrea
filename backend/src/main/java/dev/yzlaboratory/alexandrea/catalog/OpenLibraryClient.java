@@ -7,11 +7,13 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.util.UriBuilder;
 
 /**
  * Talks to OpenLibrary's {@code /trending/daily.json} and {@code
@@ -156,18 +158,7 @@ public class OpenLibraryClient {
     }
 
     private OpenLibrarySearchResponse fetchSearch(String query, int page) {
-        return fetchWithRetry(() -> {
-            var response = restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                    .path("/search.json")
-                    .queryParam("q", query)
-                    .queryParam("limit", PAGE_SIZE)
-                    .queryParam("offset", (page - 1) * PAGE_SIZE)
-                    .build())
-                .retrieve()
-                .body(OpenLibrarySearchResponse.class);
-            return response != null ? response : OpenLibrarySearchResponse.empty();
-        });
+        return fetchSearchResponse(page, uriBuilder -> uriBuilder.queryParam("q", query));
     }
 
     private OpenLibrarySearchResponse fetchSorted(
@@ -176,13 +167,23 @@ public class OpenLibraryClient {
     ) {
         var filterQuery = combinedQuery(genreSubjectAliases, availableInLanguageMarc3, pageCountRange);
         var q = query != null ? searchQuery(query, filterQuery) : filterQuery;
+        return fetchSearchResponse(page, uriBuilder -> uriBuilder
+            .queryParam("q", q)
+            .queryParam("sort", sortParam(sortKey, direction))
+            .queryParam("fields", SORTED_FIELDS));
+    }
+
+    // Shared by fetchSearch and fetchSorted: both GET /search.json with the
+    // same limit/offset pagination, the same null-fallback to .empty(), and
+    // the same fetchWithRetry wrapping for ADR 0018's flaky-500 finding —
+    // only which query params get added first differs (q alone for a plain
+    // search; q, sort, and fields for the sorted/discover feed). Mirrors
+    // TmdbClient's fetchResponse, parameterized the same way by a
+    // UnaryOperator<UriBuilder> for that varying step.
+    private OpenLibrarySearchResponse fetchSearchResponse(int page, UnaryOperator<UriBuilder> extraParams) {
         return fetchWithRetry(() -> {
             var response = restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                    .path("/search.json")
-                    .queryParam("q", q)
-                    .queryParam("sort", sortParam(sortKey, direction))
-                    .queryParam("fields", SORTED_FIELDS)
+                .uri(uriBuilder -> extraParams.apply(uriBuilder.path("/search.json"))
                     .queryParam("limit", PAGE_SIZE)
                     .queryParam("offset", (page - 1) * PAGE_SIZE)
                     .build())
