@@ -18,18 +18,10 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * The facade {@code CatalogController} calls: resolves {@code media_type} to
- * the right provider client, checks {@link CatalogCache} first (ADR 0007),
- * and falls through to the upstream call on a miss, caching both the page
- * and its items.
- *
- * <p>A miss is gated by {@link ProviderCircuitBreaker} and, on any failure
- * to reach the provider — whether the breaker is already open or the call
- * itself fails — falls through to whatever stale page is still on hand
- * (ADR 0015) before giving up with {@link CatalogUpstreamException}. ADR
- * 0015 also mentions a best-effort background refresh queued alongside the
- * stale response; this slice skips it; a synchronous fetch on the next
- * request remains correct, just not pre-warmed.
+ * ADR 0015 also describes a best-effort background refresh queued
+ * alongside a stale-cache response; this codebase implements only the
+ * stale-fallback half, not that background refresh — a synchronous fetch
+ * on the next request remains correct, just not pre-warmed.
  */
 @Service
 public class CatalogService {
