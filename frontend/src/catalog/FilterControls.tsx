@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
   Button,
   Chip,
@@ -231,6 +231,14 @@ interface RangeFilterControlProps {
   disabled?: boolean;
 }
 
+// Typing digit-by-digit into Min/Max shouldn't fire a fetch (or send a
+// malformed intermediate value like "9,") on every keystroke — the same
+// debounce idiom CatalogPage's search box uses, applied here because
+// nothing else in this control's commit path (FilterControls'
+// onFilterChange, CatalogPage's setPreference, CatalogGrid's remount key)
+// debounces on its own.
+const RANGE_COMMIT_DEBOUNCE_MS = 300;
+
 function RangeFilterControl({
   field,
   value,
@@ -239,10 +247,37 @@ function RangeFilterControl({
 }: RangeFilterControlProps): ReactNode {
   const presentation = FILTER_FIELD_PRESENTATION[field] ?? { label: field };
   const [min, max] = decodeRange(value);
+  // The visible text while the user is mid-edit; committed via onChange
+  // only once RANGE_COMMIT_DEBOUNCE_MS has passed with no further change to
+  // either field. min/max (derived straight from the `value` prop) is the
+  // last *committed* pair, so a caller-driven change to `value` — a
+  // restored preference, the chip's delete, "Clear filters" — always wins
+  // over an in-flight, not-yet-committed edit.
+  const [localMin, setLocalMin] = useState(min);
+  const [localMax, setLocalMax] = useState(max);
 
-  function commit(nextMin: string, nextMax: string): void {
-    onChange(nextMin === '' && nextMax === '' ? null : `${nextMin},${nextMax}`);
-  }
+  useEffect(() => {
+    setLocalMin(min);
+    setLocalMax(max);
+  }, [min, max]);
+
+  useEffect(() => {
+    // Nothing to commit — either nothing has been typed since the last
+    // commit, or this run is just the sync effect above catching up to a
+    // caller-driven `value` change. Skipping this avoids re-sending an
+    // unchanged value (and, since FilterControls always passes a fresh
+    // object literal down, avoids an extra CatalogGrid remount for no
+    // actual change).
+    if (localMin === min && localMax === max) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      onChange(
+        localMin === '' && localMax === '' ? null : `${localMin},${localMax}`,
+      );
+    }, RANGE_COMMIT_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [localMin, localMax, min, max, onChange]);
 
   return (
     <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -253,11 +288,11 @@ function RangeFilterControl({
         type="number"
         label="Min"
         size="small"
-        value={min}
+        value={localMin}
         disabled={disabled}
         slotProps={{ htmlInput: { min: 0 } }}
         onChange={(event) => {
-          commit(event.target.value, max);
+          setLocalMin(event.target.value);
         }}
         sx={{ width: 90 }}
       />
@@ -265,12 +300,12 @@ function RangeFilterControl({
         type="number"
         label="Max"
         size="small"
-        value={max}
+        value={localMax}
         disabled={disabled}
         helperText={disabled ? 'Not available while searching' : undefined}
         slotProps={{ htmlInput: { min: 0 } }}
         onChange={(event) => {
-          commit(min, event.target.value);
+          setLocalMax(event.target.value);
         }}
         sx={{ width: 90 }}
       />
