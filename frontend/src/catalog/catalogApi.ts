@@ -2,10 +2,8 @@
 // unlike authApi.ts's postJson helper — no X-XSRF-TOKEN header is needed
 // here, mirroring authApi's own fetchSession.
 
-// Named CatalogItem, not CatalogEntry: CONTEXT.md retires "entry" as an
-// ambiguous synonym for this concept (it used to mean a Catalog Item, a
-// Watchlist entry, and a Library entry interchangeably) and settles on
-// "Catalog Item" as the domain term.
+// Named CatalogItem per CONTEXT.md's resolved "entry" ambiguity (see
+// "Flagged ambiguities").
 export interface CatalogItem {
   provider: string;
   externalId: string;
