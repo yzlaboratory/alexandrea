@@ -254,6 +254,19 @@ class CatalogEndpointTest {
         }
     }
 
+    // browse() now consults surfacePreferenceStore on every call, including
+    // a plain/invalid-value request that resolves to nothing (see
+    // CatalogService#browse's "nothing meaningful requested" fast path) —
+    // so a loggedIn() test that expects the plain popular/trending feed
+    // must start from an actually-clean slate for every media type, not
+    // just whatever the previous loggedIn() test happened to leave behind.
+    // Dedicated ids (loggedInAs(9xxx)) don't need this: each is used by
+    // exactly one test.
+    @BeforeEach
+    void resetSharedUserPreferences() {
+        jdbcClient.sql("DELETE FROM surface_preferences WHERE user_id = :userId").param("userId", DEFAULT_TEST_USER_ID).update();
+    }
+
     @BeforeEach
     void resetState() {
         requestCount.set(0);
