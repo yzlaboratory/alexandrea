@@ -144,30 +144,24 @@ public class CatalogService {
      * The sort- and filter-aware overload the Catalog controller calls.
      * While a search is active, {@code sortKey}/{@code sortDirection}/
      * {@code filters} are honored only as far as ADR 0018's "Behavior under
-     * active text search" table allows: dropped entirely for Movies/TV
-     * (TMDB's search endpoints accept only the query itself, so this method
-     * goes straight to {@link #searchFeedFor(String, String, int)} without
-     * ever resolving or persisting either), sort-only-dropped for Games
-     * (IGDB's search clause can't combine with an explicit sort, but its
-     * filters still apply), and fully honored for Books (OpenLibrary's
-     * search endpoint already combines a query with sort and every filter).
-     * Outside a search, every media type resolves and persists sort/filters
-     * exactly as before.
+     * active text search" table allows — see the per-provider breakdown
+     * above {@link #MOVIES_TV_FILTERS_DISABLED_WHILE_SEARCHING}. Outside a
+     * search, every media type resolves and persists sort/filters exactly
+     * as before.
      *
      * <p>{@code filters} is keyed by filter field (see {@link
-     * CatalogFilterKeys}); each field is resolved independently by the same
-     * rule an unrecognised sort key/direction already follows: a field
-     * simply absent from the map (the caller didn't mention it) falls back
-     * to whatever's already persisted for that field, so that a request
-     * changing only one field can't silently clobber another (the read-
-     * merge-write ADR 0025's store Javadoc requires, since {@link
-     * SurfacePreferenceStore#upsert} replaces the whole row). A field mapped
-     * to the <em>empty string</em> is different from being absent: it's the
+     * CatalogFilterKeys}); see {@link #resolveFilters} for how each field
+     * resolves independently against what's requested vs. persisted. That
+     * independence is what the read-merge-write ADR 0025's store Javadoc
+     * requires, since {@link SurfacePreferenceStore#upsert} replaces the
+     * whole row — a field a request doesn't mention can't silently clobber
+     * another field's persisted value. A field mapped to the <em>empty
+     * string</em> is different from being absent, though: it's the
      * frontend's explicit "no value selected" signal (a deselected filter
-     * chip) and clears rather than falls back — {@code CatalogController}
-     * can make this distinction because HTTP already distinguishes an
-     * absent query param from a present-but-empty one. The combined result —
-     * real or persisted-fallback sort, and each field's real, cleared, or
+     * chip), which {@code CatalogController} can distinguish from "not
+     * mentioned" because HTTP already distinguishes an absent query param
+     * from a present-but-empty one. The combined result — real or
+     * persisted-fallback sort, and each field's real, cleared, or
      * persisted-fallback value — is what actually gets upserted and what the
      * page is fetched with; this holds even while a media type's search
      * disables part of that combination for the *fetch*, so a locked field
