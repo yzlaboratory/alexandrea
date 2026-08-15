@@ -279,9 +279,25 @@ function RangeFilterControl({
     };
   }, [localMin, localMax, min, max, onChange]);
 
+  // WCAG 2.1 SC 1.3.1: the visible label reads as "for this pair of
+  // inputs" to a sighted user, but nothing made that programmatic — a
+  // screen reader had no way to associate it with Min/Max. MUI's own
+  // outlined TextField already renders its own <fieldset>/<legend> pair
+  // internally (for the notched-border visual), so nesting another
+  // <fieldset> around the group fights that rather than layering cleanly;
+  // role="group" plus aria-labelledby gets the same accessible-name
+  // association without touching that internal markup.
+  const groupLabelId = `${field}-range-label`;
+
   return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-      <Typography variant="body2" color="text.secondary">
+    <Stack
+      direction="row"
+      spacing={1}
+      sx={{ alignItems: 'center' }}
+      role="group"
+      aria-labelledby={groupLabelId}
+    >
+      <Typography id={groupLabelId} variant="body2" color="text.secondary">
         {presentation.label}
       </Typography>
       <TextField
