@@ -16,9 +16,9 @@ import org.springframework.stereotype.Component;
  * breaker, a failed one re-opens it for another {@link #OPEN_DURATION}.
  *
  * <p>One instance covers every provider, keyed by provider name in an
- * internal map, so today's single TMDB caller and slice 3's OpenLibrary/IGDB
- * clients share this bean without per-provider wiring. State is in-process
- * only, the same shape as the auth module's
+ * internal map, so the TMDB, OpenLibrary, and IGDB clients all share this
+ * bean without per-provider wiring. State is in-process only, the same
+ * shape as the auth module's
  * {@code RateLimiter}/{@code RateLimitBucketStore} pair minus the SQLite
  * persistence — ADR 0015 wants the breaker to reset closed on every restart,
  * so there's nothing to persist.

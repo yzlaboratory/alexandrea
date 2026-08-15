@@ -18,8 +18,7 @@ import java.util.function.Supplier;
  * fast-forward past the TTL without sleeping — the same trick
  * {@code AuthConfig}'s {@link java.time.Clock} bean plays for token expiry.
  *
- * <p>Both caches are also size-bounded (ADR 0026: "Cache size is bounded by
- * Caffeine's own eviction policy (size/weight-based)"). {@code MAX_PAGES} is
+ * <p>Both caches are also size-bounded, per ADR 0026. {@code MAX_PAGES} is
  * a generous multiple of TMDB's own 500-page cap on the "popular" feed, and
  * {@code MAX_ITEMS} covers every item that many pages could ever
  * reference, so eviction here is a genuine backstop, not a limit expected to
