@@ -488,7 +488,7 @@ class CatalogEndpointTest {
 
     @Test
     void returnsAPageOfTrendingBooksWithExternalRatingAlwaysNullForNow() throws Exception {
-        // /trending/daily.json carries no rating field at all (see #48) —
+        // /trending/daily.json carries no rating field at all —
         // OpenLibraryClient never populates externalRating for Books yet,
         // regardless of what the upstream response contains.
         nextOpenLibraryResponseBody.set("""
@@ -1304,10 +1304,10 @@ class CatalogEndpointTest {
             .andExpect(jsonPath("$.filters.genre").doesNotExist());
     }
 
-    // --- Runtime (Movies/TV) and page count (Books) — ADR 0018's two range
-    // filters (issue 45). Both encode as a single opaque "<min>,<max>"
-    // string value, the same shape every other filter kind's persisted
-    // value already has, so no new persistence mechanism is exercised here
+    // --- Runtime (Movies/TV) and page count (Books) — ADR 0018's two
+    // range filters. Both encode as a single opaque "<min>,<max>" string
+    // value, the same shape every other filter kind's persisted value
+    // already has, so no new persistence mechanism is exercised here
     // beyond the existing read-merge-write path.
 
     @Test
@@ -1534,8 +1534,8 @@ class CatalogEndpointTest {
         );
     }
 
-    // --- Issue 47: a text search disables the sort/filter fields ADR
-    // 0018's "Behavior under active text search" table says the provider's
+    // --- A text search disables the sort/filter fields ADR 0018's
+    // "Behavior under active text search" table says the provider's
     // search endpoint can't honor, signals which ones via disabledFilters/
     // sortDisabled on the browse response, and restores the previously
     // applied sort/filters once the search clears.
