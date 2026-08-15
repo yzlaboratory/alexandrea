@@ -161,21 +161,12 @@ public class IgdbClient {
     }
 
     private static String discoverRequestBody(String sortKey, String direction, String genre, String availableInLanguage, int page) {
-        var offset = (page - 1) * PAGE_SIZE;
-        var conditions = new ArrayList<String>();
-        if (genre != null) {
-            conditions.add("genres = (%s)".formatted(genre));
-        }
-        if (availableInLanguage != null) {
-            conditions.add("language_supports.language = (%s)".formatted(availableInLanguage));
-        }
-        var whereClause = conditions.isEmpty() ? "" : "where " + String.join(" & ", conditions) + ";\n";
         return """
             fields name,cover.image_id,first_release_date,total_rating;
             %ssort %s %s;
             limit %d;
             offset %d;
-            """.formatted(whereClause, igdbSortField(sortKey), direction, PAGE_SIZE, offset);
+            """.formatted(buildWhereClause(genre, availableInLanguage), igdbSortField(sortKey), direction, PAGE_SIZE, offsetForPage(page));
     }
 
     // ADR 0018 pins only the default direction's literal Apicalypse clause
@@ -193,7 +184,22 @@ public class IgdbClient {
     }
 
     private static String searchRequestBody(String query, String genre, String availableInLanguage, int page) {
-        var offset = (page - 1) * PAGE_SIZE;
+        return """
+            search "%s";
+            %sfields name,cover.image_id,first_release_date,total_rating;
+            limit %d;
+            offset %d;
+            """.formatted(escapeApicalypseString(query), buildWhereClause(genre, availableInLanguage), PAGE_SIZE, offsetForPage(page));
+    }
+
+    // Shared by discoverRequestBody and searchRequestBody: an optional genre
+    // (IGDB's native genre id, ADR 0013's "native enum" for Games) and an
+    // optional availableInLanguage (IGDB's native language id) each become
+    // their own `where` sub-clause, combined with `&` when both are given so
+    // the result narrows to entries matching both rather than either; with
+    // neither given, the `where` line is omitted entirely rather than sent
+    // empty.
+    private static String buildWhereClause(String genre, String availableInLanguage) {
         var conditions = new ArrayList<String>();
         if (genre != null) {
             conditions.add("genres = (%s)".formatted(genre));
@@ -201,13 +207,11 @@ public class IgdbClient {
         if (availableInLanguage != null) {
             conditions.add("language_supports.language = (%s)".formatted(availableInLanguage));
         }
-        var whereClause = conditions.isEmpty() ? "" : "where " + String.join(" & ", conditions) + ";\n";
-        return """
-            search "%s";
-            %sfields name,cover.image_id,first_release_date,total_rating;
-            limit %d;
-            offset %d;
-            """.formatted(escapeApicalypseString(query), whereClause, PAGE_SIZE, offset);
+        return conditions.isEmpty() ? "" : "where " + String.join(" & ", conditions) + ";\n";
+    }
+
+    private static int offsetForPage(int page) {
+        return (page - 1) * PAGE_SIZE;
     }
 
     // A query containing a literal quote or backslash would otherwise break

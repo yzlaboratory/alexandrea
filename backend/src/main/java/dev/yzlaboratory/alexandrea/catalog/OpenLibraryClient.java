@@ -7,11 +7,13 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.util.UriBuilder;
 
 /**
  * Talks to OpenLibrary's {@code /trending/daily.json} and {@code
@@ -101,12 +103,13 @@ public class OpenLibraryClient {
         var response = fetchSorted(query, sortKey, direction, genreSubjectAliases, availableInLanguageMarc3, pageCountRange, page);
         var docs = response.docs() != null ? response.docs() : List.<OpenLibraryWork>of();
         var keyedDocs = docs.stream().filter(work -> work.key() != null).toList();
-        // hasMore reflects the upstream page's own fullness, computed before
-        // the external_rating null-filter below — a page that upstream filled
-        // but whose books happen to be mostly unrated must not look like the
-        // end of the feed (ADR 0006's shrink is a display concern, not a
-        // pagination one).
-        var hasMore = keyedDocs.size() >= PAGE_SIZE;
+        // hasMore reflects the raw upstream page size, computed before both
+        // the keyless-work filter above and the external_rating null-filter
+        // below — a page that upstream filled but that happens to include a
+        // keyless or mostly-unrated book must not look like the end of the
+        // feed (ADR 0006's shrink is a display concern, not a pagination
+        // one).
+        var hasMore = docs.size() >= PAGE_SIZE;
         var items = keyedDocs.stream().map(this::toSortedItem).toList();
         if (CatalogSort.EXTERNAL_RATING.equals(sortKey)) {
             items = items.stream().filter(item -> item.externalRating() != null).toList();
@@ -127,8 +130,11 @@ public class OpenLibraryClient {
         // Neither endpoint reports a total-count field, so a full page is
         // the only available signal that more might follow; a next page
         // that turns out short or empty ends pagination correctly on its
-        // own.
-        var hasMore = items.size() >= PAGE_SIZE;
+        // own. hasMore is computed from the raw upstream page size, not the
+        // post-keyless-filter item count — a work missing "key" (filtered
+        // out above) must not make a genuinely full upstream page
+        // under-report as the end of the feed.
+        var hasMore = works.size() >= PAGE_SIZE;
         return new CatalogPageResult(items, page, hasMore);
     }
 
@@ -152,18 +158,7 @@ public class OpenLibraryClient {
     }
 
     private OpenLibrarySearchResponse fetchSearch(String query, int page) {
-        return fetchWithRetry(() -> {
-            var response = restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                    .path("/search.json")
-                    .queryParam("q", query)
-                    .queryParam("limit", PAGE_SIZE)
-                    .queryParam("offset", (page - 1) * PAGE_SIZE)
-                    .build())
-                .retrieve()
-                .body(OpenLibrarySearchResponse.class);
-            return response != null ? response : OpenLibrarySearchResponse.empty();
-        });
+        return fetchSearchResponse(page, uriBuilder -> uriBuilder.queryParam("q", query));
     }
 
     private OpenLibrarySearchResponse fetchSorted(
@@ -172,13 +167,23 @@ public class OpenLibraryClient {
     ) {
         var filterQuery = combinedQuery(genreSubjectAliases, availableInLanguageMarc3, pageCountRange);
         var q = query != null ? searchQuery(query, filterQuery) : filterQuery;
+        return fetchSearchResponse(page, uriBuilder -> uriBuilder
+            .queryParam("q", q)
+            .queryParam("sort", sortParam(sortKey, direction))
+            .queryParam("fields", SORTED_FIELDS));
+    }
+
+    // Shared by fetchSearch and fetchSorted: both GET /search.json with the
+    // same limit/offset pagination, the same null-fallback to .empty(), and
+    // the same fetchWithRetry wrapping for ADR 0018's flaky-500 finding —
+    // only which query params get added first differs (q alone for a plain
+    // search; q, sort, and fields for the sorted/discover feed). Mirrors
+    // TmdbClient's fetchResponse, parameterized the same way by a
+    // UnaryOperator<UriBuilder> for that varying step.
+    private OpenLibrarySearchResponse fetchSearchResponse(int page, UnaryOperator<UriBuilder> extraParams) {
         return fetchWithRetry(() -> {
             var response = restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                    .path("/search.json")
-                    .queryParam("q", q)
-                    .queryParam("sort", sortParam(sortKey, direction))
-                    .queryParam("fields", SORTED_FIELDS)
+                .uri(uriBuilder -> extraParams.apply(uriBuilder.path("/search.json"))
                     .queryParam("limit", PAGE_SIZE)
                     .queryParam("offset", (page - 1) * PAGE_SIZE)
                     .build())
