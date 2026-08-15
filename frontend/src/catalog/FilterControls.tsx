@@ -78,8 +78,8 @@ function isFieldActive(
 
 interface FilterControlsProps {
   // Driven entirely by the capability payload the backend returns with each
-  // page (ADR 0018) — this component never hardcodes which media types get
-  // which filter kind. A media type can report more than one field (e.g.
+  // page — this component never hardcodes which media types get which
+  // filter kind. A media type can report more than one field (e.g.
   // Movies: genre and originalLanguage), each rendered as its own
   // independently-selectable control.
   availableFilters: Record<string, CatalogFilterOption[]>;
@@ -87,9 +87,8 @@ interface FilterControlsProps {
   // to null means no value is selected for it.
   selectedFilters: Record<string, string | null>;
   onFilterChange: (field: string, value: string | null) => void;
-  // Fields ADR 0018 locks right now because a text search is active
-  // (CatalogService's per-provider "Behavior under active text search"
-  // table) — distinct from availableFilters, which is about whether a
+  // See ADR 0018 for when a field is locked because a text search is
+  // active — distinct from availableFilters, which is about whether a
   // field exists for this media type at all, not whether it's usable this
   // instant. A locked field keeps rendering with its current value; this
   // component never clears it, so it reactivates with that value intact
