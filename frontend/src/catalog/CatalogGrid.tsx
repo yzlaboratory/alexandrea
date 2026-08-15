@@ -201,7 +201,11 @@ function CatalogGrid({
         ))}
       </Box>
       {status === 'loading' && (
-        <Stack sx={{ alignItems: 'center', py: 2 }}>
+        <Stack
+          role="status"
+          aria-live="polite"
+          sx={{ alignItems: 'center', py: 2 }}
+        >
           <CircularProgress size={24} aria-label="Loading more" />
         </Stack>
       )}
@@ -222,7 +226,12 @@ function CatalogGrid({
         </Alert>
       )}
       {showEmptyMessage && search && (
-        <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
+        <Stack
+          role="status"
+          aria-live="polite"
+          spacing={1}
+          sx={{ alignItems: 'flex-start' }}
+        >
           <Typography color="text.secondary">
             No results for &ldquo;{search}&rdquo;.
           </Typography>
@@ -234,7 +243,9 @@ function CatalogGrid({
         </Stack>
       )}
       {showEmptyMessage && !search && (
-        <Typography color="text.secondary">No items found.</Typography>
+        <Typography role="status" aria-live="polite" color="text.secondary">
+          No items found.
+        </Typography>
       )}
       <div ref={sentinelRef} data-testid="catalog-grid-sentinel" />
     </Stack>

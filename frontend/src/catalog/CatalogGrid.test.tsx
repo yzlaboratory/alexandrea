@@ -174,6 +174,49 @@ describe('CatalogGrid', () => {
     expect(await screen.findByText('No items found.')).toBeInTheDocument();
   });
 
+  it('exposes the initial loading state via an accessible live region', () => {
+    mockedFetchCatalogPage.mockImplementationOnce(
+      () => new Promise(() => undefined),
+    );
+
+    render(<CatalogGrid mediaType="movies" />);
+
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
+  it('exposes the "no items" empty-state message via an accessible live region', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [], page: 1, hasMore: false },
+    });
+
+    render(<CatalogGrid mediaType="movies" />);
+
+    // findByRole('status') alone would risk matching the transient loading
+    // region present at mount instead — find the actual message text first,
+    // then confirm it lives inside a live region.
+    const message = await screen.findByText('No items found.');
+    expect(message.closest('[role="status"]')).not.toBeNull();
+  });
+
+  it('exposes the "no results for" search empty-state message via an accessible live region', async () => {
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: { items: [], page: 1, hasMore: false },
+    });
+
+    render(
+      <CatalogGrid
+        mediaType="movies"
+        search="zzzznomatch"
+        onClearSearch={vi.fn()}
+      />,
+    );
+
+    const message = await screen.findByText(/no results for/i);
+    expect(message.closest('[role="status"]')).not.toBeNull();
+  });
+
   it('shows an error with a retry action when the first page fails to load', async () => {
     mockedFetchCatalogPage.mockResolvedValueOnce({ status: 'error' });
 
