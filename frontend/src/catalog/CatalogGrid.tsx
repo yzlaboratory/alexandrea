@@ -26,12 +26,11 @@ interface CatalogGridProps {
   // non-empty value replaces it with title-search results.
   search?: string;
   // Which of sort/direction/filters a provider's search endpoint can
-  // actually honor alongside `search` varies by media type (ADR 0018's
-  // "Behavior under active text search" table) — CatalogService decides
-  // that server-side, dropping whatever it can't use. This component stays
-  // a plain pass-through of whatever CatalogPage currently has selected,
-  // sending search combined with sort/filters whenever both are given,
-  // rather than duplicating that per-provider rule itself.
+  // actually honor alongside `search` is ADR 0018's call, decided
+  // server-side by CatalogService. This component stays a plain
+  // pass-through of whatever CatalogPage currently has selected, sending
+  // search combined with sort/filters whenever both are given, rather than
+  // duplicating that per-provider rule itself.
   sort?: string;
   direction?: string;
   // Keyed by filter field (see catalogApi's CATALOG_FILTER_FIELDS). A
@@ -201,7 +200,11 @@ function CatalogGrid({
         ))}
       </Box>
       {status === 'loading' && (
-        <Stack sx={{ alignItems: 'center', py: 2 }}>
+        <Stack
+          role="status"
+          aria-live="polite"
+          sx={{ alignItems: 'center', py: 2 }}
+        >
           <CircularProgress size={24} aria-label="Loading more" />
         </Stack>
       )}
@@ -222,7 +225,12 @@ function CatalogGrid({
         </Alert>
       )}
       {showEmptyMessage && search && (
-        <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
+        <Stack
+          role="status"
+          aria-live="polite"
+          spacing={1}
+          sx={{ alignItems: 'flex-start' }}
+        >
           <Typography color="text.secondary">
             No results for &ldquo;{search}&rdquo;.
           </Typography>
@@ -234,7 +242,9 @@ function CatalogGrid({
         </Stack>
       )}
       {showEmptyMessage && !search && (
-        <Typography color="text.secondary">No items found.</Typography>
+        <Typography role="status" aria-live="polite" color="text.secondary">
+          No items found.
+        </Typography>
       )}
       <div ref={sentinelRef} data-testid="catalog-grid-sentinel" />
     </Stack>

@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 
 // Keys/values match what CatalogService validates and CatalogController's
-// `sort`/`direction` query params expect verbatim (ADR 0018's four sorts).
+// `sort`/`direction` query params expect verbatim.
 export const SORT_OPTIONS: readonly { key: string; label: string }[] = [
   { key: 'popularity', label: 'Popularity' },
   { key: 'release_date', label: 'Release date' },
@@ -20,11 +20,10 @@ interface SortControlProps {
   sortKey: string;
   direction: string;
   onChange: (sortKey: string, direction: string) => void;
-  // ADR 0018 locks sort while a search is active for every media type
-  // except Books (its "Behavior under active text search" table) — the
-  // control renders locked with a note rather than disappearing, and
-  // sortKey/direction keep displaying whatever was selected before search
-  // started, since this component never clears them itself.
+  // See ADR 0018 for when sort is locked. This component just renders
+  // locked with a note rather than disappearing, and sortKey/direction keep
+  // displaying whatever was selected before search started, since this
+  // component never clears them itself.
   disabled?: boolean;
 }
 

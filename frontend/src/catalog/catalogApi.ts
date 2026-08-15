@@ -2,10 +2,8 @@
 // unlike authApi.ts's postJson helper — no X-XSRF-TOKEN header is needed
 // here, mirroring authApi's own fetchSession.
 
-// Named CatalogItem, not CatalogEntry: CONTEXT.md retires "entry" as an
-// ambiguous synonym for this concept (it used to mean a Catalog Item, a
-// Watchlist entry, and a Library entry interchangeably) and settles on
-// "Catalog Item" as the domain term.
+// Named CatalogItem per CONTEXT.md's resolved "entry" ambiguity (see
+// "Flagged ambiguities").
 export interface CatalogItem {
   provider: string;
   externalId: string;
@@ -26,10 +24,10 @@ export interface CatalogFilterOption {
   label: string;
 }
 
-// The filter fields ADR 0018 defines, in the fixed order FilterControls
-// renders them — the single source both CatalogPage's persisted-preference
-// state and FilterControls' rendering order draw from, so the two can never
-// silently drift out of sync on which fields exist.
+// The filter fields, in the fixed order FilterControls renders them — the
+// single source both CatalogPage's persisted-preference state and
+// FilterControls' rendering order draw from, so the two can never silently
+// drift out of sync on which fields exist.
 export const CATALOG_FILTER_FIELDS = [
   'genre',
   'originalLanguage',
@@ -59,12 +57,11 @@ export interface CatalogPageResult {
   // own.
   availableFilters?: Record<string, CatalogFilterOption[]>;
   // Which of availableFilters' fields, plus sort, ADR 0018 locks right now
-  // because this response reflects an active text search (its "Behavior
-  // under active text search" table) — e.g. Movies/TV lock
-  // genre/originalLanguage/runtime/sort, Games locks sort only, Books locks
-  // nothing. Distinct from availableFilters: that's "offered for this media
-  // type at all", this is "usable this instant". Both undefined (same as
-  // an empty array / false) whenever no search is active.
+  // because this response reflects an active text search — see ADR 0018 for
+  // which fields that is per media type. Distinct from availableFilters:
+  // that's "offered for this media type at all", this is "usable this
+  // instant". Both undefined (same as an empty array / false) whenever no
+  // search is active.
   disabledFilters?: string[];
   sortDisabled?: boolean;
 }

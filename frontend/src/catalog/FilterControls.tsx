@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
   Button,
   Chip,
@@ -78,8 +78,8 @@ function isFieldActive(
 
 interface FilterControlsProps {
   // Driven entirely by the capability payload the backend returns with each
-  // page (ADR 0018) — this component never hardcodes which media types get
-  // which filter kind. A media type can report more than one field (e.g.
+  // page — this component never hardcodes which media types get which
+  // filter kind. A media type can report more than one field (e.g.
   // Movies: genre and originalLanguage), each rendered as its own
   // independently-selectable control.
   availableFilters: Record<string, CatalogFilterOption[]>;
@@ -87,9 +87,8 @@ interface FilterControlsProps {
   // to null means no value is selected for it.
   selectedFilters: Record<string, string | null>;
   onFilterChange: (field: string, value: string | null) => void;
-  // Fields ADR 0018 locks right now because a text search is active
-  // (CatalogService's per-provider "Behavior under active text search"
-  // table) — distinct from availableFilters, which is about whether a
+  // See ADR 0018 for when a field is locked because a text search is
+  // active — distinct from availableFilters, which is about whether a
   // field exists for this media type at all, not whether it's usable this
   // instant. A locked field keeps rendering with its current value; this
   // component never clears it, so it reactivates with that value intact
@@ -231,6 +230,14 @@ interface RangeFilterControlProps {
   disabled?: boolean;
 }
 
+// Typing digit-by-digit into Min/Max shouldn't fire a fetch (or send a
+// malformed intermediate value like "9,") on every keystroke — the same
+// debounce idiom CatalogPage's search box uses, applied here because
+// nothing else in this control's commit path (FilterControls'
+// onFilterChange, CatalogPage's setPreference, CatalogGrid's remount key)
+// debounces on its own.
+const RANGE_COMMIT_DEBOUNCE_MS = 300;
+
 function RangeFilterControl({
   field,
   value,
@@ -239,25 +246,68 @@ function RangeFilterControl({
 }: RangeFilterControlProps): ReactNode {
   const presentation = FILTER_FIELD_PRESENTATION[field] ?? { label: field };
   const [min, max] = decodeRange(value);
+  // The visible text while the user is mid-edit; committed via onChange
+  // only once RANGE_COMMIT_DEBOUNCE_MS has passed with no further change to
+  // either field. min/max (derived straight from the `value` prop) is the
+  // last *committed* pair, so a caller-driven change to `value` — a
+  // restored preference, the chip's delete, "Clear filters" — always wins
+  // over an in-flight, not-yet-committed edit.
+  const [localMin, setLocalMin] = useState(min);
+  const [localMax, setLocalMax] = useState(max);
 
-  function commit(nextMin: string, nextMax: string): void {
-    onChange(nextMin === '' && nextMax === '' ? null : `${nextMin},${nextMax}`);
-  }
+  useEffect(() => {
+    setLocalMin(min);
+    setLocalMax(max);
+  }, [min, max]);
+
+  useEffect(() => {
+    // Nothing to commit — either nothing has been typed since the last
+    // commit, or this run is just the sync effect above catching up to a
+    // caller-driven `value` change. Skipping this avoids re-sending an
+    // unchanged value (and, since FilterControls always passes a fresh
+    // object literal down, avoids an extra CatalogGrid remount for no
+    // actual change).
+    if (localMin === min && localMax === max) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      onChange(
+        localMin === '' && localMax === '' ? null : `${localMin},${localMax}`,
+      );
+    }, RANGE_COMMIT_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [localMin, localMax, min, max, onChange]);
+
+  // WCAG 2.1 SC 1.3.1: the visible label reads as "for this pair of
+  // inputs" to a sighted user, but nothing made that programmatic — a
+  // screen reader had no way to associate it with Min/Max. MUI's own
+  // outlined TextField already renders its own <fieldset>/<legend> pair
+  // internally (for the notched-border visual), so nesting another
+  // <fieldset> around the group fights that rather than layering cleanly;
+  // role="group" plus aria-labelledby gets the same accessible-name
+  // association without touching that internal markup.
+  const groupLabelId = `${field}-range-label`;
 
   return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-      <Typography variant="body2" color="text.secondary">
+    <Stack
+      direction="row"
+      spacing={1}
+      sx={{ alignItems: 'center' }}
+      role="group"
+      aria-labelledby={groupLabelId}
+    >
+      <Typography id={groupLabelId} variant="body2" color="text.secondary">
         {presentation.label}
       </Typography>
       <TextField
         type="number"
         label="Min"
         size="small"
-        value={min}
+        value={localMin}
         disabled={disabled}
         slotProps={{ htmlInput: { min: 0 } }}
         onChange={(event) => {
-          commit(event.target.value, max);
+          setLocalMin(event.target.value);
         }}
         sx={{ width: 90 }}
       />
@@ -265,12 +315,12 @@ function RangeFilterControl({
         type="number"
         label="Max"
         size="small"
-        value={max}
+        value={localMax}
         disabled={disabled}
         helperText={disabled ? 'Not available while searching' : undefined}
         slotProps={{ htmlInput: { min: 0 } }}
         onChange={(event) => {
-          commit(min, event.target.value);
+          setLocalMax(event.target.value);
         }}
         sx={{ width: 90 }}
       />

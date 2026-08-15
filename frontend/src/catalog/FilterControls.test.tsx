@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import FilterControls from './FilterControls';
 
@@ -450,6 +450,43 @@ describe('FilterControls', () => {
     expect(screen.getByLabelText('Min')).toBeDisabled();
     expect(screen.getByLabelText('Max')).toBeDisabled();
     expect(screen.queryByTestId('CancelIcon')).not.toBeInTheDocument();
+  });
+
+  it('debounces a range filter so typing digit-by-digit does not fire onFilterChange until the debounce settles', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    const onFilterChange = vi.fn();
+    render(
+      <FilterControls
+        availableFilters={{ runtime: [] }}
+        selectedFilters={{}}
+        onFilterChange={onFilterChange}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('Min'), '90');
+
+    // Not fired yet — even though two keystrokes landed, the debounce
+    // hasn't settled, and no malformed intermediate value like "9," ever
+    // reaches the caller.
+    expect(onFilterChange).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(onFilterChange).toHaveBeenCalledExactlyOnceWith('runtime', '90,');
+    });
+  });
+
+  it("associates a range filter's label with its Min/Max inputs as a group", () => {
+    render(
+      <FilterControls
+        availableFilters={{ runtime: [] }}
+        selectedFilters={{}}
+        onFilterChange={vi.fn()}
+      />,
+    );
+
+    const group = screen.getByRole('group', { name: 'Runtime (minutes)' });
+    expect(within(group).getByLabelText('Min')).toBeInTheDocument();
+    expect(within(group).getByLabelText('Max')).toBeInTheDocument();
   });
 
   it('renders only the available-in-language control for Books, not original language', () => {
