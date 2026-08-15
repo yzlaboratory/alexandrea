@@ -33,8 +33,11 @@ function App(): ReactNode {
         />
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
-            {/* Ahead of the generic /:mediaType/:surface route below so it
-                wins the match for every media type's Catalog surface —
+            {/* Wins the match for every media type's Catalog surface over
+                the generic /:mediaType/:surface route below regardless of
+                declaration order — React Router ranks routes by automatic
+                specificity scoring, and this route's static /catalog
+                segment outscores that route's dynamic :surface segment.
                 CatalogSurfaceRoute itself decides which :mediaType values
                 render the real CatalogPage vs. the generic placeholder,
                 keeping :mediaType a genuine route param either way. */}
