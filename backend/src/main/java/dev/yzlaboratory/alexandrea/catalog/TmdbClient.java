@@ -238,11 +238,13 @@ public class TmdbClient {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private record TmdbPopularResponse(
-        int page, List<TmdbTitle> results, @JsonProperty("total_pages") int totalPages
-    ) {
+    private record TmdbPopularResponse(List<TmdbTitle> results, @JsonProperty("total_pages") int totalPages) {
+        // Sets totalPages to the requested page itself, not 0: fetchPage's
+        // hasMore = page < response.totalPages() must come out false for a
+        // null/malformed response, and totalPages == page is the smallest
+        // value that guarantees that regardless of which page was requested.
         static TmdbPopularResponse empty(int page) {
-            return new TmdbPopularResponse(page, List.of(), page);
+            return new TmdbPopularResponse(List.of(), page);
         }
     }
 
