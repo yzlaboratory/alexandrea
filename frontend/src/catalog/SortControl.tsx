@@ -9,7 +9,7 @@ import {
 
 // Keys/values match what CatalogService validates and CatalogController's
 // `sort`/`direction` query params expect verbatim.
-export const SORT_OPTIONS: readonly { key: string; label: string }[] = [
+const SORT_OPTIONS: readonly { key: string; label: string }[] = [
   { key: 'popularity', label: 'Popularity' },
   { key: 'release_date', label: 'Release date' },
   { key: 'title', label: 'Title' },
