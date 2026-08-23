@@ -105,16 +105,8 @@ function CatalogGrid({
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // The sentinel's latest known intersection state, updated on every
-  // observer callback (not just when it's true). IntersectionObserver only
-  // ever fires on a threshold-crossing transition — including the one
-  // guaranteed initial firing on observe() — never for "stayed visible,
-  // nothing changed." Without tracking this, a page that doesn't push the
-  // sentinel out of view leaves nothing to trigger the next load: the ratio
-  // never crosses zero again, so the observer stays silent forever. See the
-  // tail of loadNextPage below, which consults this to keep loading instead
-  // of waiting on an observer event that will never come.
   const isIntersectingRef = useRef(false);
+  const loadNextPageRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   // search combines with sort and/or filters whenever both are given —
   // CatalogService decides server-side which of them its provider's search
@@ -160,18 +152,16 @@ function CatalogGrid({
     });
     nextPageRef.current = outcome.result.page + 1;
     hasMoreRef.current = outcome.result.hasMore;
-    // The sentinel never left the viewport while this page was loading (the
-    // newly-appended items didn't push it out), so no further intersection-
-    // crossing event will ever arrive to resume loading on its own — chain
-    // straight into the next page instead of stalling. loadingRef.current
-    // is already false again above, so this re-entry is exactly as safe as
-    // any other loadNextPage() call.
     if (isIntersectingRef.current && hasMoreRef.current) {
-      void loadNextPage();
+      void loadNextPageRef.current();
       return;
     }
     setStatus('idle');
   }, [fetchPage, onAvailableFiltersChange, onSearchCapabilitiesChange]);
+
+  useEffect(() => {
+    loadNextPageRef.current = loadNextPage;
+  });
 
   // Loads this instance's first page. loadNextPage's identity is stable for
   // the lifetime of one mounted instance (mediaType is fixed per instance —
