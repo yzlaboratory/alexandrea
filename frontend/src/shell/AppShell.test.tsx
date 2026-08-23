@@ -81,16 +81,16 @@ describe('AppShell', () => {
     });
   });
 
-  it('shows a placeholder body since browsing is not built yet', async () => {
+  it('shows a placeholder body for the not-yet-built Watchlist surface', async () => {
     renderShell('/movies/watchlist');
 
-    expect(await screen.findByText(/later slice/i)).toBeInTheDocument();
+    expect(await screen.findByText(/nothing to show/i)).toBeInTheDocument();
   });
 
   it('does not crash and selects no tab for an unrecognized route segment', async () => {
     renderShell('/bogus/whatever');
 
-    expect(await screen.findByText(/later slice/i)).toBeInTheDocument();
+    expect(await screen.findByText(/nothing to show/i)).toBeInTheDocument();
     for (const tab of screen.getAllByRole('tab')) {
       expect(tab).toHaveAttribute('aria-selected', 'false');
     }

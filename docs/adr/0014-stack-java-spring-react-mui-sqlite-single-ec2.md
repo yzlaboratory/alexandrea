@@ -18,15 +18,14 @@ origins behind it:
   including the path-segment detail-overlay URLs of ADR 0008.
 - **Database** — SQLite, single file on the EC2 instance's disk.
   Holds every persistent table: watchlist/library rows,
-  ratings, completion dates, shares, per-(user, surface,
-  media_type) preferences, and the catalog cache of ADR 0007.
-  It **also** holds authentication state — the `users` table
-  (email, Argon2id password hash, verification state), sessions
-  (Spring Session JDBC), the verification / reset / email-change
-  tokens, and the email rate-limit bucket — because Alexandrea
-  now owns auth in-app via Spring Security (see ADR 0021). Each
-  per-user row carries a foreign-key reference to the local
-  `users.id`.
+  ratings, completion dates, shares, and per-(user, surface,
+  media_type) preferences. It **also** holds authentication
+  state — the `users` table (email, Argon2id password hash,
+  verification state), sessions (Spring Session JDBC), the
+  verification / reset / email-change tokens, and the email
+  rate-limit bucket — because Alexandrea now owns auth in-app
+  via Spring Security (see ADR 0021). Each per-user row carries
+  a foreign-key reference to the local `users.id`.
 - **Deployment** — one GitHub Actions workflow with two artifacts:
   the Spring Boot Docker image is pushed to a registry and pulled
   by the EC2 instance; the React build is `aws s3 sync`'d to the
@@ -177,9 +176,9 @@ library:
   ADR justifying why SQLite is insufficient.
 - **The single instance is a SPOF** during the deploy window
   and during EC2 maintenance. We accept this for v1.
-- **The cache layer of ADR 0007** is a SQLite table with TTL
-  columns and lazy expiry on read. No external cache
-  dependency.
+- **The cache layer of ADR 0007** is not a SQLite table —
+  superseded by ADR 0026, the catalog cache is in-memory
+  Caffeine, not SQLite.
 - **Authentication is provided in-app by Spring Security**
   (ADR 0021), superseding the earlier kiraauth integration. Alexandrea
   holds password hashes (Argon2id), issues its own session

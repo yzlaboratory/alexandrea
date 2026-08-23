@@ -81,6 +81,30 @@ Universal across media types; serves as the canonical "how good was it
 to me" axis for sort and filter when no per-aspect Characteristic is
 specified.
 
+### Navigation
+
+**Surface**:
+One of the four top-level tabs a logged-in User navigates between:
+**Catalog** (#3), **Watchlist** (#7), **Library** (#4), **Shares** (#1).
+Each Surface is independently stateful **per media type** — e.g. the
+Catalog's sort/filter selection for Movies is distinct from its
+selection for Books, and distinct from the Watchlist's own
+sort/filter selection for Movies. The detail overlay (#6) is not a
+Surface; it always opens on top of whichever Surface launched it and
+inherits no independent state of its own.
+_Avoid_: tab, view, page (too generic — use Surface when referring to
+one of these four specifically).
+
+**Surface preference**:
+A User's remembered sort choice and filter selections for one Surface
+× media type combination (e.g. Catalog × Books), restored on the
+User's next visit from any device. Same shape of idea as Sticky media
+type, one level more specific. Search is never part of a Surface
+preference — it is always transient. Backed by one shared store keyed
+`(user, surface, media_type)` across all four Surfaces (ADR 0025).
+_Avoid_: saved search (this is not a saved search — search itself is
+excluded).
+
 ### Identity & sharing
 
 **User**:

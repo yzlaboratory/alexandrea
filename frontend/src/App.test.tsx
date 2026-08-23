@@ -120,4 +120,27 @@ describe('App routing', () => {
 
     document.cookie = 'XSRF-TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
   });
+
+  it('reaches the real CatalogPage when the Catalog nav tab is clicked', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(200, { email: 'reader@example.com', lastMediaType: 'movies' }),
+    );
+    renderAt('/movies/watchlist');
+    const user = userEvent.setup();
+    await screen.findByText('Nothing to show here yet.');
+
+    await user.click(screen.getByRole('tab', { name: 'Catalog' }));
+
+    // Distinguishing content only the real CatalogPage renders — not just
+    // "some route matched" (CatalogPlaceholder renders neither) — proving
+    // /:mediaType/catalog's higher route specificity actually beats
+    // /:mediaType/:surface for this click, the same precedence App.tsx's
+    // route comment documents.
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /movies catalog/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: /search movies/i }),
+    ).toBeInTheDocument();
+  });
 });
