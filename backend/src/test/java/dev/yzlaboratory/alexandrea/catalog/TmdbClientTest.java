@@ -108,6 +108,23 @@ class TmdbClientTest {
     }
 
     @Test
+    void aTitleWithNoVoteAverageFieldAtAllMapsToANullRatingRatherThanZero() {
+        expectPopularRequest().andRespond(withSuccess("""
+            {
+              "page": 1,
+              "results": [
+                {"id": 1, "title": "Unrated Title", "poster_path": null, "release_date": ""}
+              ],
+              "total_pages": 1
+            }
+            """, MediaType.APPLICATION_JSON));
+
+        var item = client.popularMovies(1).items().getFirst();
+
+        assertThat(item.externalRating()).isNull();
+    }
+
+    @Test
     void aMalformedReleaseDateMapsToNullRatherThanThrowing() {
         expectPopularRequest().andRespond(withSuccess("""
             {

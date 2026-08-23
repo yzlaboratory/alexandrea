@@ -1011,6 +1011,21 @@ class CatalogServiceTest {
         verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
     }
 
+    @Test
+    void aGenreValueIsDroppedRatherThanPassedThroughWhenItsVocabularyIsTemporarilyUnavailable() {
+        when(genreVocabulary.supports("movies")).thenReturn(true);
+        when(genreVocabulary.genresFor("movies"))
+            .thenThrow(new CatalogUpstreamException("TMDB", new RuntimeException("boom")));
+        var page = new CatalogPageResult(List.of(ITEM), 1, true);
+        when(tmdbClient.popularMovies(1)).thenReturn(page);
+
+        var result = service.browse("movies", null, null, null, genreFilter("28"), 42L, 1);
+
+        assertThat(result).isEqualTo(page);
+        verify(tmdbClient, never()).discoverMovies(any(), any(), any(), any(), any(), anyInt());
+        verify(surfacePreferenceStore, never()).upsert(anyLong(), any(), any(), any(), any(), any());
+    }
+
     // Regression test for a bug where "nothing meaningful requested" (no
     // valid sort, and the only filter given is unrecognised) short-circuited
     // straight to the plain popular feed without ever consulting
