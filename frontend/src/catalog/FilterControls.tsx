@@ -254,16 +254,17 @@ function RangeFilterControl({
   // over an in-flight, not-yet-committed edit.
   const [localMin, setLocalMin] = useState(min);
   const [localMax, setLocalMax] = useState(max);
-
-  useEffect(() => {
+  const [committedValue, setCommittedValue] = useState(value);
+  if (value !== committedValue) {
+    setCommittedValue(value);
     setLocalMin(min);
     setLocalMax(max);
-  }, [min, max]);
+  }
 
   useEffect(() => {
     // Nothing to commit — either nothing has been typed since the last
-    // commit, or this run is just the sync effect above catching up to a
-    // caller-driven `value` change. Skipping this avoids re-sending an
+    // commit, or this run is just the render-time sync above catching up to
+    // a caller-driven `value` change. Skipping this avoids re-sending an
     // unchanged value (and, since FilterControls always passes a fresh
     // object literal down, avoids an extra CatalogGrid remount for no
     // actual change).
