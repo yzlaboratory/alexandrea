@@ -60,6 +60,7 @@ public class IgdbClient {
     private final CatalogProperties properties;
     private final Clock clock;
 
+    @SuppressWarnings("java:S3077") // CachedToken is an immutable record, only ever reassigned wholesale under a synchronized writer below, never mutated in place — volatile alone is sufficient.
     private volatile CachedToken cachedToken;
 
     public IgdbClient(RestClient igdbGamesRestClient, RestClient igdbTwitchRestClient, CatalogProperties properties, Clock clock) {
