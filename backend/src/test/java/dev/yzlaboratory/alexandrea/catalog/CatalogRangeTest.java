@@ -86,6 +86,11 @@ class CatalogRangeTest {
     }
 
     @Test
+    void anIntegerOverflowingBoundIsRejectedRatherThanThrowing() {
+        assertThat(CatalogRange.parse("99999999999,1")).isEmpty();
+    }
+
+    @Test
     void missingTheCommaEntirelyIsRejected() {
         assertThat(CatalogRange.parse("90")).isEmpty();
     }
