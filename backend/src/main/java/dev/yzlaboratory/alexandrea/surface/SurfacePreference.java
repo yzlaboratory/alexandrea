@@ -4,9 +4,7 @@ import java.time.Instant;
 
 /**
  * One row of the shared preference store (ADR 0025), keyed
- * {@code (userId, surface, mediaType)}. {@code filters} is an opaque JSON
- * blob this package never parses or validates — the calling surface owns
- * that.
+ * {@code (userId, surface, mediaType)}.
  */
 public record SurfacePreference(
     long userId,

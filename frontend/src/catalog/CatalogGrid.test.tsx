@@ -108,12 +108,16 @@ describe('CatalogGrid', () => {
     render(<CatalogGrid mediaType="movies" />);
     await screen.findByText('Page One Movie');
 
+    // hasMore: false here (a real single-page-then-no-more scenario) — the
+    // back-to-back auto-chaining test below covers the hasMore: true case
+    // deliberately; here that would trigger a further, unmocked fetch this
+    // test isn't about.
     mockedFetchCatalogPage.mockResolvedValueOnce({
       status: 'ok',
       result: {
         items: [item({ externalId: '2', title: 'Page Two Movie' })],
         page: 2,
-        hasMore: true,
+        hasMore: false,
       },
     });
     lastObserver().trigger(true);
@@ -130,6 +134,53 @@ describe('CatalogGrid', () => {
       undefined,
       undefined,
     );
+  });
+
+  it('keeps loading pages back-to-back when the sentinel is still intersecting after a page loads', async () => {
+    // IntersectionObserver only ever fires on a threshold-crossing
+    // transition (per spec/MDN) — it never fires again for "stayed
+    // visible, nothing changed." If a loaded page doesn't push the
+    // sentinel out of view (e.g. it's short, or the viewport is tall),
+    // waiting on the observer for the next page would stall forever. This
+    // simulates exactly one real intersection event and expects the
+    // component to keep loading on its own until it runs out of pages,
+    // rather than needing further (unnatural) trigger calls.
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ externalId: '1', title: 'Page One Movie' })],
+        page: 1,
+        hasMore: true,
+      },
+    });
+    render(<CatalogGrid mediaType="movies" />);
+    await screen.findByText('Page One Movie');
+
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ externalId: '2', title: 'Page Two Movie' })],
+        page: 2,
+        hasMore: true,
+      },
+    });
+    mockedFetchCatalogPage.mockResolvedValueOnce({
+      status: 'ok',
+      result: {
+        items: [item({ externalId: '3', title: 'Page Three Movie' })],
+        page: 3,
+        hasMore: false,
+      },
+    });
+
+    lastObserver().trigger(true);
+
+    expect(await screen.findByText('Page Three Movie')).toBeInTheDocument();
+    expect(screen.getByText('Page One Movie')).toBeInTheDocument();
+    expect(screen.getByText('Page Two Movie')).toBeInTheDocument();
+    // Three fetches total (mount + the one triggered + one auto-chained),
+    // from exactly one `.trigger()` call — no further observer events.
+    expect(mockedFetchCatalogPage).toHaveBeenCalledTimes(3);
   });
 
   it('does not fetch again once the last page has been reached', async () => {
@@ -339,9 +390,14 @@ describe('CatalogGrid', () => {
       expect(mockedFetchCatalogPage).toHaveBeenCalledTimes(1);
     });
 
+    // hasMore: false — this test is about the in-flight guard, not about
+    // what happens once the page settles. The earlier trigger(true) left
+    // the sentinel's tracked intersection state as "intersecting", so a
+    // true here would (correctly, per the back-to-back-loading fix above)
+    // chain into a further, unmocked fetch this test isn't concerned with.
     resolveFirst({
       status: 'ok',
-      result: { items: [item()], page: 1, hasMore: true },
+      result: { items: [item()], page: 1, hasMore: false },
     });
     await screen.findByText('A Movie');
   });
