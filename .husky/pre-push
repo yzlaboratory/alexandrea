@@ -1,10 +1,13 @@
 #!/usr/bin/env sh
 
-# react-doctor (ADR 0022) runs at push time, not commit time: it audits the
-# whole React tree and fetches react-doctor@latest over the network, both of
-# which are too heavy for the per-commit gate. Push is infrequent enough to
-# absorb the cost, and it still catches anti-patterns before they reach a PR,
-# where CI runs the same audit (`npm run doctor`) as a required check.
+# eslint, knip, and react-doctor (ADR 0022) all run at push time, not commit
+# time. Pre-commit's lint-staged only lints staged files, so a rule needing
+# the whole project graph — an eslint rule spanning files, a knip dead-export
+# check — can pass per-commit and still fail here; react-doctor additionally
+# fetches react-doctor@latest over the network, too heavy either way for the
+# per-commit gate. Push is infrequent enough to absorb the cost, and it still
+# catches these before they reach a PR, where CI runs the same checks
+# (`npm run check`, `npm run doctor`) as required checks.
 
 zero="0000000000000000000000000000000000000000"
 touches_frontend=""
@@ -29,5 +32,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 done
 
 if [ -n "$touches_frontend" ]; then
+  (cd frontend && npm run lint) || exit 1
+  (cd frontend && npm run knip) || exit 1
   (cd frontend && npm run doctor) || exit 1
 fi
