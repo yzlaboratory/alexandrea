@@ -1122,6 +1122,48 @@ class CatalogServiceTest {
         verify(surfacePreferenceStore).upsert(42L, "catalog", "movies", null, null, encodedGenre("28"));
     }
 
+    // browse()'s read-then-write span covers the entire upstream fetch
+    // (a network call), not just the CPU-bound work around it. Two
+    // concurrent browse() calls for the same (userId, mediaType) can each
+    // read the same stale row, both fetch upstream, and then both build
+    // their upsert() from their OWN early snapshot — whichever lands second
+    // silently clobbers the first's newer write, even though upsert() itself
+    // is a single atomic statement. This simulates that: a second,
+    // fresher get() taken right before the final write (as if a concurrent
+    // request had persisted its own genre change in between) must be what
+    // actually gets persisted, not the stale snapshot read before the fetch.
+    @Test
+    void persistsAgainstAFreshReadTakenRightBeforeTheWriteRatherThanTheStaleSnapshotFromBeforeTheUpstreamFetch() {
+        when(genreVocabulary.supports("movies")).thenReturn(true);
+        when(genreVocabulary.genresFor("movies")).thenReturn(
+            List.of(new CatalogFilterOption("28", "Action"), new CatalogFilterOption("35", "Comedy"))
+        );
+        var staleRead = new SurfacePreference(42L, "catalog", "movies", "popularity", "desc", encodedGenre("28"), clock.instant());
+        // Simulates a concurrent browse() call for the same (userId,
+        // mediaType) persisting its own genre change in the gap between
+        // this request's first read (used to resolve the upstream fetch)
+        // and its final write.
+        var freshWriteFromAConcurrentRequest =
+            new SurfacePreference(42L, "catalog", "movies", "popularity", "desc", encodedGenre("35"), clock.instant());
+        when(surfacePreferenceStore.get(42L, "catalog", "movies"))
+            .thenReturn(Optional.of(staleRead))
+            .thenReturn(Optional.of(freshWriteFromAConcurrentRequest));
+        when(tmdbClient.discoverMovies("title", "asc", "28", null, null, 1))
+            .thenReturn(new CatalogPageResult(List.of(ITEM), 1, true));
+
+        service.browse("movies", null, "title", "asc", NO_FILTERS, 42L, 1);
+
+        // The page actually fetched stays consistent with the FIRST read —
+        // resolved before the upstream call, same as always.
+        verify(tmdbClient, times(1)).discoverMovies("title", "asc", "28", null, null, 1);
+        // But what gets persisted is resolved against the SECOND, fresher
+        // read taken right before the write, not the stale first snapshot —
+        // otherwise this call would silently clobber the concurrent
+        // request's own genre change back to "28".
+        verify(surfacePreferenceStore).upsert(42L, "catalog", "movies", "title", "asc", encodedGenre("35"));
+        verify(surfacePreferenceStore, never()).upsert(42L, "catalog", "movies", "title", "asc", encodedGenre("28"));
+    }
+
     // An empty-string genre value is CatalogController's distinct "the
     // frontend sent a present-but-empty genre=" signal for a deselected
     // filter chip — not the same wire value as the field being absent from
