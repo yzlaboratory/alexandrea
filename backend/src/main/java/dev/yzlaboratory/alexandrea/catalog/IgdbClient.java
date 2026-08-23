@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,8 +61,7 @@ public class IgdbClient {
     private final CatalogProperties properties;
     private final Clock clock;
 
-    @SuppressWarnings("java:S3077") // CachedToken is an immutable record, only ever reassigned wholesale under a synchronized writer below, never mutated in place — volatile alone is sufficient.
-    private volatile CachedToken cachedToken;
+    private final AtomicReference<CachedToken> cachedToken = new AtomicReference<>();
 
     public IgdbClient(RestClient igdbGamesRestClient, RestClient igdbTwitchRestClient, CatalogProperties properties, Clock clock) {
         this.gamesRestClient = igdbGamesRestClient;
@@ -252,12 +252,12 @@ public class IgdbClient {
         return Instant.ofEpochSecond(firstReleaseDateEpochSeconds).atZone(ZoneOffset.UTC).toLocalDate();
     }
 
-    // Double-checked against the volatile field: the common case (a still-
-    // valid cached token) returns on a plain read with no lock at all, so
+    // Double-checked against the atomic reference: the common case (a still-
+    // valid cached token) returns on a plain get() with no lock at all, so
     // concurrent requests never serialize behind each other just to read an
     // already-good token — only an actual refresh takes the monitor.
     private String accessToken() {
-        var token = cachedToken;
+        var token = cachedToken.get();
         if (token != null && !token.isExpiredAt(clock.instant())) {
             return token.accessToken();
         }
@@ -265,16 +265,16 @@ public class IgdbClient {
     }
 
     private synchronized String refreshedAccessToken() {
-        var token = cachedToken;
+        var token = cachedToken.get();
         if (token == null || token.isExpiredAt(clock.instant())) {
             token = fetchToken();
-            cachedToken = token;
+            cachedToken.set(token);
         }
         return token.accessToken();
     }
 
     private synchronized void invalidateToken() {
-        cachedToken = null;
+        cachedToken.set(null);
     }
 
     private CachedToken fetchToken() {
