@@ -204,8 +204,22 @@ public class CatalogService {
                 resolvedFilters, page
               )
             : filteredFeedFor(mediaType, fetchSortKey, fetchSortDirection, resolvedFilters, page);
+        // Re-resolve against a FRESH read taken right before this write,
+        // rather than reusing `existing` (read before the upstream fetch
+        // above, a network call with real wall-clock duration). A
+        // concurrent browse() for the same (userId, mediaType) can have
+        // persisted its own change in that gap; upserting the stale
+        // resolution here would silently clobber it even though upsert()
+        // itself is a single atomic statement. This shrinks the race window
+        // from "the whole method" down to the CPU-bound gap between this
+        // get() and the upsert() below. The page already fetched above stays
+        // resolved against the original `existing`, so what's returned to
+        // the caller stays consistent with what was actually fetched.
+        var freshExisting = surfacePreferenceStore.get(userId, CATALOG_SURFACE, mediaType);
+        var sortToPersist = resolveSort(sortKey, sortDirection, freshExisting);
+        var filtersToPersist = resolveFilters(mediaType, filters, freshExisting);
         surfacePreferenceStore.upsert(
-            userId, CATALOG_SURFACE, mediaType, resolvedSort.key(), resolvedSort.direction(), encodeFilters(resolvedFilters)
+            userId, CATALOG_SURFACE, mediaType, sortToPersist.key(), sortToPersist.direction(), encodeFilters(filtersToPersist)
         );
         return result;
     }
