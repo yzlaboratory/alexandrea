@@ -43,10 +43,15 @@ interface PreferenceState {
   // means no value is selected for it. Always carries every known field
   // once loaded (defaulting unset ones to null), so CatalogGrid always
   // "manages" every field the same way it managed the single genre field
-  // before this generalized past it. The whole PreferenceState being null
-  // means "still loading the persisted preference".
+  // before this generalized past it.
   filters: Record<string, string | null>;
 }
+
+// Mirrors CatalogGrid's own LoadState idiom, but the 'ready' branch also
+// carries the loaded preference itself rather than just a status string.
+type PreferenceLoadState =
+  | { status: 'loading' }
+  | { status: 'ready'; preference: PreferenceState };
 
 function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
   const label = MEDIA_TYPE_LABELS[mediaType] ?? mediaType;
@@ -57,10 +62,12 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
   // always empty on a fresh mount.
   const [searchInput, setSearchInput] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
-  // null means "still loading the persisted preference" — the grid, sort
-  // control, and filter controls all wait for it so the page never flashes
-  // the defaults and then jumps to a different restored state.
-  const [preference, setPreference] = useState<PreferenceState | null>(null);
+  // The grid, sort control, and filter controls all wait for 'ready' so the
+  // page never flashes the defaults and then jumps to a different restored
+  // state.
+  const [preferenceState, setPreferenceState] = useState<PreferenceLoadState>({
+    status: 'loading',
+  });
   // Which filter kinds are currently available for this media_type (ADR
   // 0018), as reported by CatalogGrid's most recent fetch — FilterControls
   // renders from this rather than a hardcoded per-media-type table.
@@ -69,11 +76,11 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
   >({});
   // Which of those fields, plus sort, are locked right now because a
   // search is active (ADR 0018's "Behavior under active text search"),
-  // also reported by CatalogGrid's most recent fetch. preference.sortKey/
-  // filters are never reset when a search starts — SortControl/
-  // FilterControls just render locked from this signal — so the previous
-  // value is exactly what reactivates once search clears and this reverts
-  // to its default.
+  // also reported by CatalogGrid's most recent fetch. The ready
+  // preference's sortKey/filters are never reset when a search starts —
+  // SortControl/FilterControls just render locked from this signal — so
+  // the previous value is exactly what reactivates once search clears and
+  // this reverts to its default.
   const [searchCapabilities, setSearchCapabilities] =
     useState<CatalogSearchCapabilities>({
       disabledFilters: [],
@@ -92,13 +99,13 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
 
   // Fetch-on-display: resolve this media type's persisted Catalog sort and
   // filter selections as soon as the page mounts, the same idiom as
-  // SessionContext's own session fetch. preference's initial value is
-  // already null (the "loading" state), so — unlike a component that
-  // survives a prop change — this effect needs no explicit reset:
-  // CatalogSurfaceRoute remounts CatalogPage on every media-type change via
-  // `key={mediaType}`, so a fresh instance (and a fresh null) is what "the
-  // media type changed" already looks like here. Guards against a stale
-  // response landing after unmount.
+  // SessionContext's own session fetch. preferenceState's initial value is
+  // already { status: 'loading' }, so — unlike a component that survives a
+  // prop change — this effect needs no explicit reset: CatalogSurfaceRoute
+  // remounts CatalogPage on every media-type change via `key={mediaType}`,
+  // so a fresh instance (and a fresh 'loading' state) is what "the media
+  // type changed" already looks like here. Guards against a stale response
+  // landing after unmount.
   useEffect(() => {
     let cancelled = false;
     void fetchCatalogPreference(mediaType).then((stored) => {
@@ -107,10 +114,13 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
       for (const field of CATALOG_FILTER_FIELDS) {
         filters[field] = stored.filters[field] ?? null;
       }
-      setPreference({
-        sortKey: stored.sortKey ?? DEFAULT_SORT_KEY,
-        direction: stored.sortDirection ?? DEFAULT_SORT_DIRECTION,
-        filters,
+      setPreferenceState({
+        status: 'ready',
+        preference: {
+          sortKey: stored.sortKey ?? DEFAULT_SORT_KEY,
+          direction: stored.sortDirection ?? DEFAULT_SORT_DIRECTION,
+          filters,
+        },
       });
     });
     return () => {
@@ -135,17 +145,33 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
     setActiveSearch('');
   }
 
+  // SortControl and FilterControls only render once preferenceState is
+  // 'ready' (see below), so these are only ever reachable with a loaded
+  // preference already in hand. The 'loading' branch is unreachable in
+  // practice, but a functional updater must return some valid state for
+  // every input type, so it's handled explicitly rather than asserted away.
   function handleSortChange(sortKey: string, direction: string): void {
-    setPreference((current) => current && { ...current, sortKey, direction });
+    setPreferenceState((current) =>
+      current.status === 'ready'
+        ? {
+            status: 'ready',
+            preference: { ...current.preference, sortKey, direction },
+          }
+        : current,
+    );
   }
 
   function handleFilterChange(field: string, value: string | null): void {
-    setPreference(
-      (current) =>
-        current && {
-          ...current,
-          filters: { ...current.filters, [field]: value },
-        },
+    setPreferenceState((current) =>
+      current.status === 'ready'
+        ? {
+            status: 'ready',
+            preference: {
+              ...current.preference,
+              filters: { ...current.preference.filters, [field]: value },
+            },
+          }
+        : current,
     );
   }
 
@@ -163,34 +189,34 @@ function CatalogPage({ mediaType }: CatalogPageProps): ReactNode {
           size="small"
           sx={{ maxWidth: 400 }}
         />
-        {preference && (
+        {preferenceState.status === 'ready' && (
           <SortControl
-            sortKey={preference.sortKey}
-            direction={preference.direction}
+            sortKey={preferenceState.preference.sortKey}
+            direction={preferenceState.preference.direction}
             onChange={handleSortChange}
             disabled={searchCapabilities.sortDisabled}
           />
         )}
-        {preference && (
+        {preferenceState.status === 'ready' && (
           <FilterControls
             availableFilters={availableFilters}
-            selectedFilters={preference.filters}
+            selectedFilters={preferenceState.preference.filters}
             onFilterChange={handleFilterChange}
             disabledFields={searchCapabilities.disabledFilters}
           />
         )}
       </Stack>
-      {preference ? (
+      {preferenceState.status === 'ready' ? (
         // key resets CatalogGrid's feed whenever the media type, the
         // committed search, the sort, or any filter changes, the same
         // remount-over-reset-effect idiom CatalogGrid itself documents.
         <CatalogGrid
-          key={`${mediaType}:${activeSearch}:${preference.sortKey}:${preference.direction}:${filtersKey(preference.filters)}`}
+          key={`${mediaType}:${activeSearch}:${preferenceState.preference.sortKey}:${preferenceState.preference.direction}:${filtersKey(preferenceState.preference.filters)}`}
           mediaType={mediaType}
           search={activeSearch}
-          sort={preference.sortKey}
-          direction={preference.direction}
-          filters={preference.filters}
+          sort={preferenceState.preference.sortKey}
+          direction={preferenceState.preference.direction}
+          filters={preferenceState.preference.filters}
           onAvailableFiltersChange={setAvailableFilters}
           onSearchCapabilitiesChange={setSearchCapabilities}
           onClearSearch={clearSearch}
